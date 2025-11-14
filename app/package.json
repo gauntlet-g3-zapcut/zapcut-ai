@@ -1,24 +1,42 @@
 {
-  "name": "starscape-studio-electron",
-  "description": "A video editing app",
-  "author": "Starscape",
-  "homepage": "https://starscape.digital",
+  "name": "zapcut-ai-electron",
+  "description": "AI Video Ads Generation & Editing",
+  "author": "gauntlet-g3-zapcut",
+  "homepage": "https://zapcut.video",
   "repository": {
     "type": "git",
-    "url": "https://github.com/brucestarlove/StarscapeStudio-electron"
+    "url": "https://github.com/gauntlet-g3-zapcut/zapcut-ai"
   },
   "bugs": {
-    "url": "https://github.com/brucestarlove/StarscapeStudio-electron/issues"
+    "url": "https://github.com/gauntlet-g3-zapcut/zapcut-ai"
   },
   "keywords": [
     "video",
+    "ads",
+    "generation",
     "editing",
-    "app"
+    "app",
+    "ai"
   ],
   "contributors": [
     {
-      "name": "Starscape",
-      "email": "team@starscape.digital",
+      "name": "Nataly Costa",
+      "linkedin": "https://www.linkedin.com/in/nataly-costa",
+      "url": "https://nataly.xyz"
+    },
+    {
+      "name": "Reena Mary Puthota",
+      "linkedin": "https://www.linkedin.com/in/reena-mary-puthota",
+      "url": "https://www.linkedin.com/in/reena-mary-puthota"
+    },
+    {
+      "name": "Ryan Zernach",
+      "linkedin": "https://linkedin.com/in/zernach",
+      "url": "https://ryan.zernach.com"
+    },
+    {
+      "name": "StarloveDev",
+      "linkedin": "https://www.linkedin.com/in/brucedeanrobinson",
       "url": "https://starscape.digital"
     }
   ],
