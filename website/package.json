@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "ZapCut AI Video Generation & Editing - Marketing Website",
+  "description": "ZapCut AI Video Ads Generation & Editing - Marketing Website",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
