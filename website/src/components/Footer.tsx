@@ -68,10 +68,17 @@ export default function Footer() {
               © {currentYear} ZapCut. All rights reserved.
             </p>
 
-            <div className="flex items-center gap-2 text-gray-500 text-sm">
-              <span>Made with</span>
-              <Heart className="w-4 h-4 text-purple-500 fill-purple-500 animate-pulse" />
-              <span>for creators</span>
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex items-center gap-2 text-gray-500 text-sm">
+                <span>Made with</span>
+                <Heart className="w-4 h-4 text-purple-500 fill-purple-500 animate-pulse" />
+                <span>at Gauntlet AI</span>
+              </div>
+              <img
+                src="/assets/gauntlet-ai-logo.png"
+                alt="Gauntlet AI Logo"
+                className="h-6 w-auto"
+              />
             </div>
           </div>
         </div>
