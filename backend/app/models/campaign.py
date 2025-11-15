@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
@@ -16,14 +16,18 @@ class Campaign(Base):
     sora_prompts = Column(JSONB, nullable=False)  # Array of 5 prompts
     suno_prompt = Column(Text, nullable=False)
     video_urls = Column(JSONB)  # {scene_1, scene_2, ..., scene_5} S3 URLs
+    voiceover_urls = Column(JSONB)  # Array of voiceover URLs per scene
     music_url = Column(String)  # S3 URL
     final_video_url = Column(String, nullable=False)  # S3 URL
     status = Column(String, nullable=False, default="pending", index=True)  # pending, generating, completed, failed
+    generation_stage = Column(String(50), default="not_started")  # Current pipeline stage
+    generation_progress = Column(Integer, default=0)  # Progress percentage 0-100
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     brand = relationship("Brand", back_populates="campaigns")
     creative_bible = relationship("CreativeBible", back_populates="campaigns")
+    generation_jobs = relationship("GenerationJob", back_populates="campaign", cascade="all, delete-orphan")
 
 

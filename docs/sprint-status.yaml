@@ -14,9 +14,10 @@ stories:
 
   - id: "5.2"
     name: "Enhanced Job Queue & Tracking System"
-    status: "backlog"
+    status: "done"
     priority: "P1"
     estimate: "1 hour"
+    completed: "2025-11-15"
 
   - id: "5.3"
     name: "Sequential Scene Video Generation with Continuity"
