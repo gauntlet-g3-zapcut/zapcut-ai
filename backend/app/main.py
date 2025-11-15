@@ -67,6 +67,7 @@ app.add_middleware(RequestLoggingMiddleware)
 default_origins = [
     "https://app.zapcut.video",  # Production frontend
     "http://localhost:5173",     # Local development
+    "http://localhost:5174",
     "http://localhost:5175",
     "http://localhost:3000",
 ]
