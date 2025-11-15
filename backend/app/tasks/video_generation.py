@@ -14,7 +14,7 @@ from app.services.replicate_service import (
     generate_videos_parallel,
     generate_music_with_suno
 )
-from app.services.s3 import upload_file_to_s3
+from app.services.storage import upload_bytes_to_storage
 import uuid
 import subprocess
 import os
@@ -192,27 +192,32 @@ def download_file(url):
 
 
 def upload_to_s3_bytes(data, key, content_type):
-    """Upload bytes to S3"""
-    # This would use boto3 directly
-    # For now, placeholder
-    import boto3
-    from app.config import settings
+    """Upload bytes to Supabase Storage (replaces S3)"""
+    import asyncio
     
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        region_name=settings.AWS_REGION,
+    # Determine bucket based on content type
+    if content_type.startswith("video/"):
+        bucket = "videos"
+    elif content_type.startswith("audio/"):
+        bucket = "videos"  # Store audio with videos for campaigns
+    else:
+        bucket = "uploads"
+    
+    # Run async function in sync context (Celery tasks are sync)
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    return loop.run_until_complete(
+        upload_bytes_to_storage(
+            data=data,
+            bucket=bucket,
+            path=key,
+            content_type=content_type
+        )
     )
-    
-    s3_client.put_object(
-        Bucket=settings.AWS_S3_BUCKET,
-        Key=key,
-        Body=data,
-        ContentType=content_type,
-    )
-    
-    return f"https://{settings.AWS_S3_BUCKET}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
 
 
 def compose_video(video_urls, music_url, brand_title):

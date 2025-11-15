@@ -5,7 +5,7 @@ from app.database import get_db
 from app.models.brand import Brand
 from app.models.user import User
 from app.api.auth import get_current_user
-from app.services.s3 import upload_file_to_s3
+from app.services.storage import upload_file_to_storage
 import uuid
 
 router = APIRouter(prefix="/api/brands", tags=["brands"])
@@ -43,12 +43,23 @@ async def create_brand(
     db: Session = Depends(get_db)
 ):
     """Create a new brand"""
-    # Upload images to S3 (with fallback for testing)
+    # Upload images to Supabase Storage (with fallback for testing)
     try:
-        image_1_url = await upload_file_to_s3(product_image_1, f"brands/{uuid.uuid4()}/{product_image_1.filename}")
-        image_2_url = await upload_file_to_s3(product_image_2, f"brands/{uuid.uuid4()}/{product_image_2.filename}")
+        image_1_path = f"brands/{uuid.uuid4()}/{product_image_1.filename}"
+        image_2_path = f"brands/{uuid.uuid4()}/{product_image_2.filename}"
+        
+        image_1_url = await upload_file_to_storage(
+            product_image_1,
+            bucket="brands",
+            path=image_1_path
+        )
+        image_2_url = await upload_file_to_storage(
+            product_image_2,
+            bucket="brands",
+            path=image_2_path
+        )
     except Exception as e:
-        print(f"⚠️  S3 upload failed: {e}. Using placeholder URLs.")
+        print(f"⚠️  Supabase Storage upload failed: {e}. Using placeholder URLs.")
         # Fallback to simple placeholder (via.placeholder.com is unreliable)
         image_1_url = "https://placehold.co/400x400/e2e8f0/64748b?text=Product+Image+1"
         image_2_url = "https://placehold.co/400x400/e2e8f0/64748b?text=Product+Image+2"
