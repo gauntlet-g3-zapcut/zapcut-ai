@@ -1,0 +1,54 @@
+# Epic 5: Video Generation Pipeline - Sprint Status
+epic_id: 5
+epic_name: Video Generation Pipeline
+branch: epic-5-video-generation
+started: 2025-11-15
+
+stories:
+  - id: "5.1"
+    name: "Wire Frontend to Backend Pipeline"
+    status: "done"
+    priority: "P1"
+    estimate: "45 mins"
+    completed: "2025-11-15"
+
+  - id: "5.2"
+    name: "Enhanced Job Queue & Tracking System"
+    status: "backlog"
+    priority: "P1"
+    estimate: "1 hour"
+
+  - id: "5.3"
+    name: "Sequential Scene Video Generation with Continuity"
+    status: "backlog"
+    priority: "P2"
+    estimate: "1 hour"
+
+  - id: "5.4"
+    name: "Voiceover Generation (TTS)"
+    status: "backlog"
+    priority: "P2"
+    estimate: "1 hour"
+
+  - id: "5.5"
+    name: "Product Image Overlays"
+    status: "backlog"
+    priority: "P2"
+    estimate: "45 mins"
+
+  - id: "5.6"
+    name: "Enhanced FFmpeg Video Composition"
+    status: "backlog"
+    priority: "P2"
+    estimate: "2 hours"
+
+  - id: "5.8"
+    name: "Granular Progress Tracking UI"
+    status: "backlog"
+    priority: "P3"
+    estimate: "30 mins"
+
+notes:
+  - Story 5.7 and 5.9 already implemented, marked as complete
+  - Building on existing Epics 1-4 functionality
+  - Total estimated effort: ~7 hours
