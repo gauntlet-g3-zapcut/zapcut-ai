@@ -1,4 +1,4 @@
-// Core types for the Starscape video editor
+// Core types for the Zapcut video editor
 
 export interface Asset {
   id: string;

@@ -1,47 +1,65 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, screen, dialog, protocol } = require('electron');
-const path = require('path');
-const fs = require('fs');
-const https = require('https');
+import { app, BrowserWindow, ipcMain, desktopCapturer, screen, dialog, protocol, shell } from 'electron';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as https from 'https';
+// @ts-ignore - no types available
 const squirrelStartup = require('electron-squirrel-startup');
-const { shell } = require('electron'); // Added for reveal-in-finder
+import { ChildProcess } from 'child_process';
 
 // Load environment variables from .env file
 // Load from project root (one level up from electron directory)
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-const { configureFfmpeg } = require('./ffmpeg');
-const { CacheDirs } = require('./cache');
-const { probeMedia, extractPosterFrame } = require('./metadata');
-const { buildPlan, findVisibleClip } = require('./editPlan');
-const { executeExportJob } = require('./export');
-const { ingestFiles } = require('./ingest');
+import { configureFfmpeg } from './ffmpeg';
+import { CacheDirs } from './cache';
+import { probeMedia, extractPosterFrame } from './metadata';
+import { buildPlan, findVisibleClip } from './editPlan';
+import { executeExportJob } from './export';
+import { ingestFiles } from './ingest';
+import {
+  ExportSettings,
+  ExportResult,
+  ListDevicesResult,
+  RecordSettings,
+  RecordingInfo,
+  IngestRequest,
+  IngestResult,
+  GenerateImageResult,
+} from './types';
 
 // Handle Squirrel events on Windows
 if (squirrelStartup) {
   app.quit();
 }
 
-let mainWindow = null;
-let cacheDirs = null;
+let mainWindow: BrowserWindow | null = null;
+let cacheDirs: CacheDirs | null = null;
 let isQuitting = false;
 let isCleaningUp = false; // Prevent multiple cleanup calls
-let activeProcesses = new Set(); // Track active FFmpeg processes
-let activeRecordings = new Map(); // Track active screen recordings
+let activeProcesses = new Set<ChildProcess>(); // Track active FFmpeg processes
+let activeRecordings = new Map<string, RecordingInfo>(); // Track active screen recordings
 
 /**
  * Create the main application window
  */
-function createWindow() {
+function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: 'Starscape Studio',
-    icon: path.join(__dirname, '../build-resources/icons/icon.png'),
+    title: 'Zapcut: AI Video Ads Generator & Editor',
+    icon: path.join(__dirname, '../build-resources/icons/zapcut-app-icon-transparent.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
     },
+    show: false, // Don't show until ready
+  });
+
+  // Show window when ready to prevent visual flash
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+    console.log('Electron window is ready and visible');
   });
 
   // Check if running in dev mode
@@ -49,7 +67,13 @@ function createWindow() {
 
   if (isDev) {
     // Load from Vite dev server
-    mainWindow.loadURL('http://localhost:3000');
+    // Wait a bit for Vite to be ready, then load
+    setTimeout(() => {
+      mainWindow?.loadURL('http://localhost:3000').catch((err) => {
+        console.error('Failed to load Vite dev server:', err);
+        console.log('Make sure Vite is running on http://localhost:3000');
+      });
+    }, 1000);
     mainWindow.webContents.openDevTools();
   } else {
     // Load from built files
@@ -63,10 +87,10 @@ function createWindow() {
   }
 
   // Handle window closed event
-  mainWindow.on('close', (event) => {
+  mainWindow.on('close', (event: Electron.Event) => {
     if (!isQuitting) {
       event.preventDefault();
-      mainWindow.hide();
+      mainWindow?.hide();
       
       // On macOS, keep app running when window is closed
       if (process.platform === 'darwin') {
@@ -90,10 +114,10 @@ function createWindow() {
   });
 
   // Handle window minimize to tray (optional)
-  mainWindow.on('minimize', (event) => {
+  mainWindow.on('minimize', (event: Electron.Event) => {
     if (process.platform === 'darwin') {
       event.preventDefault();
-      mainWindow.hide();
+      mainWindow?.hide();
     }
   });
 }
@@ -101,7 +125,7 @@ function createWindow() {
 /**
  * Cleanup function for graceful shutdown
  */
-function cleanup() {
+function cleanup(): void {
   if (isCleaningUp) {
     console.log('Cleanup already in progress, skipping...');
     return;
@@ -168,7 +192,7 @@ function cleanup() {
 /**
  * Initialize application
  */
-async function initialize() {
+async function initialize(): Promise<void> {
   // Configure FFmpeg paths
   configureFfmpeg();
 
@@ -262,16 +286,13 @@ app.on('before-quit', (event) => {
 });
 
 // Handle will-quit (redundant with before-quit, but kept for safety)
-app.on('will-quit', (event) => {
+app.on('will-quit', () => {
   if (!isCleaningUp) {
     cleanup();
   }
 });
 
-// Handle app termination
-app.on('will-terminate', () => {
-  cleanup();
-});
+// Handle app termination (removed - not a valid event in Electron)
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
@@ -296,7 +317,7 @@ process.on('unhandledRejection', (reason, promise) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('app-error', {
       type: 'unhandledRejection',
-      message: reason.toString(),
+      message: reason?.toString() || 'Unknown error',
       promise: promise.toString()
     });
   }
@@ -341,7 +362,7 @@ process.on('SIGUSR2', () => {
 /**
  * Track an active FFmpeg process for cleanup
  */
-function trackProcess(process) {
+function trackProcess(process: ChildProcess): void {
   activeProcesses.add(process);
   
   // Remove from tracking when process ends
@@ -357,7 +378,7 @@ function trackProcess(process) {
 /**
  * Stop tracking a process
  */
-function untrackProcess(process) {
+function untrackProcess(process: ChildProcess): void {
   activeProcesses.delete(process);
 }
 
@@ -366,7 +387,7 @@ function untrackProcess(process) {
 /**
  * List available capture devices (displays and audio inputs)
  */
-ipcMain.handle('list-capture-devices', async () => {
+ipcMain.handle('list-capture-devices', async (): Promise<ListDevicesResult> => {
   try {
     const sources = await desktopCapturer.getSources({
       types: ['screen', 'window'],
@@ -381,21 +402,21 @@ ipcMain.handle('list-capture-devices', async () => {
     }));
     
     // For now, we'll return empty audio inputs since we're not implementing audio recording yet
-    const audioInputs = [];
+    const audioInputs: string[] = [];
     
     return {
       displays,
       audio_inputs: audioInputs
     };
   } catch (error) {
-    throw new Error(`Failed to list capture devices: ${error.message}`);
+    throw new Error(`Failed to list capture devices: ${(error as Error).message}`);
   }
 });
 
 /**
  * Start screen recording
  */
-ipcMain.handle('start-screen-record', async (event, settings) => {
+ipcMain.handle('start-screen-record', async (event, settings: RecordSettings): Promise<{ recordingId: string; outPath: string }> => {
   try {
     const { fps = 30, display_index = 0, audio_index = 0 } = settings;
     
@@ -441,14 +462,14 @@ ipcMain.handle('start-screen-record', async (event, settings) => {
       outPath: outputPath
     };
   } catch (error) {
-    throw new Error(`Failed to start screen recording: ${error.message}`);
+    throw new Error(`Failed to start screen recording: ${(error as Error).message}`);
   }
 });
 
 /**
  * Stop screen recording
  */
-ipcMain.handle('stop-screen-record', async (event, recordingId) => {
+ipcMain.handle('stop-screen-record', async (event, recordingId: string): Promise<string> => {
   try {
     const recording = activeRecordings.get(recordingId);
     if (!recording) {
@@ -465,14 +486,14 @@ ipcMain.handle('stop-screen-record', async (event, recordingId) => {
     
     return recording.outputPath;
   } catch (error) {
-    throw new Error(`Failed to stop screen recording: ${error.message}`);
+    throw new Error(`Failed to stop screen recording: ${(error as Error).message}`);
   }
 });
 
 /**
  * Get media metadata
  */
-ipcMain.handle('get-media-metadata', async (event, filePath) => {
+ipcMain.handle('get-media-metadata', async (event, filePath: string) => {
   try {
     const metadata = await probeMedia(filePath);
     return metadata;
@@ -484,7 +505,7 @@ ipcMain.handle('get-media-metadata', async (event, filePath) => {
 /**
  * Generate preview frame
  */
-ipcMain.handle('generate-preview', async (event, projectJson, atMs) => {
+ipcMain.handle('generate-preview', async (event, projectJson: string, atMs: number): Promise<{ url: string; ts: number }> => {
   try {
     const plan = buildPlan(projectJson);
     const visibleClip = findVisibleClip(plan, atMs);
@@ -495,7 +516,7 @@ ipcMain.handle('generate-preview', async (event, projectJson, atMs) => {
 
     // Calculate timestamp relative to clip source
     const relativeMs = atMs - visibleClip.startMs + visibleClip.inMs;
-    const outputPath = cacheDirs.previewFile(plan.id, atMs);
+    const outputPath = cacheDirs!.previewFile(plan.id, atMs);
     
     const url = await extractPosterFrame(visibleClip.srcPath, relativeMs, outputPath);
     
@@ -511,10 +532,10 @@ ipcMain.handle('generate-preview', async (event, projectJson, atMs) => {
 /**
  * Export project
  */
-ipcMain.handle('export-project', async (event, projectJson, settings) => {
+ipcMain.handle('export-project', async (event, projectJson: string, settings: ExportSettings): Promise<ExportResult> => {
   try {
     const plan = buildPlan(projectJson);
-    const result = await executeExportJob(plan, settings, cacheDirs, mainWindow, trackProcess);
+    const result = await executeExportJob(plan, settings, cacheDirs!, mainWindow, trackProcess);
     return result;
   } catch (error) {
     throw new Error(`Failed to export project: ${error}`);
@@ -524,7 +545,7 @@ ipcMain.handle('export-project', async (event, projectJson, settings) => {
 /**
  * Convert WebM to MP4 using ffmpeg
  */
-function convertWebmToMp4(inputPath, outputPath) {
+function convertWebmToMp4(inputPath: string, outputPath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const ffmpeg = require('fluent-ffmpeg');
     
@@ -539,10 +560,10 @@ function convertWebmToMp4(inputPath, outputPath) {
         '-movflags +faststart'
       ])
       .output(outputPath)
-      .on('start', (commandLine) => {
+      .on('start', (commandLine: string) => {
         console.log('FFmpeg command:', commandLine);
       })
-      .on('progress', (progress) => {
+      .on('progress', (progress: any) => {
         if (progress.percent) {
           console.log(`Conversion progress: ${Math.round(progress.percent)}%`);
         }
@@ -551,7 +572,7 @@ function convertWebmToMp4(inputPath, outputPath) {
         console.log('WebM to MP4 conversion completed');
         resolve(outputPath);
       })
-      .on('error', (err) => {
+      .on('error', (err: Error) => {
         console.error('Conversion error:', err);
         reject(new Error(`FFmpeg conversion failed: ${err.message}`));
       });
@@ -565,7 +586,7 @@ function convertWebmToMp4(inputPath, outputPath) {
 /**
  * Convert WebM audio to MP3 using ffmpeg
  */
-function convertWebmToMp3(inputPath, outputPath) {
+function convertWebmToMp3(inputPath: string, outputPath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const ffmpeg = require('fluent-ffmpeg');
     
@@ -577,10 +598,10 @@ function convertWebmToMp3(inputPath, outputPath) {
       .audioChannels(2)
       .audioFrequency(44100)
       .output(outputPath)
-      .on('start', (commandLine) => {
+      .on('start', (commandLine: string) => {
         console.log('FFmpeg command:', commandLine);
       })
-      .on('progress', (progress) => {
+      .on('progress', (progress: any) => {
         if (progress.percent) {
           console.log(`Conversion progress: ${Math.round(progress.percent)}%`);
         }
@@ -589,7 +610,7 @@ function convertWebmToMp3(inputPath, outputPath) {
         console.log('WebM to MP3 conversion completed');
         resolve(outputPath);
       })
-      .on('error', (err) => {
+      .on('error', (err: Error) => {
         console.error('Conversion error:', err);
         reject(new Error(`FFmpeg audio conversion failed: ${err.message}`));
       });
@@ -603,14 +624,12 @@ function convertWebmToMp3(inputPath, outputPath) {
 /**
  * Save blob data to file (converts WebM to MP4 for video, MP3 for audio)
  */
-ipcMain.handle('save-blob-to-file', async (event, blobData, filename) => {
+ipcMain.handle('save-blob-to-file', async (event, blobData: ArrayBuffer, filename: string): Promise<{ success: boolean; path: string }> => {
   try {
-    const fs = require('fs');
-    const path = require('path');
     const buffer = Buffer.from(blobData);
     
     // Construct full path in cache/media directory
-    const webmPath = path.join(cacheDirs.mediaDir, filename);
+    const webmPath = path.join(cacheDirs!.mediaDir, filename);
     
     // Save the blob to the webm file
     await fs.promises.writeFile(webmPath, buffer);
@@ -620,7 +639,7 @@ ipcMain.handle('save-blob-to-file', async (event, blobData, filename) => {
     if (filename.startsWith('microphone_recording_')) {
       // For audio recordings, convert to MP3
       const mp3Filename = filename.replace('.webm', '.mp3');
-      const mp3Path = path.join(cacheDirs.mediaDir, mp3Filename);
+      const mp3Path = path.join(cacheDirs!.mediaDir, mp3Filename);
       
       await convertWebmToMp3(webmPath, mp3Path);
       
@@ -632,7 +651,7 @@ ipcMain.handle('save-blob-to-file', async (event, blobData, filename) => {
     } else {
       // For video recordings (webcam/screen), convert to MP4
       const mp4Filename = filename.replace('.webm', '.mp4');
-      const mp4Path = path.join(cacheDirs.mediaDir, mp4Filename);
+      const mp4Path = path.join(cacheDirs!.mediaDir, mp4Filename);
       
       await convertWebmToMp4(webmPath, mp4Path);
       
@@ -643,17 +662,17 @@ ipcMain.handle('save-blob-to-file', async (event, blobData, filename) => {
       return { success: true, path: mp4Path };
     }
   } catch (error) {
-    throw new Error(`Failed to save blob to file: ${error.message}`);
+    throw new Error(`Failed to save blob to file: ${(error as Error).message}`);
   }
 });
 
 /**
  * Ingest files
  */
-ipcMain.handle('ingest-files', async (event, request) => {
+ipcMain.handle('ingest-files', async (event, request: IngestRequest): Promise<IngestResult[]> => {
   try {
     const { file_paths } = request;
-    const results = await ingestFiles(file_paths, cacheDirs);
+    const results = await ingestFiles(file_paths, cacheDirs!);
     return results;
   } catch (error) {
     throw new Error(`Failed to ingest files: ${error}`);
@@ -663,22 +682,27 @@ ipcMain.handle('ingest-files', async (event, request) => {
 /**
  * Apply edits to project (placeholder implementation)
  */
-ipcMain.handle('apply-edits', async (event, projectJson) => {
+ipcMain.handle('apply-edits', async (event, projectJson: string): Promise<{ success: boolean }> => {
   try {
     // For now, this is a placeholder - in a real implementation,
     // this would process the project JSON and apply any pending edits
     console.log('Apply edits called with project:', JSON.parse(projectJson));
     return { success: true };
   } catch (error) {
-    throw new Error(`Failed to apply edits: ${error.message}`);
+    throw new Error(`Failed to apply edits: ${(error as Error).message}`);
   }
 });
 
 /**
  * Open file dialog to select media files
  */
-ipcMain.handle('open-file-dialog', async () => {
+ipcMain.handle('open-file-dialog', async (): Promise<{ filePaths: string[] }> => {
   try {
+    if (!mainWindow) {
+      console.error('Cannot open file dialog: mainWindow is null');
+      throw new Error('Application window is not available');
+    }
+    
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile', 'multiSelections'],
       filters: [
@@ -697,33 +721,32 @@ ipcMain.handle('open-file-dialog', async () => {
     return { filePaths: [] };
   } catch (error) {
     console.error('Error opening file dialog:', error);
-    throw new Error(`Failed to open file dialog: ${error.message}`);
+    throw new Error(`Failed to open file dialog: ${(error as Error).message}`);
   }
 });
 
 /**
  * Open/reveal file in Finder (macOS), Explorer (Windows), or Files (Linux)
  */
-ipcMain.handle('reveal-in-finder', async (event, filePath) => {
+ipcMain.handle('reveal-in-finder', async (event, filePath: string): Promise<{ success: boolean }> => {
   try {
     shell.showItemInFolder(filePath);
     return { success: true };
   } catch (error) {
     console.error('Error revealing file in finder:', error);
-    throw new Error(`Failed to reveal file: ${error.message}`);
+    throw new Error(`Failed to reveal file: ${(error as Error).message}`);
   }
 });
 
 /**
  * Delete a file
  */
-ipcMain.handle('delete-file', async (event, filePath) => {
+ipcMain.handle('delete-file', async (event, filePath: string): Promise<{ success: boolean }> => {
   try {
-    const fs = require('fs');
     await fs.promises.unlink(filePath);
     console.log(`Deleted file: ${filePath}`);
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
     // If file doesn't exist, consider it a success
     if (error.code === 'ENOENT') {
       console.log(`File already deleted: ${filePath}`);
@@ -737,7 +760,7 @@ ipcMain.handle('delete-file', async (event, filePath) => {
 /**
  * Download image from URL and save to file
  */
-async function downloadImage(url, outputPath) {
+async function downloadImage(url: string, outputPath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(outputPath);
     
@@ -763,7 +786,7 @@ async function downloadImage(url, outputPath) {
 /**
  * Generate cosmic image using OpenAI DALL-E API
  */
-ipcMain.handle('generate-image', async (event, userPrompt) => {
+ipcMain.handle('generate-image', async (event, userPrompt: string): Promise<GenerateImageResult> => {
   try {
     const apiKey = process.env.VITE_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
     
@@ -795,7 +818,7 @@ ipcMain.handle('generate-image', async (event, userPrompt) => {
     };
 
     // Make API request
-    const apiResponse = await new Promise((resolve, reject) => {
+    const apiResponse = await new Promise<any>((resolve, reject) => {
       const req = https.request(options, (res) => {
         let data = '';
         
@@ -813,7 +836,7 @@ ipcMain.handle('generate-image', async (event, userPrompt) => {
             const json = JSON.parse(data);
             resolve(json);
           } catch (error) {
-            reject(new Error(`Failed to parse API response: ${error.message}`));
+            reject(new Error(`Failed to parse API response: ${(error as Error).message}`));
           }
         });
       });
@@ -836,10 +859,10 @@ ipcMain.handle('generate-image', async (event, userPrompt) => {
     // Generate filename for saved image
     const timestamp = Date.now();
     const filename = `cosmic_${timestamp}.png`;
-    const outputPath = path.join(cacheDirs.mediaDir, filename);
+    const outputPath = path.join(cacheDirs!.mediaDir, filename);
     
     // Ensure media directory exists
-    await fs.promises.mkdir(cacheDirs.mediaDir, { recursive: true });
+    await fs.promises.mkdir(cacheDirs!.mediaDir, { recursive: true });
     
     // Download and save image
     await downloadImage(imageUrl, outputPath);
@@ -849,7 +872,7 @@ ipcMain.handle('generate-image', async (event, userPrompt) => {
     return { success: true, path: outputPath };
   } catch (error) {
     console.error('Error generating image:', error);
-    throw new Error(`Failed to generate image: ${error.message}`);
+    throw new Error(`Failed to generate image: ${(error as Error).message}`);
   }
 });
 

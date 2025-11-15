@@ -1,13 +1,22 @@
-const path = require('path');
-const fs = require('fs-extra');
+import * as path from 'path';
+import * as fs from 'fs-extra';
+import { App } from 'electron';
 
 /**
  * Cache directory management - matches Rust CacheDirs structure
  */
-class CacheDirs {
-  constructor(app) {
+export class CacheDirs {
+  base: string;
+  mediaDir: string;
+  thumbDir: string;
+  previews: string;
+  segments: string;
+  renders: string;
+  captures: string;
+
+  constructor(app: App) {
     const appDataPath = app.getPath('appData');
-    const appName = 'com.starscape.studio';
+    const appName = 'com.zapcut.studio';
     
     this.base = path.join(appDataPath, appName, 'cache');
     this.mediaDir = path.join(this.base, 'media');
@@ -21,7 +30,7 @@ class CacheDirs {
   /**
    * Ensure all cache directories exist
    */
-  async ensureDirectories() {
+  async ensureDirectories(): Promise<void> {
     await fs.ensureDir(this.mediaDir);
     await fs.ensureDir(this.thumbDir);
     await fs.ensureDir(this.previews);
@@ -33,7 +42,7 @@ class CacheDirs {
   /**
    * Get preview file path for a specific plan and timestamp
    */
-  previewFile(planId, atMs) {
+  previewFile(planId: string, atMs: number): string {
     const filename = `${planId}_${atMs}.jpg`;
     return path.join(this.previews, filename);
   }
@@ -41,21 +50,21 @@ class CacheDirs {
   /**
    * Get concat list path for export
    */
-  concatListPath(planId) {
+  concatListPath(planId: string): string {
     return path.join(this.segments, `${planId}_concat.txt`);
   }
 
   /**
    * Get segment path for export
    */
-  segmentPath(index) {
+  segmentPath(index: number): string {
     return path.join(this.segments, `segment_${String(index).padStart(4, '0')}.mp4`);
   }
 
   /**
    * Get render output path
    */
-  renderOutputPath(planId, ext) {
+  renderOutputPath(planId: string, ext: string): string {
     const timestamp = Math.floor(Date.now() / 1000);
     return path.join(this.renders, `${planId}_${timestamp}.${ext}`);
   }
@@ -63,7 +72,7 @@ class CacheDirs {
   /**
    * Get render output path with custom filename
    */
-  renderOutputPathWithFilename(filename, ext) {
+  renderOutputPathWithFilename(filename: string, ext: string): string {
     // Sanitize filename to remove path separators and invalid characters
     const sanitizedFilename = filename.replace(/[\/\\:*?"<>|]/g, '_');
     return path.join(this.renders, `${sanitizedFilename}.${ext}`);
@@ -72,11 +81,9 @@ class CacheDirs {
   /**
    * Get capture output path
    */
-  captureOutputPath(ext) {
+  captureOutputPath(ext: string): string {
     const timestamp = Math.floor(Date.now() / 1000);
     return path.join(this.captures, `capture_${timestamp}.${ext}`);
   }
 }
-
-module.exports = { CacheDirs };
 

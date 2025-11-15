@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Upload } from "lucide-react";
 import { useProjectStore } from "@/store/projectStore";
 import { openFileDialog } from "@/lib/bindings";
+import { isElectron, waitForElectronAPI } from "@/lib/utils";
 
 interface UploadModalProps {
   open: boolean;
@@ -13,7 +14,20 @@ interface UploadModalProps {
 
 export function UploadModal({ open, onOpenChange, onDuplicateDetected }: UploadModalProps) {
   const [isUploading, setIsUploading] = useState(false);
+  const [electronAvailable, setElectronAvailable] = useState(false);
   const { addAssetsFromPaths, assets } = useProjectStore();
+
+  // Check if Electron is available when modal opens
+  useEffect(() => {
+    if (open) {
+      waitForElectronAPI().then((available) => {
+        setElectronAvailable(available);
+        if (!available) {
+          console.warn('Electron API not available. Make sure you are running the app through Electron, not in a browser.');
+        }
+      });
+    }
+  }, [open]);
 
   // Browser-compatible function to extract filename from path
   const getFilename = (filePath: string): string => {
@@ -23,8 +37,26 @@ export function UploadModal({ open, onOpenChange, onDuplicateDetected }: UploadM
   };
 
   const handleUploadClick = async () => {
+    if (isUploading) return; // Prevent multiple clicks
+    
     setIsUploading(true);
     try {
+      // Wait for Electron API to be available
+      const available = await waitForElectronAPI(2000);
+      if (!available || !window.electronAPI || !window.electronAPI.openFileDialog) {
+        console.error('Electron API not available');
+        alert(
+          'File selection is not available.\n\n' +
+          'Please ensure:\n' +
+          '1. You are running the app through Electron (not in a browser)\n' +
+          '2. Use "npm run dev" to start both Vite and Electron\n' +
+          '3. Wait for the Electron window to open\n\n' +
+          'If you see this in a browser window, close it and use the Electron window instead.'
+        );
+        setIsUploading(false);
+        return;
+      }
+      
       const result = await openFileDialog();
       if (result.filePaths && result.filePaths.length > 0) {
         // Check for duplicates by filename
@@ -47,6 +79,7 @@ export function UploadModal({ open, onOpenChange, onDuplicateDetected }: UploadM
       }
     } catch (error) {
       console.error('Error selecting files:', error);
+      alert(`Failed to open file dialog: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsUploading(false);
     }
@@ -62,9 +95,21 @@ export function UploadModal({ open, onOpenChange, onDuplicateDetected }: UploadM
         </DialogHeader>
 
         <div className="space-y-lg py-2">
+          {/* Electron availability warning */}
+          {!electronAvailable && (
+            <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-md text-sm text-yellow-200">
+              <p className="font-semibold mb-1">⚠️ Electron not detected</p>
+              <p className="text-xs">
+                Make sure you're running the app through Electron, not in a browser.
+                Use the Electron window that opens when you run <code className="bg-black/30 px-1 rounded">npm run dev</code>.
+              </p>
+            </div>
+          )}
+
           {/* Upload area */}
           <div
-            className="border-2 border-dashed rounded-xl p-2xl text-center transition-all duration-200 border-white/30 hover:border-light-blue/50 bg-white/5 hover:bg-white/10"
+            className="border-2 border-dashed rounded-xl p-2xl text-center transition-all duration-200 border-white/30 hover:border-light-blue/50 bg-white/5 hover:bg-white/10 cursor-pointer"
+            onClick={handleUploadClick}
           >
             <Upload className="h-16 w-16 text-white/50 mx-auto mb-lg" />
             <p className="text-h4 text-white mb-md font-medium">
@@ -73,8 +118,11 @@ export function UploadModal({ open, onOpenChange, onDuplicateDetected }: UploadM
             <Button
               variant="gradient"
               size="lg"
-              onClick={handleUploadClick}
-              disabled={isUploading}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleUploadClick();
+              }}
+              disabled={isUploading || !electronAvailable}
               className="mb-md"
             >
               Choose Files

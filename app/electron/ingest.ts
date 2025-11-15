@@ -1,8 +1,10 @@
-const fs = require('fs-extra');
-const path = require('path');
-const { probeMedia } = require('./metadata');
-const ffmpeg = require('fluent-ffmpeg');
-const { configureFfmpeg } = require('./ffmpeg');
+import * as fs from 'fs-extra';
+import * as path from 'path';
+import ffmpeg from 'fluent-ffmpeg';
+import { probeMedia } from './metadata';
+import { configureFfmpeg } from './ffmpeg';
+import { CacheDirs } from './cache';
+import { IngestResult, MediaMetadata } from './types';
 
 // Configure FFmpeg paths
 configureFfmpeg();
@@ -10,7 +12,7 @@ configureFfmpeg();
 /**
  * Generate unique asset ID
  */
-function generateAssetId() {
+function generateAssetId(): string {
   const timestamp = Date.now();
   const random = Math.floor(Math.random() * 1000);
   return `asset_${timestamp}_${random}`;
@@ -19,7 +21,7 @@ function generateAssetId() {
 /**
  * Generate thumbnail for video file
  */
-async function generateVideoThumbnail(videoPath, outputPath) {
+async function generateVideoThumbnail(videoPath: string, outputPath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     ffmpeg(videoPath)
       .screenshots({
@@ -29,14 +31,14 @@ async function generateVideoThumbnail(videoPath, outputPath) {
         size: '320x180'
       })
       .on('end', () => resolve(outputPath))
-      .on('error', (err) => reject(err));
+      .on('error', (err: Error) => reject(err));
   });
 }
 
 /**
  * Generate thumbnail for image file (resize)
  */
-async function generateImageThumbnail(imagePath, outputPath) {
+async function generateImageThumbnail(imagePath: string, outputPath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     ffmpeg(imagePath)
       .outputOptions([
@@ -44,7 +46,7 @@ async function generateImageThumbnail(imagePath, outputPath) {
       ])
       .output(outputPath)
       .on('end', () => resolve(outputPath))
-      .on('error', (err) => reject(err))
+      .on('error', (err: Error) => reject(err))
       .run();
   });
 }
@@ -52,7 +54,7 @@ async function generateImageThumbnail(imagePath, outputPath) {
 /**
  * Determine asset type from file extension and metadata
  */
-function getAssetType(filePath, metadata = null) {
+function getAssetType(filePath: string, metadata: MediaMetadata | null = null): 'video' | 'audio' | 'image' | 'unknown' {
   const ext = path.extname(filePath).toLowerCase();
   const videoExts = ['.mp4', '.mov', '.avi', '.mkv', '.m4v'];
   const audioExts = ['.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a'];
@@ -77,8 +79,8 @@ function getAssetType(filePath, metadata = null) {
 /**
  * Ingest files from external paths into cache directory
  */
-async function ingestFiles(filePaths, cache) {
-  const results = [];
+export async function ingestFiles(filePaths: string[], cache: CacheDirs): Promise<IngestResult[]> {
+  const results: IngestResult[] = [];
 
   for (const filePath of filePaths) {
     try {
@@ -136,7 +138,7 @@ async function ingestFiles(filePaths, cache) {
       }
 
       // Generate thumbnail
-      let thumbnailPath = null;
+      let thumbnailPath: string | null = null;
       
       try {
         if (assetType === 'video') {
@@ -171,8 +173,4 @@ async function ingestFiles(filePaths, cache) {
 
   return results;
 }
-
-module.exports = {
-  ingestFiles,
-};
 

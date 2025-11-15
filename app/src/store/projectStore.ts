@@ -766,7 +766,7 @@ export const useProjectStore = create<ProjectStore>()(
       },
     })),
     {
-      name: 'starscape-project-storage',
+      name: 'zapcut-project-storage',
       partialize: (state) => ({
         id: state.id,
         projectName: state.projectName,

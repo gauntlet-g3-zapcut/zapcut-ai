@@ -1,11 +1,11 @@
-# Frontend Setup Log — ClipForge / Starscape Editor (2025-10-28)
+# Frontend Setup Log — ClipForge / Zapcut Editor (2025-10-28)
 
-This log captures the Tailwind v4 migration, Starscape theme wiring, shadcn integration, Zustand state setup, utilities restoration, and build fixes completed today.
+This log captures the Tailwind v4 migration, Zapcut theme wiring, shadcn integration, Zustand state setup, utilities restoration, and build fixes completed today.
 
 ## Tailwind CSS v4 Migration
 - Switched to CSS-first config per MCP:
   - Replaced `@tailwind` blocks with `@import "tailwindcss"` at the top of `src/globals.css`.
-  - Added `@theme` token definitions in `src/globals.css` for Starscape colors, gradients, spacing, typography, shadows, radii, and z-index.
+  - Added `@theme` token definitions in `src/globals.css` for Zapcut colors, gradients, spacing, typography, shadows, radii, and z-index.
   - Removed `tailwind.config.js` (v4 no longer uses it here).
 - PostCSS:
   - `postcss.config.js` uses ESM and `@tailwindcss/postcss`:
@@ -15,7 +15,7 @@ This log captures the Tailwind v4 migration, Starscape theme wiring, shadcn inte
 - Vite:
   - Installed and configured `@tailwindcss/vite` plugin (added to `vite.config.ts`).
 
-## Starscape Theme Integration
+## Zapcut Theme Integration
 - Centralized design tokens via `@theme` in `src/globals.css`:
   - Colors: `--color-dark-navy`, `--color-mid-navy`, `--color-deep-blue`, `--color-light-blue`, semantic tokens (success, warning, error, info, purple).
   - Gradients: `--gradient-cosmic`, `--gradient-cosmic-hover`, `--gradient-cyan-purple`, `--gradient-purple-blue`, `--gradient-pink-purple`, `--gradient-cyan-vibrant`.
@@ -23,20 +23,20 @@ This log captures the Tailwind v4 migration, Starscape theme wiring, shadcn inte
 - Replaced prior Tailwind-extend class names with direct CSS using theme tokens (v4-safe) for:
   - Buttons: `.btn-primary`, `.btn-secondary`, `.btn-gradient`, `.btn-icon`.
   - Cards: `.card-glass`, `.card-dark-glass`, `.card-gradient`.
-  - Inputs: `.input-starscape`.
+  - Inputs: `.input-zapcut`.
   - Modals: `.modal-backdrop`, `.modal-content`.
   - Timeline UI: `.timeline-track`, `.timeline-clip`, state variants.
   - Progress and tooltips.
 - Utility overrides under `@layer utilities`:
-  - Focus ring: `.focus-starscape:focus-visible`.
+  - Focus ring: `.focus-zapcut:focus-visible`.
   - Scrollbar styles.
-  - Gradient text helpers: `.text-gradient-starscape`, `.text-gradient-cyan`.
+  - Gradient text helpers: `.text-gradient-zapcut`, `.text-gradient-cyan`.
 
 ## Shadcn/UI Usage
-- Custom shadcn components aligned to Starscape styles:
-  - `src/components/ui/button.tsx` — added Starscape variants (cosmic gradient, destructive, outline, secondary, ghost, link, gradient).
+- Custom shadcn components aligned to Zapcut styles:
+  - `src/components/ui/button.tsx` — added Zapcut variants (cosmic gradient, destructive, outline, secondary, ghost, link, gradient).
   - `src/components/ui/card.tsx` — glass/dark-glass/gradient variants with updated sections.
-  - `src/components/ui/input.tsx` — Starscape focus/bg/border behavior.
+  - `src/components/ui/input.tsx` — Zapcut focus/bg/border behavior.
 
 ## Zustand State and Types
 - Types in `src/types/index.ts` for `Asset`, `Clip`, `Track`, `CanvasNode`, `ProjectState`, `PlaybackState`, `DragItem`.
@@ -76,8 +76,8 @@ This log captures the Tailwind v4 migration, Starscape theme wiring, shadcn inte
 
 ## Current Status
 - `npm run build` completes successfully.
-- Tailwind v4 is active with CSS-first setup and Starscape theme tokens.
-- All custom Starscape UI utilities are implemented in `globals.css` without relying on unsupported v4 `@apply` patterns.
+- Tailwind v4 is active with CSS-first setup and Zapcut theme tokens.
+- All custom Zapcut UI utilities are implemented in `globals.css` without relying on unsupported v4 `@apply` patterns.
 
 ## Next Steps (Short)
 - Wire file import (drag & drop + file picker) and asset ingestion.

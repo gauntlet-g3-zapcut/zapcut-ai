@@ -8,7 +8,7 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
       <input
         type={type}
         className={cn(
-          // Starscape input styling
+          // Zapcut input styling
           "flex h-10 w-full rounded-md px-4 py-3",
           "bg-white/10 border-2 border-white/10",
           "text-white placeholder:text-white/50",
