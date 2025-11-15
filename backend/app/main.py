@@ -6,7 +6,6 @@ from app.api import auth, brands, chat, campaigns
 app = FastAPI(title="AdCraft API", version="1.0.0")
 
 # CORS middleware - specify exact origins for credentialed requests
-# Uses CORS_ORIGINS from config (comma-separated string converted to list)
 # Always includes production frontend and localhost for development
 default_origins = [
     "https://app.zapcut.video",  # Production frontend
@@ -19,13 +18,17 @@ default_origins = [
 env_origins = settings.cors_origins_list if settings.cors_origins_list else []
 cors_origins = list(set(default_origins + env_origins))  # Combine and remove duplicates
 
+# Log CORS origins for debugging (remove in production if needed)
+print(f"🌐 CORS allowed origins: {cors_origins}")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all methods including OPTIONS for preflight
+    allow_headers=["*"],   # Allow all headers including Content-Type, Authorization
     expose_headers=["*"],
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
 
 # Include routers
@@ -43,6 +46,17 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+@app.get("/cors-info")
+async def cors_info():
+    """Debug endpoint to check CORS configuration"""
+    return {
+        "cors_origins": cors_origins,
+        "default_origins": default_origins,
+        "env_origins": env_origins,
+        "settings_cors_origins": settings.CORS_ORIGINS,
+    }
 
 
 @app.post("/init-db")
