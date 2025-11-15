@@ -1,9 +1,66 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from datetime import datetime
+import time
 from app.config import settings
 from app.api import auth, brands, chat, campaigns
 
 app = FastAPI(title="AdCraft API", version="1.0.0")
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Middleware to log all incoming API requests"""
+    
+    async def dispatch(self, request: Request, call_next):
+        # Get client IP
+        client_ip = request.client.host if request.client else "unknown"
+        
+        # Get request details
+        method = request.method
+        path = request.url.path
+        query_params = str(request.query_params) if request.query_params else ""
+        full_path = f"{path}?{query_params}" if query_params else path
+        
+        # Get origin header (for CORS debugging)
+        origin = request.headers.get("origin", "none")
+        
+        # Get authorization header (masked for security)
+        auth_header = request.headers.get("authorization", "none")
+        if auth_header != "none":
+            # Show first 20 chars and last 4 chars, mask the rest
+            if len(auth_header) > 24:
+                auth_preview = f"{auth_header[:20]}...{auth_header[-4:]}"
+            else:
+                auth_preview = "***masked***"
+        else:
+            auth_preview = "none"
+        
+        # Timestamp
+        timestamp = datetime.utcnow().isoformat()
+        
+        # Log the incoming request
+        print(f"[{timestamp}] 📥 {method} {full_path} | IP: {client_ip} | Origin: {origin} | Auth: {auth_preview}")
+        
+        # Process request and measure time
+        start_time = time.time()
+        try:
+            response = await call_next(request)
+            process_time = time.time() - start_time
+            
+            # Log response
+            status_code = response.status_code
+            print(f"[{timestamp}] 📤 {method} {full_path} | Status: {status_code} | Time: {process_time:.3f}s")
+            
+            return response
+        except Exception as e:
+            process_time = time.time() - start_time
+            print(f"[{timestamp}] ❌ {method} {full_path} | Error: {str(e)} | Time: {process_time:.3f}s")
+            raise
+
+
+# Add request logging middleware (before CORS so we log all requests including preflight)
+app.add_middleware(RequestLoggingMiddleware)
 
 # CORS middleware - specify exact origins for credentialed requests
 # Always includes production frontend and localhost for development
