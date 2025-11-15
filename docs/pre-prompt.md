@@ -1,4 +1,4 @@
-Generate a PRD.md for non-technical stuff and Architecture.md for the technical architecture.
+Generate sharded PRD files into the `docs/PRD` directory for non-technical stuff and Architecture.md for the technical architecture.
 
 AI Video Generation Pipeline
 Background
@@ -457,6 +457,10 @@ Output format:
 ✅ A multi-agent architecture diagram using these prompts?
 Just tell me:
  “Give me the repo-ready version.”
+
+ When we first open the app, we should see a landing page. We should have a login button. Once we click the login button, we should have a login page. Once the user is logged in, they should be redirected to a page in which there is a left sidebar with a couple of information. There should be on the right side main area saying brands (projects page) and that page should list all the brands the user have uploaded media files or have created in the past. And they should also see a button in which they are able to create a new brand and add information and media files. When the user clicks on “create brand”, it should be required to have a title, description and two images of the product. Once that is done, once the user clicks on a brand, they should see a chat interface. And they should be able to interact with that chat interface and tell some details about the ad that they want to create. The LLM should follow up with a couple of questions just so they gather more details, maybe five follow-up questions. Once that is done, the user should see a page with the storyline script created by the LLM.
+For the follow-up questions asked by the LLM, they should gather details. The user should be able to read the storyline/script created by the llm and they should be able to click on a button to approve it. Once approved, the video generation starts, and, on the backend we should call replicate api which is gonna start the video generation using sora 2
+Generated video must be in scope of the images shared
 
 
 Duration: 48 hours (Friday-Sunday)
@@ -1511,4 +1515,4 @@ Turn this into a formal JSON Schema document for the orchestrator output, and/or
 Sketch the actual FastAPI endpoint contracts + Pydantic models for request/response so you can drop them into your repo.
 
 
-The style template of this entire app should use consistent and reused color palettes, themes and layouts.  Our app's icon is a bright yellow lightning bolt with a white cursor color, so use those colors as shocking highlights. Use glass morphism for all styles and designs throughout the entire app for a clean beautiful modern high-class :crown::gem: Use lucide React icons for all icons
+The style template of this entire app should use consistent and reused color palettes, themes and layouts.  Our app's icon is a bright yellow lightning bolt with a white cursor color, so use those colors as shocking highlights. Use glass morphism for all styles and designs throughout the entire app for a clean beautiful modern high-class, use lucide React icons for all icons
