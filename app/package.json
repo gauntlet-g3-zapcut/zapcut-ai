@@ -37,18 +37,19 @@
     {
       "name": "StarloveDev",
       "linkedin": "https://www.linkedin.com/in/brucedeanrobinson",
-      "url": "https://starscape.digital"
+      "url": "https://zapcut.video"
     }
   ],
   "private": true,
   "version": "1.0.0",
   "type": "commonjs",
-  "main": "electron/main.js",
+  "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "concurrently \"vite\" \"electron electron/main.js --dev\"",
-    "build": "tsc && vite build",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "dev": "npm run build:electron && concurrently \"vite\" \"electron dist-electron/main.js --dev\"",
+    "build": "npm run build:electron && tsc && vite build",
     "preview": "vite preview",
-    "electron:dev": "electron electron/main.js --dev",
+    "electron:dev": "npm run build:electron && electron dist-electron/main.js --dev",
     "electron:build": "npm run build && electron-builder",
     "pack": "electron-builder --dir"
   },
@@ -92,6 +93,7 @@
     "electron-builder": "^24.9.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.16",
+    "ts-node": "^10.9.2",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   }

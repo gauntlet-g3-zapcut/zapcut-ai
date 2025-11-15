@@ -1,12 +1,14 @@
+import { EditPlan, SeqClip, ProjectJson } from './types';
+
 /**
  * Parse project JSON into EditPlan structure
  */
-function buildPlan(projectJsonString) {
-  let parsed;
+export function buildPlan(projectJsonString: string): EditPlan {
+  let parsed: ProjectJson;
   try {
     parsed = JSON.parse(projectJsonString);
   } catch (e) {
-    throw new Error(`Invalid project JSON: ${e.message}`);
+    throw new Error(`Invalid project JSON: ${(e as Error).message}`);
   }
 
   const { id, assets = {}, clips = {}, tracks = {}, canvasNodes = {} } = parsed;
@@ -15,55 +17,58 @@ function buildPlan(projectJsonString) {
     throw new Error('Project JSON missing id field');
   }
 
-  const mainTrack = [];
-  const overlayTrack = [];
+  const mainTrack: SeqClip[] = [];
+  const overlayTrack: SeqClip[] = [];
 
   // Create a map of clipId -> canvasNode for quick lookup
-  const canvasNodeMap = {};
-  Object.values(canvasNodes).forEach(node => {
+  const canvasNodeMap: Record<string, any> = {};
+  Object.values(canvasNodes).forEach((node: any) => {
     canvasNodeMap[node.clipId] = node;
   });
 
   // Process clips by track role
   for (const [trackId, track] of Object.entries(tracks)) {
-    if (!track.clipOrder || !Array.isArray(track.clipOrder)) {
+    const trackObj = track as any;
+    if (!trackObj.clipOrder || !Array.isArray(trackObj.clipOrder)) {
       continue;
     }
 
-    for (const clipId of track.clipOrder) {
+    for (const clipId of trackObj.clipOrder) {
       const clip = clips[clipId];
       if (!clip) continue;
 
-      const asset = assets[clip.assetId];
+      const asset = assets[(clip as any).assetId];
       if (!asset) continue;
 
       // Convert file:// URLs to local paths
-      let srcPath = asset.src;
+      let srcPath = (asset as any).src;
       if (srcPath.startsWith('file://')) {
         srcPath = srcPath.substring(7); // Remove 'file://' prefix
       }
 
+      const clipObj = clip as any;
+
       // Validate clip timing
-      if (clip.outMs <= clip.inMs) {
+      if (clipObj.outMs <= clipObj.inMs) {
         throw new Error(`Clip ${clipId} has invalid timing: out <= in`);
       }
 
-      const seqClip = {
+      const seqClip: SeqClip = {
         srcPath,
-        inMs: clip.inMs,
-        outMs: clip.outMs,
-        startMs: clip.startMs,
-        endMs: clip.endMs,
+        inMs: clipObj.inMs,
+        outMs: clipObj.outMs,
+        startMs: clipObj.startMs,
+        endMs: clipObj.endMs,
       };
 
       // Attach asset metadata for aspect ratio preservation (especially for images)
-      if (asset.width && asset.height) {
-        seqClip.assetWidth = asset.width;
-        seqClip.assetHeight = asset.height;
+      if ((asset as any).width && (asset as any).height) {
+        seqClip.assetWidth = (asset as any).width;
+        seqClip.assetHeight = (asset as any).height;
       }
 
       // Attach canvasNode for overlay tracks (PiP transforms)
-      if (track.role === 'overlay' && canvasNodeMap[clipId]) {
+      if (trackObj.role === 'overlay' && canvasNodeMap[clipId]) {
         const canvasNode = canvasNodeMap[clipId];
         seqClip.canvasNode = {
           x: canvasNode.x,
@@ -76,7 +81,7 @@ function buildPlan(projectJsonString) {
       }
 
       // All clips go to mainTrack for now (we'll handle overlays later)
-      if (track.role === 'main') {
+      if (trackObj.role === 'main') {
         mainTrack.push(seqClip);
       } else {
         overlayTrack.push(seqClip);
@@ -112,11 +117,7 @@ function buildPlan(projectJsonString) {
 /**
  * Find the visible clip at a given timestamp
  */
-function findVisibleClip(plan, tMs) {
+export function findVisibleClip(plan: EditPlan, tMs: number): SeqClip | undefined {
   return plan.mainTrack.find((clip) => clip.startMs <= tMs && tMs < clip.endMs);
 }
 
-module.exports = {
-  buildPlan,
-  findVisibleClip,
-};

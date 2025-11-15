@@ -266,7 +266,7 @@ export function LibraryGrid({ onUploadClick }: LibraryGridProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Assets grid with Upload button always first */}
-      <div className="flex-1 overflow-auto scrollbar-starscape p-md">
+      <div className="flex-1 overflow-auto scrollbar-zapcut p-md">
         {assets.length === 0 ? (
           // Empty state with upload button
           <div className="grid grid-cols-2 gap-md h-fit">

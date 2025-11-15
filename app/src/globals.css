@@ -5,14 +5,14 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ================================================
-   STARSCAPE CSS CUSTOM PROPERTIES
+   ZAPCUT CSS CUSTOM PROPERTIES
    ================================================ */
 
 @layer base {
   :root {
     /* ===========================
        SHADCN BASE VARIABLES
-       (Adapted for Starscape)
+       (Adapted for Zapcut)
        =========================== */
 
     --background: 210 24% 16%;        /* #1a1a2e - dark-navy */
@@ -46,31 +46,31 @@
     --radius: 12px;                   /* Default border radius */
 
     /* ===========================
-       STARSCAPE SPECIFIC VARIABLES
+       ZAPCUT SPECIFIC VARIABLES
        =========================== */
 
     /* Core colors */
-    --starscape-dark-navy: #1a1a2e;
-    --starscape-mid-navy: #16213e;
-    --starscape-deep-blue: #0f3460;
-    --starscape-light-blue: #a8c0ff;
+    --zapcut-dark-navy: #1a1a2e;
+    --zapcut-mid-navy: #16213e;
+    --zapcut-deep-blue: #0f3460;
+    --zapcut-light-blue: #a8c0ff;
 
     /* Glass effects */
-    --starscape-glass-white: rgba(255, 255, 255, 0.98);
-    --starscape-glass-dark: rgba(26, 26, 46, 0.85);
-    --starscape-glass-light: rgba(249, 249, 249, 0.1);
-    --starscape-overlay-dark: rgba(0, 0, 0, 0.4);
+    --zapcut-glass-white: rgba(255, 255, 255, 0.98);
+    --zapcut-glass-dark: rgba(26, 26, 46, 0.85);
+    --zapcut-glass-light: rgba(249, 249, 249, 0.1);
+    --zapcut-overlay-dark: rgba(0, 0, 0, 0.4);
 
     /* Borders */
-    --starscape-border-light: rgba(255, 255, 255, 0.1);
-    --starscape-border-blue: rgba(168, 192, 255, 0.2);
+    --zapcut-border-light: rgba(255, 255, 255, 0.1);
+    --zapcut-border-blue: rgba(168, 192, 255, 0.2);
 
     /* Semantic colors */
-    --starscape-success: #4ade80;
-    --starscape-warning: #fbbf24;
-    --starscape-error: #f87171;
-    --starscape-info: #60a5fa;
-    --starscape-purple: #a855f7;
+    --zapcut-success: #4ade80;
+    --zapcut-warning: #fbbf24;
+    --zapcut-error: #f87171;
+    --zapcut-info: #60a5fa;
+    --zapcut-purple: #a855f7;
 
     /* Spacing scale */
     --spacing-xs: 4px;
@@ -106,7 +106,7 @@
     --duration-slower: 800ms;
   }
 
-  /* Dark mode - Starscape is dark-first, so this is minimal */
+  /* Dark mode - Zapcut is dark-first, so this is minimal */
   .dark {
     --background: 210 24% 16%;
     --foreground: 0 0% 100%;
@@ -138,7 +138,7 @@
 @layer components {
 
   /* ===========================
-     BUTTONS - Starscape Style
+     BUTTONS - Zapcut Style
      =========================== */
 
   .btn-primary {
@@ -191,7 +191,7 @@
   }
 
   /* ===========================
-     CARDS - Starscape Glass
+     CARDS - Zapcut Glass
      =========================== */
 
   .card-glass {
@@ -222,20 +222,20 @@
   }
 
   /* ===========================
-     INPUTS - Starscape Style
+     INPUTS - Zapcut Style
      =========================== */
 
-  .input-starscape {
+  .input-zapcut {
     @apply w-full rounded-md transition-all duration-200;
     padding: 0.75rem 1rem;
     background: rgba(255, 255, 255, 0.1);
     border: 2px solid rgba(255, 255, 255, 0.1);
     color: white;
   }
-  .input-starscape::placeholder {
+  .input-zapcut::placeholder {
     color: rgba(255, 255, 255, 0.5);
   }
-  .input-starscape:focus {
+  .input-zapcut:focus {
     background: white;
     color: var(--color-dark-navy);
     border-color: var(--color-deep-blue);
@@ -244,7 +244,7 @@
   }
 
   /* ===========================
-     MODALS - Starscape Overlay
+     MODALS - Zapcut Overlay
      =========================== */
 
   .modal-backdrop {
@@ -341,29 +341,29 @@
 
 @layer utilities {
 
-  /* Focus visible override for Starscape */
-  .focus-starscape:focus-visible {
+  /* Focus visible override for Zapcut */
+  .focus-zapcut:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px var(--color-light-blue), 0 0 0 4px var(--color-dark-navy);
   }
 
   /* Scrollbar styling */
-  .scrollbar-starscape::-webkit-scrollbar {
+  .scrollbar-zapcut::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
 
-  .scrollbar-starscape::-webkit-scrollbar-track {
+  .scrollbar-zapcut::-webkit-scrollbar-track {
     background: var(--color-mid-navy);
     border-radius: 4px;
   }
 
-  .scrollbar-starscape::-webkit-scrollbar-thumb {
+  .scrollbar-zapcut::-webkit-scrollbar-thumb {
     background: var(--color-light-blue);
     border-radius: 4px;
   }
 
-  .scrollbar-starscape::-webkit-scrollbar-thumb:hover {
+  .scrollbar-zapcut::-webkit-scrollbar-thumb:hover {
     background: var(--color-deep-blue);
   }
 
@@ -402,7 +402,7 @@
   }
 
   /* Text gradient utilities */
-  .text-gradient-starscape {
+  .text-gradient-zapcut {
     background: linear-gradient(135deg, #fff 0%, #a8c0ff 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -429,7 +429,7 @@
 }
 
 @theme {
-  /* Starscape Color System */
+  /* Zapcut Color System */
   --color-dark-navy: #1a1a2e;
   --color-mid-navy: #16213e;
   --color-deep-blue: #0f3460;
@@ -440,7 +440,7 @@
   --color-info: #60a5fa;
   --color-purple: #a855f7;
 
-  /* Starscape Gradients */
+  /* Zapcut Gradients */
   --gradient-cosmic: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
   --gradient-cosmic-hover: linear-gradient(135deg, #1f2233 0%, #1a2a47 50%, #0f3c6e 100%);
   --gradient-cyan-purple: linear-gradient(135deg, #06B6D4, #3B82F6, #8B5CF6);
@@ -448,7 +448,7 @@
   --gradient-pink-purple: linear-gradient(135deg, #ec4899, #8b5cf6, #6366f1);
   --gradient-cyan-vibrant: linear-gradient(135deg, #00c4ff, #00ffff, #00aaff, #00e0ff, #00c4ff);
 
-  /* Starscape Spacing Scale */
+  /* Zapcut Spacing Scale */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
@@ -458,7 +458,7 @@
   --spacing-3xl: 64px;
   --spacing-4xl: 96px;
 
-  /* Starscape Typography */
+  /* Zapcut Typography */
   --font-hero: 56px;
   --font-h1: 48px;
   --font-h2: 36px;
@@ -469,7 +469,7 @@
   --font-caption: 12px;
   --font-button: 16px;
 
-  /* Starscape Shadows */
+  /* Zapcut Shadows */
   --shadow-subtle: 0 2px 4px rgba(0, 0, 0, 0.1);
   --shadow-default: 0 4px 12px rgba(0, 0, 0, 0.15);
   --shadow-elevated: 0 8px 25px rgba(15, 52, 96, 0.3);
@@ -638,7 +638,7 @@
 }
 
 /* ================================================
-   STARSCAPE UTILITIES FOR TAILWIND V4 (@utility)
+   ZAPCUT UTILITIES FOR TAILWIND V4 (@utility)
    ================================================ */
 
 @keyframes move-stars {
@@ -717,13 +717,13 @@
   background-clip: text;
 }
 
-/* Starscape colors as utilities */
-@utility bg-dark-navy { background-color: var(--starscape-dark-navy); }
-@utility bg-mid-navy { background-color: var(--starscape-mid-navy); }
-@utility bg-deep-blue { background-color: var(--starscape-deep-blue); }
-@utility text-light-blue { color: var(--starscape-light-blue); }
-@utility border-light-blue { border-color: var(--starscape-light-blue); }
-@utility border-blue-light { border-color: var(--starscape-border-blue); }
+/* Zapcut colors as utilities */
+@utility bg-dark-navy { background-color: var(--zapcut-dark-navy); }
+@utility bg-mid-navy { background-color: var(--zapcut-mid-navy); }
+@utility bg-deep-blue { background-color: var(--zapcut-deep-blue); }
+@utility text-light-blue { color: var(--zapcut-light-blue); }
+@utility border-light-blue { border-color: var(--zapcut-light-blue); }
+@utility border-blue-light { border-color: var(--zapcut-border-blue); }
 
 /* Shadows */
 @utility shadow-subtle { box-shadow: var(--shadow-subtle); }
@@ -766,7 +766,7 @@
 @utility z-modal-backdrop { z-index: 40; }
 
 /* ================================================
-   STARSCAPE CUSTOM UTILITIES (@utility)
+   ZAPCUT CUSTOM UTILITIES (@utility)
    ================================================ */
 
 @utility glass-white {

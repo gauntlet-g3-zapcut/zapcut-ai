@@ -83,11 +83,11 @@ window.electronAPI = {
 #### **`electron/cache.js`** (72 lines)
 - Cache directory management matching Rust implementation
 - Directory structure:
-  - `appData/com.starscape.clipforge/cache/media/` - Ingested media files
-  - `appData/com.starscape.clipforge/cache/previews/` - Preview frames
-  - `appData/com.starscape.clipforge/cache/segments/` - Export segments
-  - `appData/com.starscape.clipforge/cache/captures/` - Screen recordings
-  - `appData/com.starscape.clipforge/projects/` - Final renders
+  - `appData/com.zapcut.studio/cache/media/` - Ingested media files
+  - `appData/com.zapcut.studio/cache/previews/` - Preview frames
+  - `appData/com.zapcut.studio/cache/segments/` - Export segments
+  - `appData/com.zapcut.studio/cache/captures/` - Screen recordings
+  - `appData/com.zapcut.studio/projects/` - Final renders
 
 **Class: CacheDirs**
 - `ensureDirectories()` - Create all required directories
@@ -239,8 +239,8 @@ Changed from ES6 to CommonJS:
 New file for packaging Electron apps:
 
 **Configuration:**
-- App ID: `com.starscape.clipforge`
-- Product Name: `Starscape ClipForge`
+- App ID: `com.zapcut.studio`
+- Product Name: `Zapcut: AI Video Ads Generator & Editor`
 - Output directory: `build/`
 - Includes: `dist/`, `electron/`, `package.json`
 - Bundles FFmpeg binaries in `extraResources`
