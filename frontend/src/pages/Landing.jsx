@@ -1,0 +1,88 @@
+import { useEffect } from "react"
+import { useNavigate } from "react-router-dom"
+import { useAuth } from "../context/AuthContext"
+import { Button } from "../components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
+
+export default function Landing() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard")
+    }
+  }, [user, navigate])
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
+      <div className="container mx-auto px-4 py-16">
+        <div className="text-center mb-16">
+          <h1 className="text-6xl font-bold mb-4 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+            AdCraft AI
+          </h1>
+          <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
+            Create stunning 4K video ads with AI. Generate professional product videos
+            with music in minutes, not hours.
+          </p>
+          <Button
+            size="lg"
+            onClick={() => navigate("/login")}
+            className="text-lg px-8 py-6"
+          >
+            Get Started
+          </Button>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-8 mt-16">
+          <Card>
+            <CardHeader>
+              <CardTitle>AI-Powered</CardTitle>
+              <CardDescription>
+                Let our Creative Director AI guide you through the process
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Chat with our AI to define your ad style, and watch it create
+                a complete video production.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>4K Quality</CardTitle>
+              <CardDescription>
+                Professional-grade video output
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Generate 4K video ads with matching soundtracks, ready for
+                any platform.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Fast & Easy</CardTitle>
+              <CardDescription>
+                From concept to video in under 5 minutes
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                No video editing skills required. Just describe your vision
+                and we'll bring it to life.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
+}
+
