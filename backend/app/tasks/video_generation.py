@@ -13,6 +13,7 @@ from app.services.openai_service import (
 from app.services.replicate_service import (
     generate_reference_images,
     generate_videos_sequential,
+    generate_voiceovers_parallel,
     generate_music_with_suno
 )
 from app.services.storage import upload_bytes_to_storage
@@ -180,8 +181,74 @@ def generate_campaign_video(self, campaign_id: str):
 
         campaign.video_urls = video_urls
         self.db.commit()
-        
-        # Step 4: Generate music with Suno (Replicate)
+
+        # Step 4: Generate voiceovers (TTS) - PARALLEL
+        campaign.generation_stage = "voiceovers"
+        campaign.generation_progress = 60
+        self.db.commit()
+
+        self.update_state(state="PROGRESS", meta={"stage": "Generating voiceovers..."})
+
+        # Extract scenes with voiceover text from storyline
+        scenes_with_text = []
+        if campaign.storyline and campaign.storyline.get("scenes"):
+            for scene in campaign.storyline["scenes"]:
+                scenes_with_text.append({
+                    "scene_number": scene.get("scene_number", len(scenes_with_text) + 1),
+                    "voiceover_text": scene.get("voiceover_text", scene.get("description", ""))
+                })
+
+        # Generate voiceovers
+        voiceover_results = generate_voiceovers_parallel(scenes_with_text)
+
+        # Download and upload voiceovers
+        voiceover_urls = []
+        for result in voiceover_results:
+            scene_num = result["scene_number"]
+
+            # Create generation job record
+            job = GenerationJob(
+                campaign_id=campaign.id,
+                job_type="voiceover",
+                scene_number=scene_num,
+                status="processing",
+                input_params={"text": result.get("text", "")},
+                started_at=datetime.utcnow()
+            )
+            self.db.add(job)
+            self.db.commit()
+
+            if result.get("url"):
+                # Download voiceover
+                audio_data = download_file(result["url"])
+
+                # Upload to S3
+                key = f"campaigns/{campaign_id}/voiceover_{scene_num}.mp3"
+                voiceover_url = upload_to_s3_bytes(audio_data, key, "audio/mpeg")
+                voiceover_urls.append(voiceover_url)
+
+                # Update job as completed
+                job.status = "completed"
+                job.output_url = voiceover_url
+                job.completed_at = datetime.utcnow()
+            else:
+                # No voiceover or failed
+                voiceover_urls.append(None)
+                job.status = "completed" if not result.get("error") else "failed"
+                job.error_message = result.get("error", "No voiceover text")
+                job.completed_at = datetime.utcnow()
+
+            self.db.commit()
+
+        campaign.voiceover_urls = voiceover_urls
+        campaign.generation_progress = 70
+        self.db.commit()
+
+        # Step 5: Generate music with Suno (Replicate)
+        campaign.generation_stage = "music"
+        campaign.generation_progress = 70
+        self.db.commit()
+
         self.update_state(state="PROGRESS", meta={"stage": "Generating soundtrack..."})
         
         music_result = generate_music_with_suno(campaign.suno_prompt)
@@ -192,9 +259,14 @@ def generate_campaign_video(self, campaign_id: str):
             key = f"campaigns/{campaign_id}/music.mp3"
             music_url = upload_to_s3_bytes(music_data, key, "audio/mpeg")
             campaign.music_url = music_url
+            campaign.generation_progress = 80
             self.db.commit()
-        
-        # Step 5: Compose final video with FFmpeg
+
+        # Step 6: Compose final video with FFmpeg
+        campaign.generation_stage = "compositing"
+        campaign.generation_progress = 80
+        self.db.commit()
+
         self.update_state(state="PROGRESS", meta={"stage": "Composing final video..."})
         
         final_video_path = compose_video(
@@ -212,6 +284,8 @@ def generate_campaign_video(self, campaign_id: str):
         
         campaign.final_video_url = final_url
         campaign.status = "completed"
+        campaign.generation_stage = "complete"
+        campaign.generation_progress = 100
         self.db.commit()
         
         # Cleanup temp files

@@ -105,6 +105,82 @@ def generate_video_with_sora(scene_prompt, scene_number, prev_scene_url=None):
         }
 
 
+def generate_voiceover(text, scene_number):
+    """
+    Generate voiceover audio using TTS (Text-to-Speech)
+
+    Args:
+        text: Voiceover text/narration for the scene
+        scene_number: Scene number for tracking
+
+    Returns:
+        Dict with url, text, and scene_number
+    """
+    try:
+        # Using Bark TTS model for high-quality voiceover
+        model = "suno-ai/bark"
+
+        output = client.run(
+            model,
+            input={
+                "prompt": text,
+                "text_temp": 0.7,
+                "waveform_temp": 0.7,
+            }
+        )
+
+        # Get audio URL
+        audio_url = output.get("audio_out") if isinstance(output, dict) else output
+        if isinstance(audio_url, list):
+            audio_url = audio_url[0]
+
+        return {
+            "scene_number": scene_number,
+            "url": audio_url,
+            "text": text
+        }
+    except Exception as e:
+        print(f"Error generating voiceover for scene {scene_number}: {e}")
+        return {
+            "scene_number": scene_number,
+            "url": "",
+            "text": text,
+            "error": str(e)
+        }
+
+
+def generate_voiceovers_parallel(scenes_with_text):
+    """
+    Generate voiceovers for multiple scenes in parallel
+
+    Args:
+        scenes_with_text: List of dicts with scene_number and voiceover_text
+
+    Returns:
+        List of results with scene_number, url, and text
+    """
+    results = []
+
+    for scene_data in scenes_with_text:
+        scene_num = scene_data.get("scene_number")
+        text = scene_data.get("voiceover_text", "")
+
+        # Skip if no voiceover text
+        if not text or text.strip() == "":
+            print(f"Skipping voiceover for scene {scene_num} - no text")
+            results.append({
+                "scene_number": scene_num,
+                "url": None,
+                "text": ""
+            })
+            continue
+
+        result = generate_voiceover(text, scene_num)
+        results.append(result)
+
+    return results
+
+
 def generate_music_with_suno(suno_prompt):
     """
     Generate music using Suno on Replicate
@@ -112,11 +188,11 @@ def generate_music_with_suno(suno_prompt):
     try:
         # Suno v3.5 model on Replicate
         model = "suno-ai/bark"  # or the actual Suno model when available
-        
+
         # For now, using a music generation model available on Replicate
         # Replace with actual Suno model identifier
         model = "meta/musicgen"
-        
+
         output = client.run(
             model,
             input={
@@ -126,10 +202,10 @@ def generate_music_with_suno(suno_prompt):
                 "output_format": "mp3",
             }
         )
-        
+
         # Get audio URL
         audio_url = output if isinstance(output, str) else output[0]
-        
+
         return {
             "url": audio_url,
             "prompt": suno_prompt
