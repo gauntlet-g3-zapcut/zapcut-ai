@@ -1,317 +1,299 @@
 # Zapcut AI Documentation
 
-## Overview
-This directory contains comprehensive documentation for the Zapcut AI video generation platform—a monorepo containing frontend (Electron app), backend (FastAPI), infrastructure, and supporting services.
+Welcome to the Zapcut AI documentation repository. This directory contains all product requirements, technical specifications, architecture documentation, and agile artifacts (epics/stories) for the project.
 
----
+## 📁 Directory Structure
 
-## Document Structure
+```
+docs/
+├── README.md                          # This file
+├── EPICS-INDEX.md                     # Master index of all epics and stories
+├── REPLICATE-MODELS.md                # Complete Replicate model guide
+├── PRD/                               # Product Requirements Documents
+│   ├── 01-product-vision.md           # Product vision and mission
+│   ├── 02-user-personas.md            # Target user personas
+│   ├── 03-user-flows.md               # Detailed user journey flows
+│   ├── 04-features.md                 # Feature requirements
+│   ├── 05-ui-ux-guidelines.md         # Design system guidelines
+│   ├── 06-content-policy.md           # Content moderation policy
+│   └── 07-success-metrics.md          # KPIs and success criteria
+├── Architecture.md                    # Technical architecture overview
+├── Epics/                             # High-level feature epics
+│   ├── E001-authentication-authorization.md
+│   ├── E002-project-brand-management.md
+│   ├── E003-creative-brief-chat.md
+│   ├── E004-multi-agent-video-generation.md
+│   ├── E005-video-composition-export.md
+│   ├── E006-social-media-publishing.md
+│   ├── E007-infrastructure-deployment.md
+│   └── E008-video-editor-core.md
+└── Stories/                           # Detailed user stories
+    ├── S001-cognito-user-pool-setup.md
+    ├── S002-email-password-auth.md
+    ├── S014-master-orchestrator-agent.md
+    ├── S062-replicate-model-abstraction.md
+    └── ... (60+ total stories)
+```
 
-### Product Requirements (PRD)
-Located in `/docs/PRD/`—these documents define **what** we're building and **why**.
+## 🎯 What is Zapcut AI?
 
-1. **[01-product-vision.md](PRD/01-product-vision.md)**
-   - Mission statement and value proposition
-   - Market opportunity and competitive landscape
-   - Success criteria and design principles
-   - Product roadmap (MVP → Enterprise)
+Zapcut is an **AI-powered video generation platform** that transforms simple prompts into professional, publication-ready video advertisements with synchronized audio, coherent visuals, and brand consistency—all with minimal human intervention.
 
-2. **[02-user-personas.md](PRD/02-user-personas.md)**
-   - Primary Persona: Brand Marketer (Sarah)
-   - Secondary Persona: Music Producer (Alex)
-   - Tertiary Persona: Agency Creative Director (Marcus)
-   - Anti-personas (who we're NOT targeting)
+### Core Value Proposition
+**"From prompt to publish in under 5 minutes"**
 
-3. **[03-user-flows.md](PRD/03-user-flows.md)**
-   - First-time user onboarding flow
-   - Returning user (Creative Bible reuse)
-   - Batch variation generation
-   - Error handling and edge cases
-   - Metrics tracking
+### Key Features
+1. **End-to-End Generation**: Complete video ads with music, visuals, and brand consistency from a single brief
+2. **Creative DNA System**: Reusable "Creative Bibles" that lock visual style
+3. **Multi-Modal Intelligence**: Orchestrated AI agents powered by Replicate's full model suite
+4. **Professional Quality**: 4K output at 30fps with audio-visual synchronization
+5. **Direct Publishing**: One-click export to X (Twitter) and LinkedIn
 
-4. **[04-features.md](PRD/04-features.md)**
-   - MVP features (P0 - must-have)
-   - Post-MVP features (P1 - should-have)
-   - Future enhancements (P2 - nice-to-have)
-   - Enterprise features (P3)
-   - Out of scope (what we're NOT building)
+### AI Models (via Replicate)
+- **Text**: Llama 3.1 (70B/405B), Mistral Large, Llama Guard 3
+- **Image**: FLUX 1.1 Pro, SDXL, Playground v2.5
+- **Video**: Minimax Video-01, Luma Dream Machine, Runway Gen-3
+- **Audio**: MusicGen, Suno Bark, AudioCraft
 
-5. **[05-ui-ux-guidelines.md](PRD/05-ui-ux-guidelines.md)**
-   - Design philosophy (glass morphism, single-page agent experience)
-   - Color palette (yellow lightning bolt, white cursor theme)
-   - Component guidelines (chat messages, progress indicators, video preview)
-   - Iconography (Lucide React)
-   - Animations and accessibility
+See [REPLICATE-MODELS.md](./REPLICATE-MODELS.md) for complete model guide.
 
-6. **[06-content-policy.md](PRD/06-content-policy.md)**
-   - Prohibited content (violence, nudity, drugs, hate, deepfakes, copyright)
-   - Brand compliance requirements
-   - Safety enforcement layers (4-layer validation)
-   - User consequences for violations
-   - Legal and regulatory compliance
+## 📚 Documentation Hierarchy
 
-7. **[07-success-metrics.md](PRD/07-success-metrics.md)**
-   - MVP success criteria (48-hour checkpoint)
-   - Product quality metrics (visual consistency, audio-visual sync)
-   - Performance metrics (generation speed, uptime, cost per video)
-   - User adoption metrics (sign-up conversion, activation, retention)
-   - Business metrics (MAU, revenue, CAC, LTV)
+### 1. Product Requirements (PRD)
+High-level product vision, user needs, and business requirements.
 
----
+**Start here if you're:**
+- New to the project
+- Planning features
+- Understanding the "why" behind decisions
 
-### Technical Architecture
-Located in `/docs/Architecture.md`—this document defines **how** we're building it.
+**Key files:**
+- `PRD/01-product-vision.md` - Mission, problem, solution
+- `PRD/03-user-flows.md` - How users interact with the system
+- `PRD/04-features.md` - Detailed feature requirements
 
-**[Architecture.md](Architecture.md)** contains:
+### 2. Technical Architecture
+System design, infrastructure, and technical decisions.
 
-#### System Design
-- High-level architecture diagram
-- Technology stack (frontend, backend, infrastructure, AI services)
-- Application directory structure
+**Start here if you're:**
+- Implementing features
+- Setting up infrastructure
+- Understanding technical constraints
 
-#### Database
-- Complete PostgreSQL schema
-  - Users, Projects, Assets
-  - Creative Bibles, Generated Ads
-  - Generation Jobs, Safety Violations
-- Indexes and constraints
+**Key file:**
+- `Architecture.md` - Complete technical architecture
 
-#### API Design
-- RESTful endpoint contracts
-- Authentication (AWS Cognito JWT)
-- Request/response schemas
-- Error handling
+### 3. Epics & Stories
+Agile artifacts breaking down features into implementable units.
 
-#### Multi-Agent System
-- 6 specialized AI agents:
-  1. Master Orchestrator (workflow management)
-  2. Story Structuring Agent (narrative planning)
-  3. Style & Brand Consistency Agent (Creative Bible generation)
-  4. Safety Validation Agent (content moderation)
-  5. Prompt Synthesis Agent (Sora/Suno prompt creation)
-  6. Continuity Back-Propagation Agent (scene consistency)
-- Agent communication protocols
-- State management
+**Start here if you're:**
+- Planning sprints
+- Estimating work
+- Implementing specific features
 
-#### Video Generation Pipeline
-- End-to-end workflow (4-5 minute generation)
-- Celery task implementation
-- Parallel processing (Sora + Suno)
-- FFmpeg video composition
+**Key files:**
+- `EPICS-INDEX.md` - Master index and roadmap
+- `Epics/*.md` - High-level feature epics
+- `Stories/*.md` - Detailed implementation stories
 
-#### Infrastructure as Code
-- Terraform configuration for AWS
-  - Cognito (authentication)
-  - RDS PostgreSQL (database)
-  - S3 + CloudFront (storage + CDN)
-  - Elastic Beanstalk (API servers)
-  - SQS (task queue)
-- Deployment strategy (CI/CD with GitHub Actions)
-
-#### Security & Monitoring
-- Authentication and authorization
-- Data protection and encryption
-- Content safety enforcement
-- Observability (metrics, logging, alerts)
-- Cost optimization strategies
-
----
-
-## Quick Reference
+## 🚀 Quick Start Guides
 
 ### For Product Managers
-Start here:
-- [Product Vision](PRD/01-product-vision.md) → Understand the "why"
-- [User Personas](PRD/02-user-personas.md) → Know the target users
-- [Features](PRD/04-features.md) → See what's being built
-- [Success Metrics](PRD/07-success-metrics.md) → Track progress
-
-### For Designers
-Start here:
-- [UI/UX Guidelines](PRD/05-ui-ux-guidelines.md) → Design system and components
-- [User Flows](PRD/03-user-flows.md) → Understand user journey
-- [Product Vision](PRD/01-product-vision.md) → Grasp design principles
+1. Read [Product Vision](./PRD/01-product-vision.md)
+2. Review [User Flows](./PRD/03-user-flows.md)
+3. Check [Epics Index](./EPICS-INDEX.md) for roadmap
 
 ### For Engineers
-Start here:
-- [Architecture](Architecture.md) → Complete technical design
-- [Features](PRD/04-features.md) → Implementation requirements
-- [Content Policy](PRD/06-content-policy.md) → Safety constraints
+1. Read [Architecture](./Architecture.md)
+2. Review [Replicate Models Guide](./REPLICATE-MODELS.md) for AI integration
+3. Review relevant Epic (e.g., `Epics/E004-multi-agent-video-generation.md`)
+4. Check assigned Stories for implementation details
 
-### For Marketing/Sales
-Start here:
-- [Product Vision](PRD/01-product-vision.md) → Value proposition
-- [User Personas](PRD/02-user-personas.md) → Target audience
-- [Success Metrics](PRD/07-success-metrics.md) → KPIs and benchmarks
+### For DevOps
+1. Read [Architecture](./Architecture.md) - Infrastructure section
+2. Review [E007: Infrastructure & Deployment](./Epics/E007-infrastructure-deployment.md)
+3. Check stories S044-S053 for specific tasks
 
----
+### For Designers
+1. Read [UI/UX Guidelines](./PRD/05-ui-ux-guidelines.md)
+2. Review [User Flows](./PRD/03-user-flows.md)
+3. Check relevant epics for UI components needed
 
-## Development Workflow
+## 📖 How to Read Epics & Stories
 
-### 1. Feature Development
-```
-1. Read relevant PRD docs → Understand requirements
-2. Review Architecture.md → Understand technical approach
-3. Create feature branch → Implement
-4. Test against acceptance criteria (from Features.md)
-5. Submit PR with links to relevant PRD sections
-```
+### Epic Structure
+Each epic is a major body of work that delivers significant value.
 
-### 2. Architecture Decisions
-```
-1. Propose change in Architecture.md
-2. Create ADR (Architecture Decision Record) in /docs/decisions/
-3. Review with team
-4. Update relevant PRD docs if user-facing impact
-```
+**Epic Contents:**
+- **Overview**: What this epic achieves
+- **Business Value**: Why it matters
+- **Success Criteria**: Definition of done
+- **Priority**: P0 (MVP), P1 (Post-MVP), P2 (Nice-to-have), P3 (Enterprise)
+- **Estimated Effort**: Time required
+- **Related Stories**: Breakdown of work
+- **Technical Notes**: Implementation details
 
-### 3. Documentation Updates
-```
-- PRD docs updated when: requirements change, features added, user feedback
-- Architecture.md updated when: tech stack changes, new services, major refactors
-- Reviewed quarterly or before major releases
-```
+**Example:** [E004: Multi-Agent Video Generation](./Epics/E004-multi-agent-video-generation.md)
 
----
+### Story Structure
+Each story is a specific, implementable unit of work.
 
-## Monorepo Structure
+**Story Contents:**
+- **User Story**: "As a [role], I want [goal], so that [benefit]"
+- **Acceptance Criteria**: Checklist for completion
+- **Technical Details**: Code examples, architecture
+- **Testing Plan**: How to verify it works
+- **Size**: XS (hours), S (hours), M (1-2 days), L (3-5 days), XL (weeks)
 
-```
-zapcut-ai/
-├── app/                    # Electron frontend (React + TypeScript)
-├── backend/                # FastAPI backend (Python)
-├── database/               # Database migrations (Alembic)
-├── infrastructure/         # Terraform IaC (AWS)
-├── queue/                  # Celery workers (video generation)
-├── s3/                     # S3 bucket configuration
-├── website/                # Marketing website (NOT part of app)
-└── docs/                   # This directory
-    ├── PRD/                # Product requirements
-    ├── Architecture.md     # Technical architecture
-    └── README.md           # This file
-```
+**Example:** [S014: Master Orchestrator Agent](./Stories/S014-master-orchestrator-agent.md)
 
----
+## 🎯 Current Status
 
-## Key Technologies
+### Phase 1: MVP Foundation (Weeks 1-2)
+- ✅ **E008: Video Editor Core** - Complete
+- 🔴 **E001: Authentication** - Not started
+- 🔴 **E002: Project Management** - Not started
+- 🔴 **E007: Infrastructure** - Not started
 
-### Frontend
-- **Electron** + **React 18** + **TypeScript**
-- **Zustand** (state management)
-- **Tailwind CSS** + **Shadcn UI** (glass morphism design)
-- **Lucide React** (icons)
-- **Vite** (build tool)
+### Phase 2: AI Generation Core (Weeks 3-4)
+- 🔴 **E003: Creative Brief Chat** - Not started
+- 🔴 **E004: Multi-Agent Pipeline** - Not started
+- 🔴 **E005: Video Composition** - Not started
 
-### Backend
-- **FastAPI** (Python 3.11+)
-- **SQLAlchemy 2.0** (async ORM)
-- **Celery** + **Redis** (task queue)
-- **PostgreSQL 16** (database)
+### Phase 3: Polish & Publishing (Weeks 5-6)
+- 🔴 **E006: Social Media Publishing** - Not started
 
-### AI Services
-- **Claude 3.5 Sonnet** (orchestration, scriptwriting)
-- **Sora** via Replicate (video generation)
-- **Suno** via Replicate (music generation)
-- **DALL-E 3** (reference image generation)
+**Legend:**
+- ✅ Complete
+- 🟡 In Progress
+- 🔴 Not Started
+- 📋 Backlog
 
-### Infrastructure (AWS)
-- **Cognito** (authentication)
-- **RDS** (PostgreSQL)
-- **S3 + CloudFront** (storage + CDN)
-- **Elastic Beanstalk** (API servers)
-- **SQS** (message queue)
+## 🛠️ How to Contribute
 
----
+### Adding New Documentation
+1. **New Epic**:
+   ```bash
+   cp docs/Epics/E001-authentication-authorization.md docs/Epics/E00X-new-epic.md
+   # Update content
+   # Add to EPICS-INDEX.md
+   ```
 
-## Key Concepts
+2. **New Story**:
+   ```bash
+   cp docs/Stories/S001-cognito-user-pool-setup.md docs/Stories/S0XX-new-story.md
+   # Update content
+   # Link to parent epic
+   ```
 
-### Creative Bible
-A reusable style template that locks brand DNA:
-- Visual style, colors, lighting, camera movement
-- Energy level and motion patterns
-- Reference images (4 DALL-E generated images)
-- Enables 40% faster + cheaper regeneration
+3. **Update Architecture**:
+   - Edit `Architecture.md` directly
+   - Add diagrams to `/docs/diagrams/`
+   - Link from relevant epics/stories
 
-### Multi-Agent Orchestration
-Rather than one monolithic AI call, we use 6 specialized agents:
-1. Orchestrator → Guides user through stages
-2. Story Agent → Plans narrative structure
-3. Style Agent → Ensures brand consistency
-4. Safety Agent → Content moderation
-5. Prompt Agent → Optimizes Sora/Suno prompts
-6. Continuity Agent → Maintains visual consistency across scenes
+### Documentation Standards
 
-### Back-Propagation for Continuity
-Scene N uses the last frame of Scene N-1 as input to maintain:
-- Color palette consistency
-- Lighting continuity
-- Product appearance
-- Smooth narrative flow
+#### Markdown Conventions
+- Use ATX headers (`#`, `##`, `###`)
+- Code blocks with language tags (```python, ```typescript)
+- Task lists for checklists (`- [ ]`, `- [x]`)
+- Links to related docs (`[link text](./path/to/file.md)`)
 
----
+#### File Naming
+- Epics: `EXXX-kebab-case-title.md` (e.g., `E001-authentication-authorization.md`)
+- Stories: `SXXX-kebab-case-title.md` (e.g., `S001-cognito-user-pool-setup.md`)
+- Lowercase, hyphen-separated
+- Sequential numbering
 
-## Success Metrics Summary
+#### Version Control
+- All documentation tracked in git
+- Use meaningful commit messages
+- Tag documentation updates with `[docs]` prefix
 
-### MVP Gate (48 Hours)
-- ✅ 2+ complete video ads generated
-- ✅ Audio-visual sync working
-- ✅ Visual consistency across scenes
-- ✅ <5 minute generation time
-- ✅ Deployed and accessible
+## 📊 Metrics & KPIs
 
-### 6-Month Targets
-- **Quality**: 90%+ visual consistency score
-- **Speed**: <3 minutes generation time
-- **Cost**: <$1.50 per video
-- **Adoption**: 2,000 MAU, 15,000 videos/month
-- **Retention**: 25%+ D7 retention
+### Documentation Coverage
+- **Epics**: 8 total (100% of MVP scope)
+- **Stories**: 60+ (covering P0 and P1 priorities)
+- **PRDs**: 7 documents (complete)
+- **Architecture**: 1 comprehensive document
 
----
+### Story Sizing Breakdown
+- **XS (1-2 hours)**: 15 stories (~25%)
+- **S (3-5 hours)**: 20 stories (~33%)
+- **M (1-2 days)**: 15 stories (~25%)
+- **L (3-5 days)**: 8 stories (~13%)
+- **XL (1-2 weeks)**: 2 stories (~3%)
 
-## Contributing
+### Priority Distribution
+- **P0 (MVP Critical)**: 42 stories (70%)
+- **P1 (Post-MVP)**: 12 stories (20%)
+- **P2 (Nice-to-have)**: 6 stories (10%)
 
-### Documentation Updates
-- **PRD changes**: Require PM approval
-- **Architecture changes**: Require tech lead approval
-- **Typos/clarifications**: Can be fixed directly
+## 🔗 External Resources
 
-### Versioning
-- PRD docs versioned by date in footer
-- Architecture.md versioned by date in footer
-- Major changes logged in version history
+### Product
+- **Website**: https://zapcut.video
+- **App**: https://app.zapcut.video
+- **API Docs**: https://api.zapcut.video/docs (Swagger)
 
----
+### Development
+- **GitHub**: Internal repository
+- **CI/CD**: GitHub Actions
+- **Cloud**: AWS (us-east-1)
+- **Design**: Figma (link internal)
 
-## Contact & Support
-
-### Internal Team
-- **Product**: PM team for PRD questions
-- **Engineering**: Tech lead for Architecture questions
-- **Design**: Design lead for UI/UX questions
-
-### External Resources
+### AI & Models
+- **Replicate**: https://replicate.com
 - **Replicate Docs**: https://replicate.com/docs
-- **Anthropic Claude**: https://docs.anthropic.com/
-- **AWS Documentation**: https://docs.aws.amazon.com/
+- **API Reference**: https://replicate.com/docs/reference/http
+- **Model Guide**: [REPLICATE-MODELS.md](./REPLICATE-MODELS.md)
+
+### Communication
+- **Slack**: #zapcut-general, #zapcut-engineering
+- **Jira**: (if using)
+- **Engineering Wiki**: (link internal)
+
+## ❓ FAQ
+
+### Q: Where do I find information about a specific feature?
+**A**: 
+1. Check `EPICS-INDEX.md` for high-level overview
+2. Find the relevant epic (e.g., E004 for video generation)
+3. Drill down to specific stories if needed
+
+### Q: How do I know what to work on next?
+**A**: 
+1. Check `EPICS-INDEX.md` → Roadmap Timeline
+2. Look for stories marked 🔴 "Ready" status
+3. Consult with team lead for sprint planning
+
+### Q: Where's the technical implementation guide?
+**A**: Each story contains detailed technical specs, code examples, and testing plans. Start with the story related to your task.
+
+### Q: How do I propose a new feature?
+**A**:
+1. Create a GitHub issue describing the feature
+2. Draft an epic document following existing templates
+3. Break down into stories
+4. Get approval from product/engineering leads
+
+### Q: What's the difference between Epic and Story?
+**A**:
+- **Epic**: Large feature (e.g., "Authentication System") - multiple weeks
+- **Story**: Specific task (e.g., "Set up Cognito User Pool") - hours to days
+
+## 📞 Contact
+
+**Questions about:**
+- **Product**: product@zapcut.video
+- **Engineering**: engineering@zapcut.video
+- **DevOps**: devops@zapcut.video
+- **Documentation**: Update this README or file an issue
 
 ---
 
-## Change Log
-
-### November 15, 2025
-- Initial documentation created
-- PRD suite (7 documents)
-- Architecture.md (complete technical spec)
-- README.md (this file)
-
-### Future Updates
-- Will be tracked here as documentation evolves
-- Major version bumps noted with summary of changes
-
----
-
-**Last Updated**: November 15, 2025  
-**Status**: Active Development  
-**Maintainers**: Product + Engineering Teams  
-**Next Review**: December 1, 2025
+**Last Updated**: 2025-11-15  
+**Maintained By**: Zapcut Engineering Team  
+**Status**: Living Document (updated continuously)
 
