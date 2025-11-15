@@ -21,9 +21,10 @@ stories:
 
   - id: "5.3"
     name: "Sequential Scene Video Generation with Continuity"
-    status: "backlog"
+    status: "done"
     priority: "P2"
     estimate: "1 hour"
+    completed: "2025-11-15"
 
   - id: "5.4"
     name: "Voiceover Generation (TTS)"

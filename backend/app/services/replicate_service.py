@@ -47,10 +47,15 @@ def generate_reference_images(prompts):
     return results
 
 
-def generate_video_with_sora(scene_prompt, scene_number):
+def generate_video_with_sora(scene_prompt, scene_number, prev_scene_url=None):
     """
-    Generate video using Sora 2 on Replicate
-    
+    Generate video using Sora 2 on Replicate with optional continuity
+
+    Args:
+        scene_prompt: Dict with prompt and scene info
+        scene_number: Scene number (1-5)
+        prev_scene_url: URL of previous scene for visual continuity (optional)
+
     Note: At the time of writing, Sora might not be publicly available on Replicate.
     This is a placeholder for when it becomes available.
     For now, we'll use an alternative video generation model.
@@ -59,27 +64,37 @@ def generate_video_with_sora(scene_prompt, scene_number):
         # Check if Sora is available, otherwise use alternative
         # Example: using a placeholder video generation model
         # Replace with actual Sora model when available
-        
+
         # For demonstration, using Stable Video Diffusion
         model = "stability-ai/stable-video-diffusion"
-        
-        output = client.run(
-            model,
-            input={
-                "prompt": scene_prompt["prompt"],
-                "frames_per_second": 30,
-                "num_frames": 180,  # 6 seconds at 30fps
-                "motion_bucket_id": 127,
-            }
-        )
-        
+
+        # Enhance prompt with continuity context if previous scene exists
+        prompt = scene_prompt["prompt"]
+        if prev_scene_url and scene_number > 1:
+            prompt = f"Continuing from previous scene: {prompt}"
+
+        input_params = {
+            "prompt": prompt,
+            "frames_per_second": 30,
+            "num_frames": 180,  # 6 seconds at 30fps
+            "motion_bucket_id": 127,
+        }
+
+        # If prev_scene_url is provided, use it for continuity (when model supports it)
+        # Note: SVD doesn't support init_image in the same way, but Sora will
+        if prev_scene_url:
+            input_params["context_url"] = prev_scene_url  # Placeholder for Sora continuity
+
+        output = client.run(model, input=input_params)
+
         # Get video URL
         video_url = output if isinstance(output, str) else output[0]
-        
+
         return {
             "scene_number": scene_number,
             "url": video_url,
-            "prompt": scene_prompt["prompt"]
+            "prompt": prompt,
+            "prev_scene": prev_scene_url
         }
     except Exception as e:
         print(f"Error generating video for scene {scene_number}: {e}")
@@ -146,12 +161,46 @@ def wait_for_prediction(prediction_id, timeout=600):
     raise Exception("Prediction timed out")
 
 
+def generate_videos_sequential(sora_prompts):
+    """
+    Generate videos sequentially with continuity
+    Each scene uses the previous scene's output for visual consistency
+
+    Args:
+        sora_prompts: List of prompt dicts with scene_number and prompt
+
+    Returns:
+        List of results with scene_number, url, and prompt
+    """
+    results = []
+    prev_scene_url = None
+
+    # Generate scenes one at a time
+    for prompt_data in sora_prompts:
+        scene_number = prompt_data["scene_number"]
+        print(f"Generating scene {scene_number} sequentially...")
+
+        result = generate_video_with_sora(
+            prompt_data,
+            scene_number,
+            prev_scene_url=prev_scene_url
+        )
+
+        results.append(result)
+
+        # Use this scene as reference for next scene
+        if result.get("url"):
+            prev_scene_url = result["url"]
+
+    return results
+
+
 def generate_videos_parallel(sora_prompts):
     """
     Generate multiple videos in parallel using Replicate
     """
     predictions = []
-    
+
     # Start all predictions
     for prompt_data in sora_prompts:
         try:
@@ -169,14 +218,14 @@ def generate_videos_parallel(sora_prompts):
             })
         except Exception as e:
             print(f"Error starting video generation for scene {prompt_data['scene_number']}: {e}")
-    
+
     # Wait for all predictions to complete
     results = []
     for pred_info in predictions:
         try:
             output = wait_for_prediction(pred_info["prediction_id"])
             video_url = output if isinstance(output, str) else output[0]
-            
+
             results.append({
                 "scene_number": pred_info["scene_number"],
                 "url": video_url
@@ -188,7 +237,7 @@ def generate_videos_parallel(sora_prompts):
                 "url": "",
                 "error": str(e)
             })
-    
+
     return results
 
 

@@ -2,6 +2,7 @@ from celery import Task
 from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.campaign import Campaign
+from app.models.generation_job import GenerationJob
 from app.models.creative_bible import CreativeBible
 from app.models.brand import Brand
 from app.services.openai_service import (
@@ -11,7 +12,7 @@ from app.services.openai_service import (
 )
 from app.services.replicate_service import (
     generate_reference_images,
-    generate_videos_parallel,
+    generate_videos_sequential,
     generate_music_with_suno
 )
 from app.services.storage import upload_bytes_to_storage
@@ -20,6 +21,7 @@ import subprocess
 import os
 import tempfile
 import httpx
+from datetime import datetime
 
 
 class VideoGenerationTask(Task):
@@ -109,29 +111,73 @@ def generate_campaign_video(self, campaign_id: str):
             campaign.suno_prompt = storyline_data["suno_prompt"]
             self.db.commit()
         
-        # Step 3: Generate videos with Sora (Replicate) - PARALLEL
-        self.update_state(state="PROGRESS", meta={"stage": "Generating video scenes..."})
-        
-        video_results = generate_videos_parallel(campaign.sora_prompts)
-        
-        # Download videos and upload to S3
+        # Step 3: Generate videos SEQUENTIALLY with continuity tracking
+        campaign.generation_stage = "scene_videos"
+        campaign.generation_progress = 20
+        self.db.commit()
+
+        self.update_state(state="PROGRESS", meta={"stage": "Generating video scenes sequentially..."})
+
         video_urls = {}
-        for result in video_results:
-            scene_num = result["scene_number"]
+        prev_scene_url = None
+
+        for i, prompt_data in enumerate(campaign.sora_prompts, start=1):
+            scene_num = prompt_data.get("scene_number", i)
+
+            # Create generation job record
+            job = GenerationJob(
+                campaign_id=campaign.id,
+                job_type="scene_video",
+                scene_number=scene_num,
+                status="processing",
+                input_params=prompt_data,
+                started_at=datetime.utcnow()
+            )
+            self.db.add(job)
+            self.db.commit()
+
+            # Update progress
+            progress = 20 + (scene_num * 8)  # 20% -> 28% -> 36% -> 44% -> 52% -> 60%
+            campaign.generation_progress = progress
+            self.db.commit()
+
             self.update_state(
                 state="PROGRESS",
-                meta={"stage": f"Processing scene {scene_num}/5..."}
+                meta={"stage": f"Generating scene {scene_num}/5..."}
             )
-            
+
+            # Generate video with continuity
+            from app.services.replicate_service import generate_video_with_sora
+            result = generate_video_with_sora(
+                prompt_data,
+                scene_num,
+                prev_scene_url=prev_scene_url
+            )
+
             if result.get("url"):
                 # Download video
                 video_data = download_file(result["url"])
-                
+
                 # Upload to S3
                 key = f"campaigns/{campaign_id}/scene_{scene_num}.mp4"
                 s3_url = upload_to_s3_bytes(video_data, key, "video/mp4")
                 video_urls[f"scene_{scene_num}"] = s3_url
-        
+
+                # Update job as completed
+                job.status = "completed"
+                job.output_url = s3_url
+                job.completed_at = datetime.utcnow()
+
+                # Use this scene for next scene's continuity
+                prev_scene_url = s3_url
+            else:
+                # Job failed
+                job.status = "failed"
+                job.error_message = result.get("error", "Unknown error")
+                job.completed_at = datetime.utcnow()
+
+            self.db.commit()
+
         campaign.video_urls = video_urls
         self.db.commit()
         
