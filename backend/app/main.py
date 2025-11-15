@@ -7,9 +7,21 @@ app = FastAPI(title="AdCraft API", version="1.0.0")
 
 # CORS middleware - specify exact origins for credentialed requests
 # Uses CORS_ORIGINS from config (comma-separated string converted to list)
+# Always includes production frontend and localhost for development
+default_origins = [
+    "https://app.zapcut.video",  # Production frontend
+    "http://localhost:5173",     # Local development
+    "http://localhost:5175",
+    "http://localhost:3000",
+]
+
+# Merge with any additional origins from CORS_ORIGINS env var
+env_origins = settings.cors_origins_list if settings.cors_origins_list else []
+cors_origins = list(set(default_origins + env_origins))  # Combine and remove duplicates
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -6,7 +6,7 @@ const getApiUrl = () => {
     return import.meta.env.VITE_API_URL
   }
   return import.meta.env.PROD 
-    ? "https://adcraft-production.up.railway.app" 
+    ? "https://zapcut-ai-production.up.railway.app" 
     : "http://localhost:8000"
 }
 
