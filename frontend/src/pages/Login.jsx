@@ -40,11 +40,10 @@ export default function Login() {
     setLoading(true)
 
     try {
+      // OAuth redirects automatically, so we don't need to navigate
       await loginWithGoogle()
-      navigate("/dashboard")
     } catch (err) {
       setError(err.message)
-    } finally {
       setLoading(false)
     }
   }

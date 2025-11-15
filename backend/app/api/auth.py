@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import firebase_admin
-from firebase_admin import auth, credentials
+import jwt
+from jwt import PyJWKClient
 from app.database import get_db
 from app.models.user import User
 from sqlalchemy.orm import Session
@@ -10,48 +10,68 @@ from app.config import settings
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 security = HTTPBearer()
 
-# Initialize Firebase Admin
+# Initialize Supabase JWT verification using JWKS
+jwks_client = None
+supabase_url = None
 try:
-    if settings.FIREBASE_PROJECT_ID and settings.FIREBASE_PRIVATE_KEY and settings.FIREBASE_CLIENT_EMAIL:
-        cred = credentials.Certificate({
-            "type": "service_account",
-            "project_id": settings.FIREBASE_PROJECT_ID,
-            "private_key": settings.FIREBASE_PRIVATE_KEY.replace("\\n", "\n") if isinstance(settings.FIREBASE_PRIVATE_KEY, str) else settings.FIREBASE_PRIVATE_KEY,
-            "client_email": settings.FIREBASE_CLIENT_EMAIL,
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        })
-        firebase_admin.initialize_app(cred)
-        print("✅ Firebase Admin initialized successfully")
+    if settings.SUPABASE_URL:
+        supabase_url = settings.SUPABASE_URL
+        # Supabase uses JWKS for JWT verification (RS256)
+        jwks_url = f"{supabase_url}/.well-known/jwks.json"
+        jwks_client = PyJWKClient(jwks_url)
+        print("✅ Supabase JWT verification configured")
     else:
-        print("⚠️  Firebase credentials not configured - authentication disabled")
+        print("⚠️  Supabase URL not configured - authentication disabled")
 except Exception as e:
-    print(f"❌ Firebase Admin initialization error: {e}")
+    print(f"❌ Supabase initialization error: {e}")
+    jwks_client = None
 
 
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verify Firebase token and return user"""
+    """Verify Supabase JWT token and return decoded claims"""
+    if not jwks_client:
+        raise HTTPException(status_code=401, detail="Authentication not configured")
+    
     try:
         token = credentials.credentials
-        decoded_token = auth.verify_id_token(token)
+        
+        # Get the signing key from JWKS
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        
+        # Verify JWT using the signing key
+        # Supabase JWTs use RS256 algorithm
+        decoded_token = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience="authenticated",
+            options={"verify_exp": True}
+        )
+        
         return decoded_token
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Invalid authentication: {str(e)}")
+        raise HTTPException(status_code=401, detail=f"Authentication error: {str(e)}")
 
 
 async def get_current_user(
     token_data: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
-    """Get or create user from Firebase token"""
-    firebase_uid = token_data["uid"]
+    """Get or create user from Supabase token"""
+    supabase_uid = token_data.get("sub")  # Supabase uses 'sub' for user ID
     email = token_data.get("email")
     
-    user = db.query(User).filter(User.firebase_uid == firebase_uid).first()
+    if not supabase_uid:
+        raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
+    
+    user = db.query(User).filter(User.supabase_uid == supabase_uid).first()
     
     if not user:
-        user = User(firebase_uid=firebase_uid, email=email)
+        user = User(supabase_uid=supabase_uid, email=email)
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -61,8 +81,8 @@ async def get_current_user(
 
 @router.post("/verify")
 async def verify_auth(token_data: dict = Depends(verify_token)):
-    """Verify Firebase token"""
-    return {"valid": True, "uid": token_data["uid"]}
+    """Verify Supabase token"""
+    return {"valid": True, "uid": token_data.get("sub")}
 
 
 @router.get("/me")
@@ -71,6 +91,6 @@ async def get_me(current_user: User = Depends(get_current_user)):
     return {
         "id": str(current_user.id),
         "email": current_user.email,
-        "firebase_uid": current_user.firebase_uid,
+        "supabase_uid": current_user.supabase_uid,
     }
 

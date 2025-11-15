@@ -1,11 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react"
-import {
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  onAuthStateChanged,
-} from "firebase/auth"
-import { auth, googleProvider } from "../services/firebase"
+import { supabase } from "../services/supabase"
 
 const AuthContext = createContext()
 
@@ -14,24 +8,47 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user)
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
       setLoading(false)
     })
 
-    return () => unsubscribe()
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+      setLoading(false)
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
   const loginWithEmail = async (email, password) => {
-    return await signInWithEmailAndPassword(auth, email, password)
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+    if (error) throw error
+    return data
   }
 
   const loginWithGoogle = async () => {
-    return await signInWithPopup(auth, googleProvider)
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`,
+      },
+    })
+    if (error) throw error
+    // OAuth redirects automatically, so we don't need to return data here
+    return data
   }
 
   const logout = async () => {
-    return await signOut(auth)
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
   }
 
   const value = {

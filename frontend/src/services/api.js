@@ -1,4 +1,4 @@
-import { auth } from "./firebase"
+import { supabase } from "./supabase"
 
 // API Configuration - HTTPS in production, HTTP in development
 const getApiUrl = () => {
@@ -13,11 +13,11 @@ const getApiUrl = () => {
 const API_URL = getApiUrl()
 
 async function getAuthToken() {
-  const user = auth.currentUser
-  if (!user) {
+  const { data: { session }, error } = await supabase.auth.getSession()
+  if (error || !session) {
     throw new Error("User not authenticated")
   }
-  return await user.getIdToken()
+  return session.access_token
 }
 
 async function apiRequest(endpoint, options = {}) {

@@ -24,10 +24,8 @@ class Settings(BaseSettings):
     AWS_ENDPOINT_URL: Optional[str] = None  # For R2: https://abc123.r2.cloudflarestorage.com
     R2_PUBLIC_URL: Optional[str] = None  # For R2 public domain: https://pub-xxx.r2.dev
     
-    # Firebase
-    FIREBASE_PROJECT_ID: Optional[str] = None
-    FIREBASE_PRIVATE_KEY: Optional[str] = None
-    FIREBASE_CLIENT_EMAIL: Optional[str] = None
+    # Supabase
+    SUPABASE_URL: Optional[str] = None
     
     # API
     API_URL: str = "http://localhost:8000"
