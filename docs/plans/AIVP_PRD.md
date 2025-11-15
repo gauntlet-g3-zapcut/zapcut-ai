@@ -50,7 +50,7 @@ This product extends the existing Zapcut video editor (Electron-based applicatio
 - **Database**: PostgreSQL (user data, brands, projects)
 - **Queue**: Redis + Bull (video generation jobs)
 - **Storage**: AWS S3 (media assets, generated videos)
-- **Authentication**: NextAuth.js or Firebase Auth
+- **Authentication**: Supabase Auth
 
 #### AI/ML Services
 - **LLM**: OpenAI GPT-4 (conversational interface, script generation)

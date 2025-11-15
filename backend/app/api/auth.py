@@ -30,13 +30,48 @@ except Exception as e:
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verify Supabase JWT token and return decoded claims"""
     if not jwks_client:
-        raise HTTPException(status_code=401, detail="Authentication not configured")
+        raise HTTPException(
+            status_code=401, 
+            detail="Authentication not configured. Please set SUPABASE_URL environment variable."
+        )
+    
+    if not supabase_url:
+        raise HTTPException(
+            status_code=401,
+            detail="Supabase URL not configured. Please set SUPABASE_URL environment variable."
+        )
     
     try:
         token = credentials.credentials
         
-        # Get the signing key from JWKS
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        if not token:
+            raise HTTPException(status_code=401, detail="No token provided")
+        
+        # First, decode the header to check the algorithm
+        # Supabase tokens use RS256 algorithm
+        try:
+            # Decode header without verification
+            header = jwt.get_unverified_header(token)
+            token_algorithm = header.get("alg")
+            
+            # Reject non-RS256 tokens (Supabase uses RS256)
+            if token_algorithm != "RS256":
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"Invalid token algorithm: {token_algorithm}. Supabase uses RS256."
+                )
+        except jwt.DecodeError:
+            # If we can't even decode the token structure, it's invalid
+            raise HTTPException(status_code=401, detail="Invalid token format")
+        
+        # Get the signing key from JWKS (Supabase uses RS256)
+        try:
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+        except Exception as e:
+            raise HTTPException(
+                status_code=401,
+                detail=f"Failed to verify token signature: {str(e)}"
+            )
         
         # Verify JWT using the signing key
         # Supabase JWTs use RS256 algorithm
@@ -45,14 +80,32 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
             signing_key.key,
             algorithms=["RS256"],
             audience="authenticated",
-            options={"verify_exp": True}
+            options={"verify_exp": True, "verify_signature": True}
         )
         
+        # Verify the token is from Supabase (check issuer)
+        if "iss" in decoded_token:
+            issuer = decoded_token["iss"]
+            # Supabase tokens have issuer like: https://<project-ref>.supabase.co/auth/v1
+            if "supabase.co" not in issuer and "supabase.io" not in issuer:
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"Invalid token issuer. Expected Supabase issuer but got: {issuer}"
+                )
+        
         return decoded_token
+    except HTTPException:
+        # Re-raise HTTPExceptions as-is
+        raise
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidAlgorithmError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Invalid token algorithm. Supabase uses RS256, but received: {str(e)}"
+        )
     except jwt.InvalidTokenError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+        raise HTTPException(status_code=401, detail=f"Invalid Supabase token: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Authentication error: {str(e)}")
 
