@@ -9,25 +9,25 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Starscape primary button (cosmic gradient)
+        // Zapcut primary button (cosmic gradient)
         default: "bg-gradient-cosmic text-white shadow-default hover:bg-gradient-cosmic-hover hover:-translate-y-0.5 hover:shadow-elevated active:translate-y-0",
         
-        // Starscape destructive button
+        // Zapcut destructive button
         destructive: "bg-error text-white shadow-default hover:bg-error/90",
         
-        // Starscape outline button (secondary)
+        // Zapcut outline button (secondary)
         outline: "border-2 border-light-blue bg-transparent text-light-blue hover:bg-light-blue hover:text-dark-navy",
         
-        // Starscape secondary variant
+        // Zapcut secondary variant
         secondary: "bg-mid-navy text-white shadow-subtle hover:bg-deep-blue",
         
-        // Starscape ghost button
+        // Zapcut ghost button
         ghost: "hover:bg-light-blue/20 hover:text-light-blue",
         
-        // Starscape link button
+        // Zapcut link button
         link: "text-light-blue underline-offset-4 hover:underline",
         
-        // Starscape gradient button
+        // Zapcut gradient button
         gradient: "bg-gradient-cyan-vibrant text-white shadow-elevated hover:scale-105 hover:shadow-glow-cyan active:scale-95",
       },
       size: {

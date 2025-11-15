@@ -16,7 +16,7 @@
 
 ## architecture
 
-React + Vite frontend. Using Zustand for store, Tailwindcss + Shadcn with Starscape branding.
+React + Vite frontend. Using Zustand for store, Tailwindcss + Shadcn with Zapcut branding.
 
 Electron backend (was Rust-based Tauri).
 

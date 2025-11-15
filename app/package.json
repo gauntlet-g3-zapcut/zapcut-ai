@@ -1,36 +1,55 @@
 {
-  "name": "starscape-studio-electron",
-  "description": "A video editing app",
-  "author": "Starscape",
-  "homepage": "https://starscape.digital",
+  "name": "zapcut-ai-electron",
+  "description": "AI Video Ads Generation & Editing",
+  "author": "gauntlet-g3-zapcut",
+  "homepage": "https://zapcut.video",
   "repository": {
     "type": "git",
-    "url": "https://github.com/brucestarlove/StarscapeStudio-electron"
+    "url": "https://github.com/gauntlet-g3-zapcut/zapcut-ai"
   },
   "bugs": {
-    "url": "https://github.com/brucestarlove/StarscapeStudio-electron/issues"
+    "url": "https://github.com/gauntlet-g3-zapcut/zapcut-ai"
   },
   "keywords": [
     "video",
+    "ads",
+    "generation",
     "editing",
-    "app"
+    "app",
+    "ai"
   ],
   "contributors": [
     {
-      "name": "Starscape",
-      "email": "team@starscape.digital",
-      "url": "https://starscape.digital"
+      "name": "Nataly Costa",
+      "linkedin": "https://www.linkedin.com/in/nataly-costa",
+      "url": "https://nataly.xyz"
+    },
+    {
+      "name": "Reena Mary Puthota",
+      "linkedin": "https://www.linkedin.com/in/reena-mary-puthota",
+      "url": "https://www.linkedin.com/in/reena-mary-puthota"
+    },
+    {
+      "name": "Ryan Zernach",
+      "linkedin": "https://linkedin.com/in/zernach",
+      "url": "https://ryan.zernach.com"
+    },
+    {
+      "name": "StarloveDev",
+      "linkedin": "https://www.linkedin.com/in/brucedeanrobinson",
+      "url": "https://zapcut.video"
     }
   ],
   "private": true,
   "version": "1.0.0",
   "type": "commonjs",
-  "main": "electron/main.js",
+  "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "concurrently \"vite\" \"electron electron/main.js --dev\"",
-    "build": "tsc && vite build",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "dev": "npm run build:electron && concurrently \"vite\" \"electron dist-electron/main.js --dev\"",
+    "build": "npm run build:electron && tsc && vite build",
     "preview": "vite preview",
-    "electron:dev": "electron electron/main.js --dev",
+    "electron:dev": "npm run build:electron && electron dist-electron/main.js --dev",
     "electron:build": "npm run build && electron-builder",
     "pack": "electron-builder --dir"
   },
@@ -74,6 +93,7 @@
     "electron-builder": "^24.9.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.16",
+    "ts-node": "^10.9.2",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   }

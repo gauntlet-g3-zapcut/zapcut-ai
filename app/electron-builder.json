@@ -1,13 +1,13 @@
 {
-  "appId": "com.starscape.studio",
-  "productName": "Starscape Studio",
+  "appId": "com.zapcut.studio",
+  "productName": "Zapcut: AI Video Ads Generator & Editor",
   "directories": {
     "output": "build",
     "buildResources": "build-resources"
   },
   "files": [
     "dist/**/*",
-    "electron/**/*",
+    "dist-electron/**/*",
     "package.json",
     "!electron/bin/**/*"
   ],
@@ -21,7 +21,15 @@
   "mac": {
     "category": "public.app-category.video",
     "target": ["dmg"],
-    "icon": "build-resources/icons/icon.icns"
+    "icon": "build-resources/icons/zapcut-app-icon-transparent.png"
+  },
+  "win": {
+    "target": ["nsis"],
+    "icon": "build-resources/icons/zapcut-app-icon-small.ico"
+  },
+  "linux": {
+    "target": ["AppImage"],
+    "icon": "build-resources/icons/zapcut-app-icon-transparent.png"
   }
 }
 

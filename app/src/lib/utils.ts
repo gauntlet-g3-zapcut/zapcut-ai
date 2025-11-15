@@ -216,3 +216,30 @@ export function formatFileSize(bytes: number): string {
 
   return Math.round((bytes / Math.pow(k, i)) * 10) / 10 + ' ' + sizes[i];
 }
+
+// Check if running in Electron
+export function isElectron(): boolean {
+  return typeof window !== 'undefined' && 
+         typeof window.electronAPI !== 'undefined';
+}
+
+// Wait for Electron API to be available (with timeout)
+export function waitForElectronAPI(timeout: number = 5000): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (isElectron()) {
+      resolve(true);
+      return;
+    }
+
+    const startTime = Date.now();
+    const checkInterval = setInterval(() => {
+      if (isElectron()) {
+        clearInterval(checkInterval);
+        resolve(true);
+      } else if (Date.now() - startTime > timeout) {
+        clearInterval(checkInterval);
+        resolve(false);
+      }
+    }, 100);
+  });
+}

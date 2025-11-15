@@ -1,5 +1,5 @@
 /**
- * Audio Manager for Starscape Studio
+ * Audio Manager for Zapcut: AI Video Ads Generator & Editor
  * 
  * Handles synchronization of audio playback across:
  * - Embedded audio in video clips (via <video> element)
@@ -243,7 +243,7 @@ export class AudioManager {
     }
 
     this.audioElements.clear();
-    
+
     // Clear video element reference and ensure it's cleaned
     if (this.videoElement) {
       this.videoElement.pause();
@@ -251,7 +251,7 @@ export class AudioManager {
       this.videoElement.load(); // Force unload
       this.videoElement = null;
     }
-    
+
     // Reset internal state
     this.isPlaying = false;
   }
