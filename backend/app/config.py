@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     
     # API Configuration
     API_URL: str = "http://localhost:8000"
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:5174,http://localhost:5173,http://localhost:3000,https://app.zapcut.video"
     
     class Config:
         env_file = ".env"

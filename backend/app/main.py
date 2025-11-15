@@ -6,17 +6,10 @@ from app.api import auth, brands, chat, campaigns
 app = FastAPI(title="AdCraft API", version="1.0.0")
 
 # CORS middleware - specify exact origins for credentialed requests
+# Uses CORS_ORIGINS from config (comma-separated string converted to list)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://adcraft-blond.vercel.app",
-        "https://frontend-inalnorox-natalyscst-gmailcoms-projects.vercel.app",
-        "https://frontend-etezftdsl-natalyscst-gmailcoms-projects.vercel.app",
-        "https://frontend-qpw6399ey-natalyscst-gmailcoms-projects.vercel.app",
-        "http://localhost:5173",
-        "http://localhost:5175",
-        "http://localhost:3000",
-    ],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
