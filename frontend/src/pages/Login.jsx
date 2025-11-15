@@ -9,8 +9,10 @@ export default function Login() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
   const [loading, setLoading] = useState(false)
-  const { user, loginWithEmail, loginWithGoogle } = useAuth()
+  const [isSignup, setIsSignup] = useState(false)
+  const { user, loginWithEmail, signupWithEmail, loginWithGoogle } = useAuth()
   const navigate = useNavigate()
 
   // Redirect if already logged in
@@ -20,14 +22,23 @@ export default function Login() {
     }
   }, [user, navigate])
 
-  const handleEmailLogin = async (e) => {
+  const handleEmailSubmit = async (e) => {
     e.preventDefault()
     setError("")
+    setSuccess("")
     setLoading(true)
 
     try {
-      await loginWithEmail(email, password)
-      navigate("/dashboard")
+      if (isSignup) {
+        await signupWithEmail(email, password)
+        setSuccess("Account created successfully! Please sign in.")
+        setEmail("")
+        setPassword("")
+        setIsSignup(false)
+      } else {
+        await loginWithEmail(email, password)
+        navigate("/dashboard")
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -54,14 +65,22 @@ export default function Login() {
         <CardHeader className="text-center">
           <CardTitle className="text-3xl">Welcome to AdCraft</CardTitle>
           <CardDescription>
-            Sign in to start creating amazing video ads
+            {isSignup 
+              ? "Create an account to start creating amazing video ads"
+              : "Sign in to start creating amazing video ads"
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleEmailLogin} className="space-y-4">
+          <form onSubmit={handleEmailSubmit} className="space-y-4">
             {error && (
               <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">
                 {error}
+              </div>
+            )}
+            {success && (
+              <div className="bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 text-sm p-3 rounded-md">
+                {success}
               </div>
             )}
 
@@ -94,9 +113,29 @@ export default function Login() {
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
+              {loading 
+                ? (isSignup ? "Creating account..." : "Signing in...") 
+                : (isSignup ? "Sign Up" : "Sign In")
+              }
             </Button>
           </form>
+
+          <div className="mt-4 text-center text-sm">
+            <span className="text-muted-foreground">
+              {isSignup ? "Already have an account? " : "Don't have an account? "}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setIsSignup(!isSignup)
+                setError("")
+                setSuccess("")
+              }}
+              className="text-primary hover:underline font-medium"
+            >
+              {isSignup ? "Sign In" : "Sign Up"}
+            </button>
+          </div>
 
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
