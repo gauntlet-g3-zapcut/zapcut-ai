@@ -1,35 +1,36 @@
 from pydantic_settings import BaseSettings
-from typing import List, Optional, Union
-import os
+from typing import List, Optional
+from urllib.parse import quote_plus
 
 
 class Settings(BaseSettings):
-    # Database
+    """
+    Application settings loaded from environment variables.
+    
+    Core required environment variables:
+    - DATABASE_URL: PostgreSQL connection string (or constructed from Supabase)
+    - OPENAI_API_KEY: OpenAI API key for AI features
+    - REPLICATE_API_TOKEN: Replicate API token for video/image generation (Sora, Suno, etc.)
+    - SUPABASE_URL: Supabase project URL
+    - SUPABASE_SERVICE_ROLE_KEY: Supabase service role key for admin operations
+    - SUPABASE_DB_PASSWORD: Supabase database password (used if DATABASE_URL not set)
+    """
+    
+    # Core Database Configuration
     DATABASE_URL: Optional[str] = None
     
-    # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
-    
-    # OpenAI
+    # OpenAI Configuration
     OPENAI_API_KEY: Optional[str] = None
     
-    # Replicate
+    # Replicate Configuration
     REPLICATE_API_TOKEN: Optional[str] = None
     
-    # AWS S3 / Cloudflare R2 / Compatible Storage
-    AWS_ACCESS_KEY_ID: Optional[str] = None
-    AWS_SECRET_ACCESS_KEY: Optional[str] = None
-    AWS_S3_BUCKET: Optional[str] = None
-    AWS_REGION: str = "auto"
-    AWS_ENDPOINT_URL: Optional[str] = None  # For R2: https://abc123.r2.cloudflarestorage.com
-    R2_PUBLIC_URL: Optional[str] = None  # For R2 public domain: https://pub-xxx.r2.dev
-    
-    # Supabase
+    # Supabase Configuration
     SUPABASE_URL: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     SUPABASE_DB_PASSWORD: Optional[str] = None
     
-    # API
+    # API Configuration
     API_URL: str = "http://localhost:8000"
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
     
@@ -46,23 +47,28 @@ class Settings(BaseSettings):
     def database_url(self) -> str:
         """
         Get database URL, constructing from Supabase credentials if needed.
-        Supabase DATABASE_URL format: postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
+        
+        Priority:
+        1. Use DATABASE_URL if it's a valid PostgreSQL connection string
+        2. Construct from SUPABASE_URL and SUPABASE_DB_PASSWORD if available
+        3. Raise error if neither is available
+        
+        Supabase DATABASE_URL format: 
+        postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
         """
         # If DATABASE_URL is set and is a valid PostgreSQL connection string, use it
         if self.DATABASE_URL and self.DATABASE_URL.startswith(('postgresql://', 'postgres://')):
             return self.DATABASE_URL
         
-        # If DATABASE_URL is set but invalid (e.g., HTTPS URL), try to construct from Supabase
+        # Construct from Supabase credentials if available
         if self.SUPABASE_URL and self.SUPABASE_DB_PASSWORD:
             # Extract project ref from SUPABASE_URL (e.g., https://rksxuhhegcxqmkjopudx.supabase.co)
             project_ref = self.SUPABASE_URL.replace('https://', '').replace('http://', '').split('.')[0]
-            # Construct PostgreSQL connection string
-            # URL encode password in case it has special characters
-            from urllib.parse import quote_plus
+            # Construct PostgreSQL connection string with URL-encoded password
             encoded_password = quote_plus(self.SUPABASE_DB_PASSWORD)
             return f"postgresql://postgres:{encoded_password}@db.{project_ref}.supabase.co:5432/postgres"
         
-        # Fallback: raise error if no valid database URL can be constructed
+        # Raise error if no valid database URL can be constructed
         if not self.DATABASE_URL:
             raise ValueError(
                 "DATABASE_URL is required. Either set DATABASE_URL directly or provide "
