@@ -35,9 +35,10 @@ stories:
 
   - id: "5.5"
     name: "Product Image Overlays"
-    status: "backlog"
+    status: "done"
     priority: "P2"
     estimate: "45 mins"
+    completed: "2025-11-15"
 
   - id: "5.6"
     name: "Enhanced FFmpeg Video Composition"

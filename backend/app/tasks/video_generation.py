@@ -268,11 +268,19 @@ def generate_campaign_video(self, campaign_id: str):
         self.db.commit()
 
         self.update_state(state="PROGRESS", meta={"stage": "Composing final video..."})
-        
+
+        # Get product images from brand
+        product_images = []
+        if hasattr(brand, 'product_image_1_url') and brand.product_image_1_url:
+            product_images.append(brand.product_image_1_url)
+        if hasattr(brand, 'product_image_2_url') and brand.product_image_2_url:
+            product_images.append(brand.product_image_2_url)
+
         final_video_path = compose_video(
             video_urls,
             music_result.get("url") or campaign.music_url,
-            brand.title
+            brand.title,
+            product_images=product_images if product_images else None
         )
         
         # Upload final video to S3
@@ -340,12 +348,101 @@ def upload_to_s3_bytes(data, key, content_type):
     )
 
 
-def compose_video(video_urls, music_url, brand_title):
+def add_product_overlays(input_video, output_video, product_images, temp_dir):
+    """
+    Add product image overlays at specified timestamps using FFmpeg
+
+    Args:
+        input_video: Path to input video file
+        output_video: Path to output video file
+        product_images: List of product image URLs [product_1_url, product_2_url]
+        temp_dir: Temporary directory for downloaded images
+    """
+    if not product_images or len(product_images) == 0:
+        # No product images, just copy input to output
+        import shutil
+        shutil.copy(input_video, output_video)
+        return
+
+    # Download product images
+    product_image_files = []
+    for i, image_url in enumerate(product_images[:2], start=1):  # Max 2 products
+        if image_url:
+            try:
+                image_data = download_file(image_url)
+                image_path = os.path.join(temp_dir, f"product_{i}.png")
+                with open(image_path, "wb") as f:
+                    f.write(image_data)
+                product_image_files.append(image_path)
+            except Exception as e:
+                print(f"Error downloading product image {i}: {e}")
+                product_image_files.append(None)
+        else:
+            product_image_files.append(None)
+
+    # Build FFmpeg filter for overlays
+    filter_parts = []
+    current_label = "0:v"
+
+    # Product 1 overlay: 5-8 seconds, bottom-right
+    if len(product_image_files) > 0 and product_image_files[0]:
+        filter_parts.append(f"[1:v]scale=200:-1[ovr1]")
+        filter_parts.append(f"[{current_label}][ovr1]overlay=W-w-20:H-h-20:enable='between(t,5,8)'[v1]")
+        current_label = "v1"
+
+    # Product 2 overlay: 15-18 seconds, bottom-right
+    if len(product_image_files) > 1 and product_image_files[1]:
+        filter_parts.append(f"[2:v]scale=200:-1[ovr2]")
+        filter_parts.append(f"[{current_label}][ovr2]overlay=W-w-20:H-h-20:enable='between(t,15,18)'[v2]")
+        current_label = "v2"
+
+    if not filter_parts:
+        # No overlays to add
+        import shutil
+        shutil.copy(input_video, output_video)
+        return
+
+    # Build FFmpeg command
+    cmd = ["ffmpeg", "-i", input_video]
+
+    # Add product image inputs
+    for img_file in product_image_files:
+        if img_file:
+            cmd.extend(["-i", img_file])
+
+    # Add filter complex
+    filter_complex = ";".join(filter_parts)
+    cmd.extend(["-filter_complex", filter_complex])
+
+    # Map output
+    cmd.extend(["-map", f"[{current_label}]", "-map", "0:a?"])
+
+    # Output settings
+    cmd.extend([
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "23",
+        "-c:a", "copy",
+        output_video
+    ])
+
+    print(f"FFmpeg overlay command: {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
+
+
+def compose_video(video_urls, music_url, brand_title, product_images=None):
     """
     Compose final video using FFmpeg
     - Stitch 5 scenes with 0.5s crossfade
     - Mix audio underneath
+    - Add product image overlays
     - Add text overlays
+
+    Args:
+        video_urls: Dict of scene URLs {scene_1: url, scene_2: url, ...}
+        music_url: URL of background music
+        brand_title: Brand name for text overlay
+        product_images: List of product image URLs [product_1_url, product_2_url]
     """
     with tempfile.TemporaryDirectory() as temp_dir:
         # Download all video files
@@ -402,14 +499,22 @@ def compose_video(video_urls, music_url, brand_title):
                 output_with_music
             ]
             subprocess.run(cmd, check=True)
-            final_path = output_with_music
+            video_with_music = output_with_music
         else:
-            final_path = output_path
-        
+            video_with_music = output_path
+
+        # Add product image overlays
+        if product_images:
+            output_with_overlays = os.path.join(temp_dir, "output_with_overlays.mp4")
+            add_product_overlays(video_with_music, output_with_overlays, product_images, temp_dir)
+            final_path = output_with_overlays
+        else:
+            final_path = video_with_music
+
         # Copy to permanent location
         import shutil
         permanent_path = f"/tmp/{uuid.uuid4()}.mp4"
         shutil.copy(final_path, permanent_path)
-        
+
         return permanent_path
 
