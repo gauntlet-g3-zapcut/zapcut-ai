@@ -1,0 +1,6 @@
+# BMAD (local only)
+.bmad-core/
+.bmad-*/
+
+# macOS
+.DS_Store
