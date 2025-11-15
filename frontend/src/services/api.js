@@ -8,6 +8,7 @@ const getApiUrl = () => {
   const apiUrl = import.meta.env.PROD 
     ? "https://zapcut-ai-production.up.railway.app" 
     : "http://localhost:8000"
+  console.log("API URL:", apiUrl)
   return apiUrl
 }
 
