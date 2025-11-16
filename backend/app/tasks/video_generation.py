@@ -35,11 +35,154 @@ class VideoGenerationTask(Task):
             self.db.close()
 
 
+@celery_app.task(bind=True)
+def generate_campaign_video_test_mode(self, campaign_id: str):
+    """
+    🧪 TEST MODE: Generate video without database
+    Runs full Epic 5 pipeline with test data
+    """
+    print(f"🧪 TEST MODE: Starting Epic 5 for campaign {campaign_id}")
+
+    try:
+        # Test data (no database)
+        brand_info = {
+            "title": "ZapCut Test Brand",
+            "description": "A revolutionary video editing platform powered by AI"
+        }
+
+        creative_bible_data = {
+            "vibe": "Modern & Professional",
+            "style": "Clean, minimalist with dynamic motion",
+            "colors": ["#3b82f6", "#1e40af", "#60a5fa"],
+            "energy_level": "High"
+        }
+
+        # Step 1: Generate reference images
+        self.update_state(state="PROGRESS", meta={"stage": "Generating reference images...", "progress": 10})
+        print("📸 Step 1: Generating reference images...")
+
+        image_prompts = generate_reference_image_prompts(creative_bible_data, brand_info)
+        reference_images = generate_reference_images(image_prompts)
+        reference_image_urls = {img["type"]: img["url"] for img in reference_images}
+
+        # Step 2: Generate storyline and prompts
+        self.update_state(state="PROGRESS", meta={"stage": "Creating storyboard...", "progress": 20})
+        print("📝 Step 2: Generating storyline...")
+
+        storyline_data = generate_storyline_and_prompts(creative_bible_data, brand_info)
+        sora_prompts = generate_sora_prompts(
+            storyline_data["storyline"],
+            creative_bible_data,
+            reference_image_urls,
+            brand_info
+        )
+
+        # Step 3: Generate video scenes
+        print("🎬 Step 3: Generating video scenes...")
+        video_urls = {}
+        prev_scene_url = None
+
+        for i, prompt_data in enumerate(sora_prompts, start=1):
+            scene_num = prompt_data.get("scene_number", i)
+            progress = 20 + (scene_num * 10)  # 30%, 40%, 50%...
+
+            self.update_state(
+                state="PROGRESS",
+                meta={"stage": f"Generating scene {scene_num}/5...", "progress": progress}
+            )
+            print(f"   Scene {scene_num}/5...")
+
+            from app.services.replicate_service import generate_video_with_sora
+            result = generate_video_with_sora(prompt_data, scene_num, prev_scene_url=prev_scene_url)
+
+            if result.get("url"):
+                video_data = download_file(result["url"])
+                key = f"test-campaigns/{campaign_id}/scene_{scene_num}.mp4"
+                s3_url = upload_to_s3_bytes(video_data, key, "video/mp4")
+                video_urls[f"scene_{scene_num}"] = s3_url
+                prev_scene_url = s3_url
+                print(f"   ✅ Scene {scene_num} generated")
+
+        # Step 4: Generate voiceovers
+        self.update_state(state="PROGRESS", meta={"stage": "Generating voiceovers...", "progress": 70})
+        print("🎙️ Step 4: Generating voiceovers...")
+
+        scenes_with_text = []
+        if storyline_data.get("storyline", {}).get("scenes"):
+            for scene in storyline_data["storyline"]["scenes"]:
+                scenes_with_text.append({
+                    "scene_number": scene.get("scene_number", len(scenes_with_text) + 1),
+                    "voiceover_text": scene.get("voiceover_text", scene.get("description", ""))
+                })
+
+        voiceover_results = generate_voiceovers_parallel(scenes_with_text)
+        voiceover_urls = []
+
+        for result in voiceover_results:
+            if result.get("url"):
+                scene_num = result["scene_number"]
+                audio_data = download_file(result["url"])
+                key = f"test-campaigns/{campaign_id}/voiceover_{scene_num}.mp3"
+                voiceover_url = upload_to_s3_bytes(audio_data, key, "audio/mpeg")
+                voiceover_urls.append(voiceover_url)
+            else:
+                voiceover_urls.append(None)
+
+        # Step 5: Generate music
+        self.update_state(state="PROGRESS", meta={"stage": "Generating soundtrack...", "progress": 80})
+        print("🎵 Step 5: Generating music...")
+
+        music_result = generate_music_with_suno(storyline_data.get("suno_prompt", "Upbeat modern electronic music"))
+        music_url = None
+
+        if music_result.get("url"):
+            music_data = download_file(music_result["url"])
+            key = f"test-campaigns/{campaign_id}/music.mp3"
+            music_url = upload_to_s3_bytes(music_data, key, "audio/mpeg")
+
+        # Step 6: Compose final video
+        self.update_state(state="PROGRESS", meta={"stage": "Composing final video...", "progress": 90})
+        print("🎞️ Step 6: Composing final video...")
+
+        final_video_path = compose_video(
+            video_urls,
+            music_url,
+            brand_info["title"],
+            product_images=None,
+            voiceover_urls=voiceover_urls if voiceover_urls else None
+        )
+
+        # Upload final video
+        with open(final_video_path, "rb") as f:
+            video_data = f.read()
+
+        key = f"test-campaigns/{campaign_id}/final.mp4"
+        final_url = upload_to_s3_bytes(video_data, key, "video/mp4")
+
+        os.remove(final_video_path)
+
+        self.update_state(state="SUCCESS", meta={"stage": "Complete!", "progress": 100})
+        print(f"✅ TEST MODE: Epic 5 complete! Final video: {final_url}")
+
+        return {
+            "campaign_id": campaign_id,
+            "final_video_url": final_url,
+            "status": "completed",
+            "test_mode": True
+        }
+
+    except Exception as e:
+        print(f"❌ TEST MODE ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+
 @celery_app.task(base=VideoGenerationTask, bind=True)
 def generate_campaign_video(self, campaign_id: str):
     """
     Main task to generate complete video ad
-    
+
     Steps:
     1. Generate reference images (if needed)
     2. Generate storyline and prompts

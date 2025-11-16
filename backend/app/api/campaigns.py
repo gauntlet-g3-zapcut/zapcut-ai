@@ -7,7 +7,7 @@ from app.models.brand import Brand
 from app.models.creative_bible import CreativeBible
 from app.models.campaign import Campaign
 from app.api.auth import get_current_user
-from app.tasks.video_generation import generate_campaign_video
+from app.tasks.video_generation import generate_campaign_video, generate_campaign_video_test_mode
 import uuid
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
@@ -36,9 +36,9 @@ async def create_campaign(
     print(f"📹 Triggering Epic 5 video generation pipeline...")
 
     try:
-        # Trigger Epic 5 video generation task
-        generate_campaign_video.delay(test_campaign_id)
-        print(f"✅ Epic 5 task queued successfully!")
+        # Trigger Epic 5 TEST MODE video generation task
+        generate_campaign_video_test_mode.delay(test_campaign_id)
+        print(f"✅ Epic 5 TEST MODE task queued successfully!")
     except Exception as e:
         print(f"⚠️  Epic 5 task queue error (continuing anyway): {e}")
 
