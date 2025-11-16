@@ -122,14 +122,19 @@ sleep 30  # Give it time to start deploying
 
 # Get the backend URL
 echo -e "${YELLOW}Getting Backend API URL...${NC}"
-BACKEND_URL=$(railway domain 2>/dev/null || echo "")
+DOMAIN_OUTPUT=$(railway domain 2>&1 || echo "")
+
+# Extract URL from Railway CLI output
+BACKEND_URL=$(echo "$DOMAIN_OUTPUT" | grep -oE 'https://[a-zA-Z0-9.-]+\.railway\.app' | head -1)
 
 if [ -z "$BACKEND_URL" ]; then
     echo -e "${YELLOW}⚠ Backend URL not yet available${NC}"
-    echo "Creating Railway domain..."
-    railway domain --json 2>/dev/null || true
-    sleep 5
-    BACKEND_URL=$(railway domain 2>/dev/null || echo "")
+    echo "Railway CLI output: $DOMAIN_OUTPUT"
+    echo ""
+    echo "Please get the Backend URL from Railway dashboard:"
+    echo "https://railway.app/project/$RAILWAY_PROJECT_NAME"
+    echo ""
+    read -p "Enter the Backend API URL: " BACKEND_URL
 fi
 
 if [ -n "$BACKEND_URL" ]; then
@@ -139,7 +144,7 @@ if [ -n "$BACKEND_URL" ]; then
     fi
     echo -e "${GREEN}✓ Backend API URL: ${BACKEND_URL}${NC}"
 else
-    echo -e "${YELLOW}⚠ Backend URL will be available after deployment completes${NC}"
+    echo -e "${YELLOW}⚠ Backend URL will be set later${NC}"
     BACKEND_URL="<pending>"
 fi
 

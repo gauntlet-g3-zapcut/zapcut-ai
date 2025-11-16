@@ -95,14 +95,19 @@ sleep 45  # Frontend builds take longer
 
 # Get the frontend URL
 echo -e "${YELLOW}Getting Frontend URL...${NC}"
-FRONTEND_URL=$(railway domain 2>/dev/null || echo "")
+DOMAIN_OUTPUT=$(railway domain 2>&1 || echo "")
+
+# Extract URL from Railway CLI output (handles different output formats)
+FRONTEND_URL=$(echo "$DOMAIN_OUTPUT" | grep -oE 'https://[a-zA-Z0-9.-]+\.railway\.app' | head -1)
 
 if [ -z "$FRONTEND_URL" ]; then
     echo -e "${YELLOW}⚠ Frontend URL not yet available${NC}"
-    echo "Creating Railway domain..."
-    railway domain --json 2>/dev/null || true
-    sleep 5
-    FRONTEND_URL=$(railway domain 2>/dev/null || echo "")
+    echo "Railway CLI output: $DOMAIN_OUTPUT"
+    echo ""
+    echo "Please get the Frontend URL from Railway dashboard:"
+    echo "https://railway.app/project/$RAILWAY_PROJECT_NAME"
+    echo ""
+    read -p "Enter the Frontend URL: " FRONTEND_URL
 fi
 
 if [ -n "$FRONTEND_URL" ]; then
@@ -112,12 +117,8 @@ if [ -n "$FRONTEND_URL" ]; then
     fi
     echo -e "${GREEN}✓ Frontend URL: ${FRONTEND_URL}${NC}"
 else
-    echo -e "${YELLOW}⚠ Frontend URL will be available after deployment completes${NC}"
-    echo ""
-    echo "Check Railway dashboard for the URL:"
-    echo "https://railway.app/project/$RAILWAY_PROJECT_NAME"
-    echo ""
-    read -p "Enter the Frontend URL once available: " FRONTEND_URL
+    echo -e "${RED}❌ Could not get frontend URL${NC}"
+    exit 1
 fi
 
 # Update state with frontend URL
