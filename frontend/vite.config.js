@@ -71,8 +71,14 @@ function serveEditorApp() {
 
 // https://vite.dev/config/
 export default defineConfig({
+  root: '.',  // Explicitly set root to current directory (where index.html is)
   plugins: [react(), serveEditorApp()],
   publicDir: 'public',
+  build: {
+    rollupOptions: {
+      input: resolve(__dirname, 'index.html')  // Explicitly use the root index.html, not app/index.html
+    }
+  },
   server: {
     fs: {
       // Allow serving files from the Electron app directory
