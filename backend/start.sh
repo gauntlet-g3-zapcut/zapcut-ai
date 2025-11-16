@@ -4,6 +4,17 @@
 # Don't exit on error - we want to see all errors
 set +e
 
+# Ensure we're in the right directory
+if [ -f "app/main.py" ]; then
+    echo "✅ Found app/main.py in current directory"
+elif [ -f "backend/app/main.py" ]; then
+    echo "✅ Found backend/app/main.py, changing directory"
+    cd backend
+elif [ -f "../backend/app/main.py" ]; then
+    echo "✅ Found backend/app/main.py in parent, changing directory"
+    cd ../backend
+fi
+
 echo "=========================================="
 echo "Starting AdCraft API Server"
 echo "=========================================="
@@ -11,6 +22,7 @@ echo "PORT: ${PORT:-not set}"
 echo "PYTHON_VERSION: $(python --version 2>&1 || echo 'not found')"
 echo "Working directory: $(pwd)"
 echo "Python path: $(which python)"
+echo "Files in current dir: $(ls -la | head -5)"
 echo "=========================================="
 
 # Log environment variables (without sensitive values)
