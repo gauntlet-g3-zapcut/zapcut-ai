@@ -52,7 +52,7 @@ if (typeof window !== 'undefined') {
         }
       })
       localStorage.setItem(key, STORAGE_VERSION)
-      console.log('✅ Storage migration completed: cleared stale tokens')
+      // Storage migration completed
     }
   } catch (e) {
     // ignore storage errors (private mode etc.)

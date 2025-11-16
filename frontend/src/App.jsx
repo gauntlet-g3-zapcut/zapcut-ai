@@ -8,6 +8,7 @@ import BrandChat from "./pages/BrandChat"
 import StorylineReview from "./pages/StorylineReview"
 import VideoProgress from "./pages/VideoProgress"
 import VideoPlayer from "./pages/VideoPlayer"
+import CampaignsList from "./pages/CampaignsList"
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -33,6 +34,14 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <Dashboard />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/campaigns"
+        element={
+          <PrivateRoute>
+            <CampaignsList />
           </PrivateRoute>
         }
       />

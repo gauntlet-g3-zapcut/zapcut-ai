@@ -6,31 +6,15 @@ const getApiUrl = (): string => {
     return import.meta.env.VITE_API_URL as string
   }
   const apiUrl = import.meta.env.VITE_PROD
-    ? "https://zapcut-ai-production.up.railway.app"
+    ? "https://zapcut-api.fly.dev"
     : "http://localhost:8000"
-  console.log("API URL:", apiUrl)
   return apiUrl
 }
 
 const API_URL = getApiUrl()
 
 /**
- * Decode JWT header to check algorithm without verification
- */
-function getTokenAlgorithm(token: string | null): string | null {
-  if (!token) return null
-  try {
-    const header = JSON.parse(atob(token.split('.')[0].replace(/-/g, '+').replace(/_/g, '/')))
-    return header.alg || null
-  } catch {
-    return null
-  }
-}
-
-/**
  * Get a valid Supabase auth token
- * Note: Supabase may issue RS256 (modern/JWKS) or HS256 (legacy/JWT secret) tokens
- * The backend handles verification for both algorithms
  */
 async function getAuthToken(): Promise<string> {
   const { data: { session }, error } = await supabase.auth.getSession()
@@ -39,13 +23,7 @@ async function getAuthToken(): Promise<string> {
     throw new Error('User not authenticated')
   }
 
-  const token = session.access_token
-  
-  // Note: Supabase may issue either RS256 (modern) or HS256 (legacy) tokens
-  // The backend now supports both algorithms, so we just return the token
-  // The backend will verify it appropriately based on the algorithm
-  
-  return token
+  return session.access_token
 }
 
 interface RequestOptions extends RequestInit {
@@ -55,40 +33,59 @@ interface RequestOptions extends RequestInit {
 async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions = {}, retryCount = 0): Promise<T> {
   const maxRetries = 1
   const token = await getAuthToken()
+  
+  const url = `${API_URL}${endpoint}`
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...options.headers,
-    },
-  })
+  // Add timeout to prevent hanging requests
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
 
-  // Handle 401 Unauthorized - might be due to invalid token
-  if (response.status === 401 && retryCount < maxRetries) {
-    // Try refreshing the session and retrying once
-    console.warn("Received 401, attempting to refresh session and retry...")
-    try {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
-      if (!refreshError && refreshData.session) {
-        // Retry the request with the new token
-        return apiRequest<T>(endpoint, options, retryCount + 1)
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...options.headers,
+      },
+    })
+    
+    clearTimeout(timeoutId)
+
+    // Handle 401 Unauthorized - might be due to invalid token
+    if (response.status === 401 && retryCount < maxRetries) {
+      // Try refreshing the session and retrying once
+      try {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+        if (!refreshError && refreshData.session) {
+          // Retry the request with the new token
+          return apiRequest<T>(endpoint, options, retryCount + 1)
+        }
+      } catch (refreshErr) {
+        console.error("Failed to refresh session:", refreshErr)
       }
-    } catch (refreshErr) {
-      console.error("Failed to refresh session:", refreshErr)
+      // If refresh fails, sign out and throw error
+      await supabase.auth.signOut()
+      throw new Error("Session expired. Please log in again.")
     }
-    // If refresh fails, sign out and throw error
-    await supabase.auth.signOut()
-    throw new Error("Session expired. Please log in again.")
-  }
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "An error occurred" })) as { detail?: string; message?: string }
-    throw new Error(error.detail || error.message || "Request failed")
-  }
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: "An error occurred" })) as { detail?: string; message?: string }
+      console.error(`[API] Request failed: ${response.status}`, error)
+      throw new Error(error.detail || error.message || "Request failed")
+    }
 
-  return response.json() as Promise<T>
+    const data = await response.json()
+    return data as T
+  } catch (error: unknown) {
+    clearTimeout(timeoutId)
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error(`[API] Request timeout: ${url}`)
+      throw new Error("Request timed out. Please check your connection.")
+    }
+    throw error
+  }
 }
 
 interface FormDataRequestOptions extends RequestInit {
@@ -114,23 +111,22 @@ async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: F
     },
   })
 
-  // Handle 401 Unauthorized - might be due to invalid token
-  if (response.status === 401 && retryCount < maxRetries) {
-    // Try refreshing the session and retrying once
-    console.warn("Received 401, attempting to refresh session and retry...")
-    try {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
-      if (!refreshError && refreshData.session) {
-        // Retry the request with the new token
-        return apiRequestWithFormData<T>(endpoint, formData, options, retryCount + 1)
+    // Handle 401 Unauthorized - might be due to invalid token
+    if (response.status === 401 && retryCount < maxRetries) {
+      // Try refreshing the session and retrying once
+      try {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+        if (!refreshError && refreshData.session) {
+          // Retry the request with the new token
+          return apiRequestWithFormData<T>(endpoint, formData, options, retryCount + 1)
+        }
+      } catch (refreshErr) {
+        console.error("Failed to refresh session:", refreshErr)
       }
-    } catch (refreshErr) {
-      console.error("Failed to refresh session:", refreshErr)
+      // If refresh fails, sign out and throw error
+      await supabase.auth.signOut()
+      throw new Error("Session expired. Please log in again.")
     }
-    // If refresh fails, sign out and throw error
-    await supabase.auth.signOut()
-    throw new Error("Session expired. Please log in again.")
-  }
 
   if (!response.ok) {
     let errorData: { detail?: string | ValidationError[]; message?: string }
@@ -159,12 +155,16 @@ export const api = {
   createBrand: <T = unknown>(formData: FormData) => apiRequestWithFormData<T>("/api/brands/", formData),
 
   // Campaigns
+  getAllCampaigns: <T = unknown>() => apiRequest<T>("/api/campaigns/"),
   getCampaigns: <T = unknown>(brandId: string) => apiRequest<T>(`/api/brands/${brandId}/campaigns`),
   getCampaign: <T = unknown>(campaignId: string) => apiRequest<T>(`/api/campaigns/${campaignId}`),
   getCampaignStatus: <T = unknown>(campaignId: string) => apiRequest<T>(`/api/campaigns/${campaignId}/status`),
-  createCampaign: <T = unknown>(data: unknown) => apiRequest<T>("/api/campaigns", {
+  createCampaign: <T = unknown>(data: unknown) => apiRequest<T>("/api/campaigns/", {
     method: "POST",
     body: JSON.stringify(data),
+  }),
+  deleteCampaign: <T = unknown>(campaignId: string) => apiRequest<T>(`/api/campaigns/${campaignId}`, {
+    method: "DELETE",
   }),
 
   // Campaign answers

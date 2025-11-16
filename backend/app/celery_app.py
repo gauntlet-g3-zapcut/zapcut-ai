@@ -1,36 +1,55 @@
+"""Celery application configuration."""
 import logging
+import ssl
 from celery import Celery
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Initialize Celery only if REDIS_URL is configured
-# This allows the app to start even if Redis is not available
-celery_app = None
+# Initialize Celery app
+# Upstash Redis requires SSL, so we need to configure broker_connection_retry_on_startup
+redis_url = settings.REDIS_URL or 'redis://localhost:6379/0'
 
-if settings.REDIS_URL:
-    try:
-        celery_app = Celery(
-            "adcraft",
-            broker=settings.REDIS_URL,
-            backend=settings.REDIS_URL,
-            include=["app.tasks.video_generation"]
-        )
-        
-        celery_app.conf.update(
-            task_serializer="json",
-            accept_content=["json"],
-            result_serializer="json",
-            timezone="UTC",
-            enable_utc=True,
-            task_track_started=True,
-            task_time_limit=3600,  # 1 hour max
-            task_soft_time_limit=3000,  # 50 minutes soft limit
-        )
-        logger.info("Celery configured with Redis successfully")
-    except Exception as e:
-        logger.error(f"Celery initialization failed: {e}", exc_info=True)
-        celery_app = None
+# If using rediss:// (SSL), add ssl_cert_reqs parameter to URL
+if redis_url.startswith('rediss://'):
+    # Add ssl_cert_reqs=none to the URL for Upstash Redis
+    if '?' in redis_url:
+        broker_url = f"{redis_url}&ssl_cert_reqs=none"
+        backend_url = f"{redis_url}&ssl_cert_reqs=none"
+    else:
+        broker_url = f"{redis_url}?ssl_cert_reqs=none"
+        backend_url = f"{redis_url}?ssl_cert_reqs=none"
 else:
-    logger.warning("REDIS_URL not configured - Celery tasks will not be available")
+    broker_url = redis_url
+    backend_url = redis_url
 
+celery_app = Celery(
+    'zapcut',
+    broker=broker_url,
+    backend=backend_url,
+    include=['app.tasks.video_generation']
+)
+
+# Celery configuration
+celery_app.conf.update(
+    task_serializer='json',
+    accept_content=['json'],
+    result_serializer='json',
+    timezone='UTC',
+    enable_utc=True,
+    task_track_started=True,
+    task_time_limit=600,  # 10 minutes per task
+    task_soft_time_limit=540,  # 9 minutes soft limit
+    worker_prefetch_multiplier=1,  # Prevent task hoarding
+    worker_max_tasks_per_child=50,  # Restart workers after 50 tasks
+    task_acks_late=True,  # Acknowledge tasks after completion
+    task_reject_on_worker_lost=True,  # Reject tasks if worker dies
+    broker_connection_retry_on_startup=True,  # Retry connection on startup
+    # SSL configuration for Upstash Redis
+    broker_connection_ssl={'ssl_cert_reqs': ssl.CERT_NONE},
+    result_backend_transport_options={
+        'ssl_cert_reqs': ssl.CERT_NONE,
+    },
+)
+
+logger.info("Celery app initialized")

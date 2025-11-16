@@ -7,24 +7,40 @@ import { Plus } from "lucide-react"
 import { api } from "../services/api"
 
 export default function Dashboard() {
-  const { user, logout } = useAuth()
+  const { user, logout, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [brands, setBrands] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
+    // Wait for auth to finish loading and user to be available
+    if (authLoading) {
+      setLoading(true)
+      return
+    }
+
+    if (!user) {
+      // User not authenticated, redirect will happen via PrivateRoute
+      setLoading(false)
+      return
+    }
+
     const fetchBrands = async () => {
       try {
+        setLoading(true)
+        setError(null)
         const data = await api.getBrands()
         setBrands(data)
       } catch (error) {
         console.error("Failed to fetch brands:", error)
+        setError(error.message || "Failed to load brands")
       } finally {
         setLoading(false)
       }
     }
     fetchBrands()
-  }, [])
+  }, [user, authLoading])
 
   const handleLogout = async () => {
     await logout()
@@ -43,10 +59,17 @@ export default function Dashboard() {
           </div>
 
           <nav className="space-y-2">
-            <Button variant="ghost" className="w-full justify-start">
+            <Button 
+              variant="default" 
+              className="w-full justify-start"
+            >
               Brands
             </Button>
-            <Button variant="ghost" className="w-full justify-start">
+            <Button 
+              variant="ghost" 
+              className="w-full justify-start"
+              onClick={() => navigate("/campaigns")}
+            >
               Campaigns
             </Button>
           </nav>
@@ -80,6 +103,20 @@ export default function Dashboard() {
             <div className="text-center py-12 text-muted-foreground">
               Loading brands...
             </div>
+          ) : error ? (
+            <Card className="p-12 text-center">
+              <CardHeader>
+                <CardTitle className="text-2xl mb-2 text-destructive">Error</CardTitle>
+                <CardDescription>
+                  {error}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={() => window.location.reload()}>
+                  Retry
+                </Button>
+              </CardContent>
+            </Card>
           ) : brands.length === 0 ? (
             <Card className="p-12 text-center">
               <CardHeader>

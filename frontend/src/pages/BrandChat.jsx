@@ -56,10 +56,14 @@ export default function BrandChat() {
     setLoading(true)
     try {
       const response = await api.submitCampaignAnswers(brandId, answers)
+      if (!response?.creative_bible_id) {
+        throw new Error("Invalid response: missing creative_bible_id")
+      }
       navigate(`/brands/${brandId}/storyline/${response.creative_bible_id}`)
     } catch (error) {
       console.error("Failed to submit answers:", error)
-      alert("Failed to submit answers. Please try again.")
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
+      alert(`Failed to submit answers: ${errorMessage}. Please check the console for details.`)
     } finally {
       setLoading(false)
     }

@@ -1,2 +1,2 @@
-# Tasks package
+"""Celery tasks package."""
 

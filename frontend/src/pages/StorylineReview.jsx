@@ -37,13 +37,19 @@ export default function StorylineReview() {
         creative_bible_id: creativeBibleId
       })
       
-      // Navigate to video generation progress page
+      if (!response?.campaign_id) {
+        throw new Error("No campaign_id in response")
+      }
+      
+      // Navigate to video generation progress page immediately
       navigate(`/campaigns/${response.campaign_id}/progress`)
+      
+      // Don't set generating to false - let navigation happen
+      // The component will unmount anyway
     } catch (error) {
       console.error("Failed to start generation:", error)
-      alert("Failed to start video generation. Please try again.")
-    } finally {
-      setGenerating(false)
+      setGenerating(false) // Only reset if there's an error
+      alert(`Failed to start video generation: ${error.message || "Please try again."}`)
     }
   }
 
@@ -95,7 +101,7 @@ export default function StorylineReview() {
                   <div className="flex gap-2">
                     {creativeBible.colors?.map((color, idx) => (
                       <div
-                        key={idx}
+                        key={`color-${idx}-${color}`}
                         className="w-8 h-8 rounded border"
                         style={{ backgroundColor: color }}
                         title={color}
@@ -117,8 +123,8 @@ export default function StorylineReview() {
           <div className="space-y-6">
             <h2 className="text-2xl font-semibold">Video Scenes (30 seconds)</h2>
             
-            {storyline.scenes?.map((scene) => (
-              <Card key={scene.scene_number}>
+            {storyline.scenes?.map((scene, idx) => (
+              <Card key={`scene-${scene.scene_number || idx}-${scene.title || idx}`}>
                 <CardHeader>
                   <div className="flex justify-between items-start">
                     <div>

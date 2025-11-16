@@ -1,12 +1,15 @@
+"""Brands API routes."""
+import logging
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from typing import List
 from app.database import get_db
 from app.models.brand import Brand
 from app.models.user import User
 from app.api.auth import get_current_user
-from app.services.storage import upload_file_to_storage
-import uuid
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/brands", tags=["brands"])
 
@@ -16,21 +19,31 @@ async def list_brands(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List all brands for current user"""
-    brands = db.query(Brand).filter(Brand.user_id == current_user.id).all()
+    """List all brands for current user."""
+    logger.info(f"Fetching brands for user: {current_user.id} (email: {current_user.email})")
     
-    return [
-        {
-            "id": str(brand.id),
-            "title": brand.title,
-            "description": brand.description,
-            "product_image_1_url": brand.product_image_1_url,
-            "product_image_2_url": brand.product_image_2_url,
-            "created_at": brand.created_at.isoformat(),
-            "campaign_count": len(brand.campaigns),
-        }
-        for brand in brands
-    ]
+    try:
+        brands = db.query(Brand).filter(Brand.user_id == current_user.id).all()
+        logger.info(f"Found {len(brands)} brands for user {current_user.id}")
+        
+        result = [
+            {
+                "id": str(brand.id),
+                "title": brand.title,
+                "description": brand.description,
+                "product_image_1_url": brand.product_image_1_url,
+                "product_image_2_url": brand.product_image_2_url,
+                "created_at": brand.created_at,
+                "campaign_count": len(brand.campaigns),
+            }
+            for brand in brands
+        ]
+        
+        logger.info(f"Returning {len(result)} brands")
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching brands for user {current_user.id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch brands: {str(e)}")
 
 
 @router.post("/")
@@ -42,29 +55,11 @@ async def create_brand(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Create a new brand"""
-    # Upload images to Supabase Storage (with fallback for testing)
-    try:
-        image_1_path = f"brands/{uuid.uuid4()}/{product_image_1.filename}"
-        image_2_path = f"brands/{uuid.uuid4()}/{product_image_2.filename}"
-        
-        image_1_url = await upload_file_to_storage(
-            product_image_1,
-            bucket="brands",
-            path=image_1_path
-        )
-        image_2_url = await upload_file_to_storage(
-            product_image_2,
-            bucket="brands",
-            path=image_2_path
-        )
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Supabase Storage upload failed: {e}. Using placeholder URLs.", exc_info=True)
-        # Fallback to simple placeholder (via.placeholder.com is unreliable)
-        image_1_url = "https://placehold.co/400x400/e2e8f0/64748b?text=Product+Image+1"
-        image_2_url = "https://placehold.co/400x400/e2e8f0/64748b?text=Product+Image+2"
+    """Create a new brand."""
+    # TODO: Upload images to storage
+    # For now, use placeholder URLs
+    image_1_url = f"https://placehold.co/400x400?text={title}+Image+1"
+    image_2_url = f"https://placehold.co/400x400?text={title}+Image+2"
     
     brand = Brand(
         user_id=current_user.id,
@@ -72,11 +67,14 @@ async def create_brand(
         description=description,
         product_image_1_url=image_1_url,
         product_image_2_url=image_2_url,
+        created_at=datetime.utcnow().isoformat()
     )
     
     db.add(brand)
     db.commit()
     db.refresh(brand)
+    
+    logger.info(f"Created brand: {brand.id} for user: {current_user.id}")
     
     return {
         "id": str(brand.id),
@@ -84,7 +82,7 @@ async def create_brand(
         "description": brand.description,
         "product_image_1_url": brand.product_image_1_url,
         "product_image_2_url": brand.product_image_2_url,
-        "created_at": brand.created_at.isoformat(),
+        "created_at": brand.created_at,
     }
 
 
@@ -94,9 +92,14 @@ async def get_brand(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get brand details"""
+    """Get brand details."""
+    try:
+        brand_uuid = uuid.UUID(brand_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid brand ID")
+    
     brand = db.query(Brand).filter(
-        Brand.id == uuid.UUID(brand_id),
+        Brand.id == brand_uuid,
         Brand.user_id == current_user.id
     ).first()
     
@@ -109,15 +112,14 @@ async def get_brand(
         "description": brand.description,
         "product_image_1_url": brand.product_image_1_url,
         "product_image_2_url": brand.product_image_2_url,
-        "created_at": brand.created_at.isoformat(),
+        "created_at": brand.created_at,
         "campaigns": [
             {
                 "id": str(campaign.id),
                 "status": campaign.status,
-                "created_at": campaign.created_at.isoformat(),
+                "created_at": campaign.created_at,
             }
             for campaign in brand.campaigns
         ],
     }
-
 
