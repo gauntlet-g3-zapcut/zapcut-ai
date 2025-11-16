@@ -11,7 +11,7 @@ if settings.REDIS_URL:
             "adcraft",
             broker=settings.REDIS_URL,
             backend=settings.REDIS_URL,
-            include=["app.tasks.video_generation"]
+            include=["queue.tasks.video_generation"]
         )
         
         celery_app.conf.update(

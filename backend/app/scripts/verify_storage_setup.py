@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 # Add parent directory to path to import app modules
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from supabase import create_client
 from app.config import settings

@@ -70,4 +70,3 @@ exec python -m uvicorn app.main:app \
     --port $PORT \
     --log-level debug \
     2>&1
-

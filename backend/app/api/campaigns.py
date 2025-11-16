@@ -59,8 +59,8 @@ async def create_campaign(
     
     # Start video generation task (lazy import to avoid startup failures)
     try:
-        from app.tasks.video_generation import generate_campaign_video
-        from app.celery_app import celery_app
+        from queue.tasks.video_generation import generate_campaign_video
+        from queue.celery_app import celery_app
         
         if celery_app is not None:
             generate_campaign_video.delay(str(campaign.id))
