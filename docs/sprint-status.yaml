@@ -3,6 +3,8 @@ epic_id: 5
 epic_name: Video Generation Pipeline
 branch: epic-5-video-generation
 started: 2025-11-15
+completed: 2025-11-15
+status: complete
 
 stories:
   - id: "5.1"
