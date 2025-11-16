@@ -27,6 +27,8 @@ PRODUCTION_FRONTEND = "https://app.zapcut.video"
 default_origins = [
     PRODUCTION_FRONTEND,
     "https://frontend-adcraft-production.up.railway.app",  # Production frontend (backup)
+    "https://*.zapcut-app.pages.dev",  # Cloudflare Pages deployment
+    "https://zapcut-app.pages.dev", 
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:5175",
@@ -42,9 +44,13 @@ if PRODUCTION_FRONTEND not in cors_origins:
 
 logger.info(f"CORS allowed origins: {cors_origins}")
 
+# Allow Cloudflare Pages deployments (any subdomain of zapcut-app.pages.dev)
+cloudflare_pages_regex = r"https://.*\.zapcut-app\.pages\.dev"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    allow_origin_regex=cloudflare_pages_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
