@@ -1,60 +1,178 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import jwt
+from jwt import PyJWKClient
+import sys
+import logging
 from app.database import get_db
 from app.models.user import User
 from sqlalchemy.orm import Session
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 security = HTTPBearer()
 
-print("🧪 TESTING MODE: Authentication validation DISABLED")
+# Initialize Supabase JWT verification using JWKS
+jwks_client = None
+supabase_url = None
+try:
+    if settings.SUPABASE_URL:
+        supabase_url = settings.SUPABASE_URL
+        # Supabase uses JWKS for JWT verification (RS256)
+        jwks_url = f"{supabase_url}/.well-known/jwks.json"
+        jwks_client = PyJWKClient(jwks_url)
+        logger.info("Supabase JWT verification configured successfully")
+    else:
+        logger.warning("Supabase URL not configured - authentication disabled")
+except Exception as e:
+    logger.error(f"Supabase initialization error: {e}", exc_info=True)
+    jwks_client = None
 
 
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """TESTING MODE: Skip token verification, return mock data"""
-    return {
-        "sub": "mock-user-123",
-        "email": "dev@example.com",
-        "aud": "authenticated"
-    }
+    """Verify Supabase JWT token and return decoded claims
+    
+    Supports both RS256 (JWKS) and HS256 (JWT secret) algorithms for compatibility.
+    Modern Supabase projects use RS256, but legacy projects may use HS256.
+    """
+    if not supabase_url:
+        raise HTTPException(
+            status_code=401,
+            detail="Supabase URL not configured. Please set SUPABASE_URL environment variable."
+        )
+    
+    try:
+        token = credentials.credentials
+        
+        if not token:
+            raise HTTPException(status_code=401, detail="No token provided")
+        
+        # Decode header to check the algorithm
+        try:
+            header = jwt.get_unverified_header(token)
+            token_algorithm = header.get("alg")
+        except jwt.DecodeError:
+            raise HTTPException(status_code=401, detail="Invalid token format")
+        
+        # Verify token based on algorithm
+        if token_algorithm == "RS256":
+            # Modern Supabase: Use JWKS
+            if not jwks_client:
+                raise HTTPException(
+                    status_code=401,
+                    detail="JWKS client not configured. Cannot verify RS256 tokens."
+                )
+            try:
+                signing_key = jwks_client.get_signing_key_from_jwt(token)
+                decoded_token = jwt.decode(
+                    token,
+                    signing_key.key,
+                    algorithms=["RS256"],
+                    audience="authenticated",
+                    options={"verify_exp": True, "verify_signature": True}
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"Failed to verify RS256 token: {str(e)}"
+                )
+        elif token_algorithm == "HS256":
+            # Legacy Supabase: Use JWT secret
+            if not settings.SUPABASE_JWT_SECRET:
+                raise HTTPException(
+                    status_code=401,
+                    detail="HS256 tokens require SUPABASE_JWT_SECRET. Please configure it or migrate to RS256."
+                )
+            try:
+                decoded_token = jwt.decode(
+                    token,
+                    settings.SUPABASE_JWT_SECRET,
+                    algorithms=["HS256"],
+                    audience="authenticated",
+                    options={"verify_exp": True, "verify_signature": True}
+                )
+            except jwt.ExpiredSignatureError:
+                raise HTTPException(status_code=401, detail="Token has expired")
+            except jwt.InvalidSignatureError:
+                raise HTTPException(status_code=401, detail="Invalid token signature")
+            except jwt.DecodeError as e:
+                raise HTTPException(status_code=401, detail=f"Token decode error: {str(e)}")
+            except jwt.InvalidTokenError as e:
+                raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+            except Exception as e:
+                # Log for debugging
+                logger.error(f"HS256 verification error: {type(e).__name__}: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"Failed to verify HS256 token: {str(e)}"
+                )
+        else:
+            raise HTTPException(
+                status_code=401,
+                detail=f"Unsupported token algorithm: {token_algorithm}. Expected RS256 or HS256."
+            )
+        
+        # Verify the token is from Supabase (check issuer)
+        if "iss" in decoded_token:
+            issuer = decoded_token["iss"]
+            if "supabase.co" not in issuer and "supabase.io" not in issuer:
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"Invalid token issuer. Expected Supabase issuer but got: {issuer}"
+                )
+        
+        return decoded_token
+    except HTTPException:
+        raise
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid Supabase token: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Authentication error: {str(e)}")
 
 
 async def get_current_user(
     token_data: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
-    """TESTING MODE: Return mock user without validation"""
-    print(f"\n🔐 AUTH - get_current_user called")
-    print(f"   Token data: {token_data}")
-
+    """Get or create user from Supabase token"""
     try:
-        # Try to get or create the mock user (matches brand owner)
-        print(f"   🔍 Looking for user with supabase_uid='mock-user-123'")
-        user = db.query(User).filter(User.supabase_uid == "mock-user-123").first()
-
+        supabase_uid = token_data.get("sub")  # Supabase uses 'sub' for user ID
+        email = token_data.get("email")
+        
+        if not supabase_uid:
+            raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
+        
+        user = db.query(User).filter(User.supabase_uid == supabase_uid).first()
+        
         if not user:
-            print(f"   ℹ️  Mock user not found, creating new one...")
-            user = User(supabase_uid="mock-user-123", email="dev@example.com")
+            user = User(supabase_uid=supabase_uid, email=email)
             db.add(user)
-            db.commit()
-            db.refresh(user)
-            print(f"   ✅ Created mock user: ID={user.id}, Email={user.email}")
-        else:
-            print(f"   ✅ Found existing mock user: ID={user.id}, Email={user.email}")
-
+            try:
+                db.commit()
+                db.refresh(user)
+            except Exception as db_error:
+                db.rollback()
+                # Log but don't expose internal errors
+                logger.error(f"Database error creating user: {db_error}", exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to create user account. Please try again."
+                )
+        
         return user
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"   ❌ ERROR in get_current_user: {type(e).__name__}: {str(e)}")
-        import traceback
-        print(f"   Traceback:\n{traceback.format_exc()}")
-        # Return a mock user if DB fails
-        print(f"   ⚠️  Returning fallback MockUser object")
-        class MockUser:
-            id = "00000000-0000-0000-0000-000000000099"
-            email = "dev@example.com"
-            supabase_uid = "mock-user-123"
-        return MockUser()
+        # Catch any other unexpected errors
+        logger.error(f"get_current_user error: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error during authentication"
+        )
 
 
 @router.post("/verify")

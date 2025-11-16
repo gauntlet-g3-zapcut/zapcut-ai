@@ -1,5 +1,5 @@
+import logging
 from celery import Task
-from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.campaign import Campaign
 from app.models.generation_job import GenerationJob
@@ -56,6 +56,8 @@ def update_generation_job(db, job, status, output_url=None, error_message=None, 
         job.completed_at = datetime.utcnow()
     db.commit()
     return job
+
+logger = logging.getLogger(__name__)
 
 
 class VideoGenerationTask(Task):
@@ -502,17 +504,21 @@ def generate_campaign_video(self, campaign_id: str):
     3. Generate video scenes with Sora (Replicate)
     4. Generate music with Suno (Replicate)
     5. Compose final video with FFmpeg
-    6. Upload to S3
+    6. Upload to Supabase Storage
     """
     try:
+        logger.info(f"Starting video generation for campaign: {campaign_id}")
+        
         # Get campaign
         campaign = self.db.query(Campaign).filter(Campaign.id == uuid.UUID(campaign_id)).first()
         if not campaign:
+            logger.error(f"Campaign not found: {campaign_id}")
             raise Exception("Campaign not found")
         
         # Update status
         campaign.status = "generating"
         self.db.commit()
+        logger.info(f"Campaign {campaign_id} status updated to 'generating'")
         
         # Get brand and creative bible
         brand = campaign.brand
@@ -520,6 +526,7 @@ def generate_campaign_video(self, campaign_id: str):
         
         # Step 1: Generate reference images if not already done
         if not creative_bible.reference_image_urls.get("hero"):
+            logger.info(f"Step 1: Generating reference images for campaign {campaign_id}")
             self.update_state(state="PROGRESS", meta={"stage": "Generating reference images..."})
             
             brand_info = {
@@ -531,17 +538,21 @@ def generate_campaign_video(self, campaign_id: str):
                 creative_bible.creative_bible,
                 brand_info
             )
+            logger.debug(f"Generated {len(image_prompts)} image prompts")
             
             reference_images = generate_reference_images(image_prompts)
+            logger.info(f"Generated {len(reference_images)} reference images")
             
             # Update creative bible with image URLs
             creative_bible.reference_image_urls.update({
                 img["type"]: img["url"] for img in reference_images
             })
             self.db.commit()
+            logger.info("Reference images saved to creative bible")
         
         # Step 2: Generate storyline and prompts (if not already done)
         if not campaign.storyline:
+            logger.info(f"Step 2: Creating storyboard for campaign {campaign_id}")
             self.update_state(state="PROGRESS", meta={"stage": "Creating storyboard..."})
             
             brand_info = {
@@ -553,6 +564,7 @@ def generate_campaign_video(self, campaign_id: str):
                 creative_bible.creative_bible,
                 brand_info
             )
+            logger.info("Storyline generated successfully")
             
             # Generate Sora prompts
             sora_prompts = generate_sora_prompts(
@@ -561,12 +573,14 @@ def generate_campaign_video(self, campaign_id: str):
                 creative_bible.reference_image_urls,
                 brand_info
             )
+            logger.info(f"Generated {len(sora_prompts)} Sora prompts")
             
             # Update campaign
             campaign.storyline = storyline_data["storyline"]
             campaign.sora_prompts = sora_prompts
             campaign.suno_prompt = storyline_data["suno_prompt"]
             self.db.commit()
+            logger.info("Storyline and prompts saved to campaign")
         
         # Step 3: Generate videos SEQUENTIALLY with continuity tracking
         campaign.generation_stage = "scene_videos"
@@ -613,6 +627,7 @@ def generate_campaign_video(self, campaign_id: str):
 
             if result.get("url"):
                 # Download video
+                logger.debug(f"Downloading scene {scene_num} from {result['url']}")
                 video_data = download_file(result["url"])
 
                 # Upload to S3
@@ -708,12 +723,14 @@ def generate_campaign_video(self, campaign_id: str):
         self.update_state(state="PROGRESS", meta={"stage": "Generating soundtrack..."})
         
         music_result = generate_music_with_suno(campaign.suno_prompt)
+        logger.info("Music generated successfully")
         
         if music_result.get("url"):
-            # Download and upload to S3
+            # Download and upload to storage
+            logger.debug(f"Downloading music from {music_result['url']}")
             music_data = download_file(music_result["url"])
             key = f"campaigns/{campaign_id}/music.mp3"
-            music_url = upload_to_s3_bytes(music_data, key, "audio/mpeg")
+            music_url = upload_to_storage_bytes(music_data, key, "audio/mpeg")
             campaign.music_url = music_url
             campaign.generation_progress = 80
             self.db.commit()
@@ -739,13 +756,15 @@ def generate_campaign_video(self, campaign_id: str):
             product_images=product_images if product_images else None,
             voiceover_urls=campaign.voiceover_urls if campaign.voiceover_urls else None
         )
+        logger.info(f"Final video composed: {final_video_path}")
         
-        # Upload final video to S3
+        # Upload final video to storage
         with open(final_video_path, "rb") as f:
             video_data = f.read()
         
         key = f"campaigns/{campaign_id}/final.mp4"
-        final_url = upload_to_s3_bytes(video_data, key, "video/mp4")
+        final_url = upload_to_storage_bytes(video_data, key, "video/mp4")
+        logger.info(f"Final video uploaded to storage: {final_url}")
         
         campaign.final_video_url = final_url
         campaign.status = "completed"
@@ -755,6 +774,7 @@ def generate_campaign_video(self, campaign_id: str):
         
         # Cleanup temp files
         os.remove(final_video_path)
+        logger.info(f"Video generation completed successfully for campaign {campaign_id}")
         
         return {
             "campaign_id": campaign_id,
@@ -763,9 +783,10 @@ def generate_campaign_video(self, campaign_id: str):
         }
         
     except Exception as e:
-        print(f"Error generating campaign video: {e}")
-        campaign.status = "failed"
-        self.db.commit()
+        logger.error(f"Error generating campaign video for {campaign_id}: {e}", exc_info=True)
+        if 'campaign' in locals():
+            campaign.status = "failed"
+            self.db.commit()
         raise
 
 
@@ -776,8 +797,8 @@ def download_file(url):
     return response.content
 
 
-def upload_to_s3_bytes(data, key, content_type):
-    """Upload bytes to Supabase Storage (replaces S3)"""
+def upload_to_storage_bytes(data, key, content_type):
+    """Upload bytes to Supabase Storage"""
     import asyncio
     
     # Determine bucket based on content type
@@ -1155,4 +1176,3 @@ def compose_video(video_urls, music_url, brand_title, product_images=None, voice
         shutil.copy(final_path, permanent_path)
 
         return permanent_path
-

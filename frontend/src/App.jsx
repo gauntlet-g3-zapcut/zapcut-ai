@@ -8,6 +8,7 @@ import BrandChat from "./pages/BrandChat"
 import StorylineReview from "./pages/StorylineReview"
 import VideoProgress from "./pages/VideoProgress"
 import VideoPlayer from "./pages/VideoPlayer"
+import Editor from "./pages/Editor"
 
 function PrivateRoute({ children }) {
   // Skip authentication check - always allow access
@@ -64,6 +65,14 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <VideoPlayer />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/editor"
+        element={
+          <PrivateRoute>
+            <Editor />
           </PrivateRoute>
         }
       />

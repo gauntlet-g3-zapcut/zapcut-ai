@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     SUPABASE_URL: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     SUPABASE_DB_PASSWORD: Optional[str] = None
+    SUPABASE_JWT_SECRET: Optional[str] = None  # For HS256 token verification (legacy)
+    
+    # Supabase Storage S3 Configuration
+    SUPABASE_S3_ENDPOINT: Optional[str] = None
+    SUPABASE_S3_ACCESS_KEY: Optional[str] = None  # Usually the project ref
+    SUPABASE_S3_SECRET_KEY: Optional[str] = None  # Usually the service role key
     
     # Redis Configuration (for Celery)
     REDIS_URL: Optional[str] = None

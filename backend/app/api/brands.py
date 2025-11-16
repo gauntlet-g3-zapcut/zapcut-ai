@@ -44,11 +44,11 @@ async def create_brand(
     db: Session = Depends(get_db)
 ):
     """Create a new brand"""
-    # Upload images to Supabase Storage (with fallback for testing)
+    # Upload images to Supabase Storage
     try:
         image_1_path = f"brands/{uuid.uuid4()}/{product_image_1.filename}"
         image_2_path = f"brands/{uuid.uuid4()}/{product_image_2.filename}"
-        
+
         image_1_url = await upload_file_to_storage(
             product_image_1,
             bucket="brands",
@@ -60,7 +60,9 @@ async def create_brand(
             path=image_2_path
         )
     except Exception as e:
-        print(f"⚠️  Supabase Storage upload failed: {e}. Using placeholder URLs.")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Supabase Storage upload failed: {e}. Using placeholder URLs.", exc_info=True)
         # Fallback to simple placeholder (via.placeholder.com is unreliable)
         image_1_url = "https://placehold.co/400x400/e2e8f0/64748b?text=Product+Image+1"
         image_2_url = "https://placehold.co/400x400/e2e8f0/64748b?text=Product+Image+2"
@@ -80,11 +82,11 @@ async def create_brand(
         product_image_1_url=image_1_url,
         product_image_2_url=image_2_url,
     )
-    
+
     db.add(brand)
     db.commit()
     db.refresh(brand)
-    
+
     return {
         "id": str(brand.id),
         "title": brand.title,
@@ -104,10 +106,10 @@ async def get_brand(
     brand = db.query(Brand).filter(
         Brand.id == uuid.UUID(brand_id)
     ).first()
-    
+
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
-    
+
     return {
         "id": str(brand.id),
         "title": brand.title,

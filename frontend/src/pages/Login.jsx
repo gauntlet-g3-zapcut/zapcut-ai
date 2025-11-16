@@ -29,6 +29,7 @@ export default function Login() {
     setLoading(true)
 
     try {
+      console.log('Login attempt:', { email, isSignup })
       if (isSignup) {
         await signupWithEmail(email, password)
         setSuccess("Account created successfully! Please sign in.")
@@ -36,11 +37,16 @@ export default function Login() {
         setPassword("")
         setIsSignup(false)
       } else {
-        await loginWithEmail(email, password)
-        navigate("/dashboard")
+        const result = await loginWithEmail(email, password)
+        console.log('Login result:', result)
+        // Wait a moment for auth state to update
+        setTimeout(() => {
+          navigate("/dashboard")
+        }, 100)
       }
     } catch (err) {
-      setError(err.message)
+      console.error('Login form error:', err)
+      setError(err.message || 'An error occurred. Please try again.')
     } finally {
       setLoading(false)
     }
