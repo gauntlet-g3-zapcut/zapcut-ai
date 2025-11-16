@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Plus } from "lucide-react"
 import { api } from "../services/api"
+import { AppSidebar } from "../components/layout/AppSidebar"
+import { PRIMARY_SIDEBAR_LINKS } from "../config/navigation"
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
@@ -26,40 +28,15 @@ export default function Dashboard() {
     fetchBrands()
   }, [])
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await logout()
     navigate("/")
-  }
+  }, [logout, navigate])
 
   return (
     <div className="min-h-screen bg-background">
       <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-64 bg-card border-r min-h-screen p-6">
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              AdCraft AI
-            </h2>
-          </div>
-
-          <nav className="space-y-2">
-            <Button variant="ghost" className="w-full justify-start">
-              Brands
-            </Button>
-            <Button variant="ghost" className="w-full justify-start">
-              Campaigns
-            </Button>
-          </nav>
-
-          <div className="mt-auto pt-8">
-            <div className="text-sm text-muted-foreground mb-2">
-              {user?.email}
-            </div>
-            <Button variant="outline" size="sm" onClick={handleLogout} className="w-full">
-              Logout
-            </Button>
-          </div>
-        </aside>
+        <AppSidebar navItems={PRIMARY_SIDEBAR_LINKS} onLogout={handleLogout} userEmail={user?.email} />
 
         {/* Main Content */}
         <main className="flex-1 p-8">

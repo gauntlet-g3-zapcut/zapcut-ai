@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Upload } from "lucide-react";
 import { useProjectStore } from "@/store/projectStore";
 import { openFileDialog } from "@/lib/bindings";
-import { isElectron, waitForElectronAPI } from "@/lib/utils";
+import { waitForElectronAPI } from "@/lib/utils";
 
 interface UploadModalProps {
   open: boolean;
