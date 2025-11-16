@@ -14,17 +14,28 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchBrands = async () => {
+      // Only fetch if user is authenticated
+      if (!user) {
+        setLoading(false)
+        return
+      }
+
       try {
         const data = await api.getBrands()
         setBrands(data)
       } catch (error) {
-        console.error("Failed to fetch brands:", error)
+        // Silently handle authentication errors
+        if (error.message && error.message.includes("token")) {
+          console.log("User not authenticated, skipping brands fetch")
+        } else {
+          console.error("Failed to fetch brands:", error)
+        }
       } finally {
         setLoading(false)
       }
     }
     fetchBrands()
-  }, [])
+  }, [user])
 
   const handleLogout = async () => {
     await logout()

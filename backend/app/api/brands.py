@@ -13,11 +13,10 @@ router = APIRouter(prefix="/api/brands", tags=["brands"])
 
 @router.get("/")
 async def list_brands(
-    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List all brands for current user"""
-    brands = db.query(Brand).filter(Brand.user_id == current_user.id).all()
+    """List all brands (skip auth for development)"""
+    brands = db.query(Brand).all()
     
     return [
         {
@@ -39,7 +38,6 @@ async def create_brand(
     description: str = Form(...),
     product_image_1: UploadFile = File(...),
     product_image_2: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Create a new brand"""
@@ -64,8 +62,16 @@ async def create_brand(
         image_1_url = "https://placehold.co/400x400/e2e8f0/64748b?text=Product+Image+1"
         image_2_url = "https://placehold.co/400x400/e2e8f0/64748b?text=Product+Image+2"
     
+    # Get or create a mock user (skip authentication)
+    mock_user = db.query(User).filter(User.email == "dev@example.com").first()
+    if not mock_user:
+        mock_user = User(email="dev@example.com", supabase_uid="mock-user-123")
+        db.add(mock_user)
+        db.commit()
+        db.refresh(mock_user)
+
     brand = Brand(
-        user_id=current_user.id,
+        user_id=mock_user.id,
         title=title,
         description=description,
         product_image_1_url=image_1_url,
@@ -89,13 +95,11 @@ async def create_brand(
 @router.get("/{brand_id}")
 async def get_brand(
     brand_id: str,
-    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get brand details"""
     brand = db.query(Brand).filter(
-        Brand.id == uuid.UUID(brand_id),
-        Brand.user_id == current_user.id
+        Brand.id == uuid.UUID(brand_id)
     ).first()
     
     if not brand:

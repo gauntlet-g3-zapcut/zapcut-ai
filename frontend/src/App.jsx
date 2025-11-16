@@ -10,24 +10,15 @@ import VideoProgress from "./pages/VideoProgress"
 import VideoPlayer from "./pages/VideoPlayer"
 
 function PrivateRoute({ children }) {
-  const { user, loading } = useAuth()
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
-      </div>
-    )
-  }
-
-  return user ? children : <Navigate to="/login" />
+  // Skip authentication check - always allow access
+  return children
 }
 
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/login" element={<Login />} />
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/login" element={<Navigate to="/dashboard" replace />} />
       <Route
         path="/dashboard"
         element={

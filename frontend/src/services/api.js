@@ -15,11 +15,8 @@ const getApiUrl = () => {
 const API_URL = getApiUrl()
 
 async function getAuthToken() {
-  const { data: { session }, error } = await supabase.auth.getSession()
-  if (error || !session) {
-    throw new Error("User not authenticated")
-  }
-  return session.access_token
+  // Skip authentication - return mock token
+  return "mock-token-for-development"
 }
 
 async function apiRequest(endpoint, options = {}) {

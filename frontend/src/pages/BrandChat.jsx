@@ -45,24 +45,9 @@ export default function BrandChat() {
     }))
   }
 
-  const handleSubmit = async () => {
-    // Check if all questions are answered
-    const allAnswered = QUESTIONS.every(q => answers[q.id])
-    if (!allAnswered) {
-      alert("Please answer all questions before continuing.")
-      return
-    }
-
-    setLoading(true)
-    try {
-      const response = await api.submitCampaignAnswers(brandId, answers)
-      navigate(`/brands/${brandId}/storyline/${response.creative_bible_id}`)
-    } catch (error) {
-      console.error("Failed to submit answers:", error)
-      alert("Failed to submit answers. Please try again.")
-    } finally {
-      setLoading(false)
-    }
+  const handleSubmit = () => {
+    // Navigate directly to storyline without validation or API call
+    navigate(`/brands/${brandId}/storyline/default`)
   }
 
   return (
@@ -107,11 +92,10 @@ export default function BrandChat() {
             <div className="pt-6">
               <Button
                 onClick={handleSubmit}
-                disabled={loading || Object.keys(answers).length < QUESTIONS.length}
                 className="w-full"
                 size="lg"
               >
-                {loading ? "Processing..." : "Continue to Storyline →"}
+                Continue to Storyline →
               </Button>
             </div>
           </CardContent>

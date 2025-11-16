@@ -11,7 +11,7 @@
     "deploy": "npm run build && npx wrangler pages deploy ./dist --project-name=zapcut-app"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
+    "@supabase/supabase-js": "^2.81.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.553.0",

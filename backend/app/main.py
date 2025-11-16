@@ -125,7 +125,8 @@ async def init_database():
     from app.models.brand import Brand
     from app.models.creative_bible import CreativeBible
     from app.models.campaign import Campaign
-    
+    from app.models.generation_job import GenerationJob
+
     try:
         Base.metadata.create_all(bind=engine)
         return {
