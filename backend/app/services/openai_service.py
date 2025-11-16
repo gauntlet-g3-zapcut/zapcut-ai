@@ -1,7 +1,34 @@
 from openai import OpenAI
 from app.config import settings
 
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
+# Lazy initialization - only create client when needed and if API key is available
+_client = None
+
+def get_openai_client():
+    """Get OpenAI client, creating it if needed"""
+    global _client
+    if _client is None:
+        if settings.OPENAI_API_KEY:
+            _client = OpenAI(api_key=settings.OPENAI_API_KEY)
+            print("✅ OpenAI client initialized")
+        else:
+            print("⚠️  OPENAI_API_KEY not configured - OpenAI features will not work")
+            # Create a dummy client that will fail on actual use
+            _client = OpenAI(api_key="dummy-key")
+    return _client
+
+# For backward compatibility, try to create client at import time
+# but don't fail if API key is missing
+try:
+    if settings.OPENAI_API_KEY:
+        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        print("✅ OpenAI client initialized")
+    else:
+        client = None
+        print("⚠️  OPENAI_API_KEY not configured - OpenAI features will not work")
+except Exception as e:
+    print(f"⚠️  OpenAI client initialization failed: {e}")
+    client = None
 
 CREATIVE_DIRECTOR_SYSTEM_PROMPT = """You are an expert creative director specializing in product advertisement videos.
 

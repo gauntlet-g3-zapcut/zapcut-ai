@@ -1,5 +1,4 @@
 from celery import Task
-from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.campaign import Campaign
 from app.models.creative_bible import CreativeBible
@@ -32,7 +31,20 @@ class VideoGenerationTask(Task):
             self.db.close()
 
 
-@celery_app.task(base=VideoGenerationTask, bind=True)
+# Lazy import and conditional decorator for celery_app
+def _get_task_decorator():
+    """Get the task decorator if celery_app is available"""
+    from app.celery_app import celery_app
+    if celery_app is not None:
+        return celery_app.task(base=VideoGenerationTask, bind=True)
+    else:
+        # Return a no-op decorator if celery is not available
+        def noop_decorator(func):
+            return func
+        return noop_decorator
+
+
+@_get_task_decorator()
 def generate_campaign_video(self, campaign_id: str):
     """
     Main task to generate complete video ad

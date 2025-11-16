@@ -6,9 +6,11 @@ from app.api import auth, brands, chat, campaigns
 app = FastAPI(title="AdCraft API", version="1.0.0")
 
 # CORS middleware - specify exact origins for credentialed requests
-# Always includes production frontend and localhost for development
+# CRITICAL: Always includes production frontend - this must never be removed
+PRODUCTION_FRONTEND = "https://app.zapcut.video"
+
 default_origins = [
-    "https://app.zapcut.video",  # Production frontend
+    PRODUCTION_FRONTEND,  # Production frontend - REQUIRED
     "http://localhost:5173",     # Local development
     "http://localhost:5175",
     "http://localhost:3000",
@@ -18,14 +20,19 @@ default_origins = [
 env_origins = settings.cors_origins_list if settings.cors_origins_list else []
 cors_origins = list(set(default_origins + env_origins))  # Combine and remove duplicates
 
-# Log CORS origins for debugging (remove in production if needed)
+# Ensure production frontend is always included (safety check)
+if PRODUCTION_FRONTEND not in cors_origins:
+    cors_origins.append(PRODUCTION_FRONTEND)
+    print(f"⚠️  Production frontend was missing from CORS origins, added: {PRODUCTION_FRONTEND}")
+
+# Log CORS origins for debugging
 print(f"🌐 CORS allowed origins: {cors_origins}")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods including OPTIONS for preflight
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],  # Explicit methods
     allow_headers=["*"],   # Allow all headers including Content-Type, Authorization
     expose_headers=["*"],
     max_age=3600,  # Cache preflight requests for 1 hour
@@ -62,13 +69,14 @@ async def cors_info():
 @app.post("/init-db")
 async def init_database():
     """Initialize database tables (one-time setup)"""
-    from app.database import engine, Base
+    from app.database import get_engine, Base
     from app.models.user import User
     from app.models.brand import Brand
     from app.models.creative_bible import CreativeBible
     from app.models.campaign import Campaign
     
     try:
+        engine = get_engine()
         Base.metadata.create_all(bind=engine)
         return {
             "status": "success",

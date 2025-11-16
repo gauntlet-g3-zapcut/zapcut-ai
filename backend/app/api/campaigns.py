@@ -7,7 +7,6 @@ from app.models.brand import Brand
 from app.models.creative_bible import CreativeBible
 from app.models.campaign import Campaign
 from app.api.auth import get_current_user
-from app.tasks.video_generation import generate_campaign_video
 import uuid
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
@@ -58,13 +57,24 @@ async def create_campaign(
     db.commit()
     db.refresh(campaign)
     
-    # Start video generation task
-    generate_campaign_video.delay(str(campaign.id))
+    # Start video generation task (lazy import to avoid startup failures)
+    try:
+        from app.tasks.video_generation import generate_campaign_video
+        from app.celery_app import celery_app
+        
+        if celery_app is not None:
+            generate_campaign_video.delay(str(campaign.id))
+            message = "Campaign created. Video generation started."
+        else:
+            message = "Campaign created. Video generation unavailable (Redis not configured)."
+    except Exception as e:
+        print(f"⚠️  Failed to start video generation task: {e}")
+        message = "Campaign created. Video generation unavailable."
     
     return {
         "campaign_id": str(campaign.id),
         "status": "pending",
-        "message": "Campaign created. Video generation started."
+        "message": message
     }
 
 

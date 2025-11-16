@@ -2,22 +2,30 @@
 Supabase Storage service for file uploads
 Replaces S3 service with Supabase Storage (S3-compatible)
 """
-from supabase import create_client, Client
 from app.config import settings
 import uuid
 from typing import Optional
 from fastapi import UploadFile
 
+# Lazy import to avoid startup failures
+supabase_client = None
 
-# Initialize Supabase client for storage operations
-supabase_client: Optional[Client] = None
-
-if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY:
-    supabase_client = create_client(
-        settings.SUPABASE_URL,
-        settings.SUPABASE_SERVICE_ROLE_KEY
-    )
-    print("✅ Supabase Storage client initialized")
+try:
+    from supabase import create_client, Client
+    
+    # Initialize Supabase client for storage operations
+    if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY:
+        supabase_client = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_SERVICE_ROLE_KEY
+        )
+        print("✅ Supabase Storage client initialized")
+    else:
+        print("⚠️  Supabase Storage not configured (missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)")
+except ImportError:
+    print("⚠️  Supabase package not installed - storage operations will fail")
+except Exception as e:
+    print(f"⚠️  Supabase Storage initialization failed: {e}")
 else:
     print("⚠️  Supabase Storage not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY")
 
