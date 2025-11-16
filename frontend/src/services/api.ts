@@ -11,7 +11,7 @@ const getApiUrl = () => {
     return import.meta.env.VITE_API_URL
   }
   const apiUrl = import.meta.env.VITE_PROD
-    ? "https://zapcut-ai-production.up.railway.app"
+    ? "https://zapcut-api.fly.dev"
     : "http://localhost:8000"
   console.log("  ✅ Using default API URL:", apiUrl)
   console.log("  🌍 Environment:", import.meta.env.VITE_PROD ? "Production" : "Development")
@@ -21,52 +21,83 @@ const getApiUrl = () => {
 const API_URL = getApiUrl()
 console.log("🚀 Final API_URL:", API_URL)
 
-async function getAuthToken() {
-  // Skip authentication - return mock token
-  return "mock-token-for-development"
-}
+/**
+ * Get a valid Supabase auth token
+ */
+async function getAuthToken(): Promise<string> {
+  const { data: { session }, error } = await supabase.auth.getSession()
 
-async function apiRequest(endpoint, options = {}) {
-  const token = await getAuthToken()
-
-  console.log(`📡 API Request: ${options.method || 'GET'} ${API_URL}${endpoint}`)
-
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...options.headers,
-    },
-  })
-
-  console.log(`📡 API Response: ${response.status} ${response.statusText}`)
-
-  if (!response.ok) {
-    console.error(`❌ API Error: ${response.status} ${response.statusText}`)
-    console.error(`   Endpoint: ${options.method || 'GET'} ${endpoint}`)
-
-    let errorData
-    try {
-      errorData = await response.json()
-      console.error(`   Error details:`, errorData)
-    } catch (e) {
-      errorData = { detail: "An error occurred" }
-      console.error(`   Could not parse error response as JSON`)
-    }
-
-    const errorMessage = errorData.detail || errorData.message || "Request failed"
-    console.error(`   Error message: ${errorMessage}`)
-
-    throw new Error(errorMessage)
+  if (error || !session?.access_token) {
+    throw new Error('User not authenticated')
   }
 
-  const data = await response.json()
-  console.log(`✅ API Success:`, data)
-  return data
+  return session.access_token
 }
 
-async function apiRequestWithFormData(endpoint, formData, options = {}) {
+interface RequestOptions extends RequestInit {
+  headers?: HeadersInit
+}
+
+async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions = {}, retryCount = 0): Promise<T> {
+  const maxRetries = 1
+  const token = await getAuthToken()
+
+  const url = `${API_URL}${endpoint}`
+
+  // Add timeout to prevent hanging requests
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...options.headers,
+      },
+    })
+
+    clearTimeout(timeoutId)
+
+    // Handle 401 Unauthorized - might be due to invalid token
+    if (response.status === 401 && retryCount < maxRetries) {
+      // Try refreshing the session and retrying once
+      try {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+        if (!refreshError && refreshData.session) {
+          // Retry the request with the new token
+          return apiRequest<T>(endpoint, options, retryCount + 1)
+        }
+      } catch (refreshErr) {
+        console.error("Failed to refresh session:", refreshErr)
+      }
+      // If refresh fails, sign out and throw error
+      await supabase.auth.signOut()
+      throw new Error("Session expired. Please log in again.")
+    }
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: "An error occurred" })) as { detail?: string; message?: string }
+      console.error(`[API] Request failed: ${response.status}`, error)
+      throw new Error(error.detail || error.message || "Request failed")
+    }
+
+    const data = await response.json()
+    return data as T
+  } catch (error: unknown) {
+    clearTimeout(timeoutId)
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error(`[API] Request timeout: ${url}`)
+      throw new Error("Request timed out. Please check your connection.")
+    }
+    throw error
+  }
+}
+
+async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: FormData, options: RequestOptions = {}, retryCount = 0): Promise<T> {
+  const maxRetries = 1
   const token = await getAuthToken()
 
   const response = await fetch(`${API_URL}${endpoint}`, {
@@ -78,6 +109,23 @@ async function apiRequestWithFormData(endpoint, formData, options = {}) {
       ...options.headers,
     },
   })
+
+  // Handle 401 Unauthorized - might be due to invalid token
+  if (response.status === 401 && retryCount < maxRetries) {
+    // Try refreshing the session and retrying once
+    try {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+      if (!refreshError && refreshData.session) {
+        // Retry the request with the new token
+        return apiRequestWithFormData<T>(endpoint, formData, options, retryCount + 1)
+      }
+    } catch (refreshErr) {
+      console.error("Failed to refresh session:", refreshErr)
+    }
+    // If refresh fails, sign out and throw error
+    await supabase.auth.signOut()
+    throw new Error("Session expired. Please log in again.")
+  }
 
   if (!response.ok) {
     let errorData
@@ -110,12 +158,16 @@ export const api = {
   }),
 
   // Campaigns
-  getCampaigns: (brandId) => apiRequest(`/api/brands/${brandId}/campaigns`),
-  getCampaign: (campaignId) => apiRequest(`/api/campaigns/${campaignId}`),
-  getCampaignStatus: (campaignId) => apiRequest(`/api/campaigns/${campaignId}/status`),
-  createCampaign: (data) => apiRequest("/api/campaigns/", {
+  getAllCampaigns: <T = unknown>() => apiRequest<T>("/api/campaigns/"),
+  getCampaigns: <T = unknown>(brandId: string) => apiRequest<T>(`/api/brands/${brandId}/campaigns`),
+  getCampaign: <T = unknown>(campaignId: string) => apiRequest<T>(`/api/campaigns/${campaignId}`),
+  getCampaignStatus: <T = unknown>(campaignId: string) => apiRequest<T>(`/api/campaigns/${campaignId}/status`),
+  createCampaign: <T = unknown>(data: unknown) => apiRequest<T>("/api/campaigns/", {
     method: "POST",
     body: JSON.stringify(data),
+  }),
+  deleteCampaign: <T = unknown>(campaignId: string) => apiRequest<T>(`/api/campaigns/${campaignId}`, {
+    method: "DELETE",
   }),
 
   // Campaign answers

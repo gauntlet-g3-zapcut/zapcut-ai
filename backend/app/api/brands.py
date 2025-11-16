@@ -1,7 +1,12 @@
+"""Brands API routes."""
+import logging
+import uuid
+from datetime import datetime
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from typing import List
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
+from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.models.brand import Brand
 from app.models.user import User
@@ -9,30 +14,42 @@ from app.models.creative_bible import CreativeBible
 from app.api.auth import get_current_user
 from app.services.storage import upload_file_to_storage
 from app.services.openai_service import generate_creative_bible_from_answers
-import uuid
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/brands", tags=["brands"])
 
 
 @router.get("/")
 async def list_brands(
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List all brands (skip auth for development)"""
-    brands = db.query(Brand).all()
+    """List all brands for current user."""
+    logger.info(f"Fetching brands for user: {current_user.id} (email: {current_user.email})")
     
-    return [
-        {
-            "id": str(brand.id),
-            "title": brand.title,
-            "description": brand.description,
-            "product_image_1_url": brand.product_image_1_url,
-            "product_image_2_url": brand.product_image_2_url,
-            "created_at": brand.created_at.isoformat(),
-            "campaign_count": len(brand.campaigns),
-        }
-        for brand in brands
-    ]
+    try:
+        brands = db.query(Brand).filter(Brand.user_id == current_user.id).all()
+        logger.info(f"Found {len(brands)} brands for user {current_user.id}")
+        
+        result = [
+            {
+                "id": str(brand.id),
+                "title": brand.title,
+                "description": brand.description,
+                "product_image_1_url": brand.product_image_1_url,
+                "product_image_2_url": brand.product_image_2_url,
+                "created_at": brand.created_at,
+                "campaign_count": len(brand.campaigns),
+            }
+            for brand in brands
+        ]
+        
+        logger.info(f"Returning {len(result)} brands")
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching brands for user {current_user.id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch brands: {str(e)}")
 
 
 @router.post("/")
@@ -41,9 +58,10 @@ async def create_brand(
     description: str = Form(...),
     product_image_1: UploadFile = File(...),
     product_image_2: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Create a new brand"""
+    """Create a new brand."""
     # Upload images to Supabase Storage
     try:
         image_1_path = f"brands/{uuid.uuid4()}/{product_image_1.filename}"
@@ -60,51 +78,51 @@ async def create_brand(
             path=image_2_path
         )
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.warning(f"Supabase Storage upload failed: {e}. Using placeholder URLs.", exc_info=True)
         # Fallback to simple placeholder (via.placeholder.com is unreliable)
         image_1_url = "https://placehold.co/400x400/e2e8f0/64748b?text=Product+Image+1"
         image_2_url = "https://placehold.co/400x400/e2e8f0/64748b?text=Product+Image+2"
-    
-    # Get or create a mock user (skip authentication)
-    mock_user = db.query(User).filter(User.email == "dev@example.com").first()
-    if not mock_user:
-        mock_user = User(email="dev@example.com", supabase_uid="mock-user-123")
-        db.add(mock_user)
-        db.commit()
-        db.refresh(mock_user)
 
     brand = Brand(
-        user_id=mock_user.id,
+        user_id=current_user.id,
         title=title,
         description=description,
         product_image_1_url=image_1_url,
         product_image_2_url=image_2_url,
+        created_at=datetime.utcnow().isoformat()
     )
 
     db.add(brand)
     db.commit()
     db.refresh(brand)
-
+    
+    logger.info(f"Created brand: {brand.id} for user: {current_user.id}")
+    
     return {
         "id": str(brand.id),
         "title": brand.title,
         "description": brand.description,
         "product_image_1_url": brand.product_image_1_url,
         "product_image_2_url": brand.product_image_2_url,
-        "created_at": brand.created_at.isoformat(),
+        "created_at": brand.created_at,
     }
 
 
 @router.get("/{brand_id}")
 async def get_brand(
     brand_id: str,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get brand details"""
+    """Get brand details."""
+    try:
+        brand_uuid = uuid.UUID(brand_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid brand ID")
+    
     brand = db.query(Brand).filter(
-        Brand.id == uuid.UUID(brand_id)
+        Brand.id == brand_uuid,
+        Brand.user_id == current_user.id
     ).first()
 
     if not brand:
@@ -116,22 +134,16 @@ async def get_brand(
         "description": brand.description,
         "product_image_1_url": brand.product_image_1_url,
         "product_image_2_url": brand.product_image_2_url,
-        "created_at": brand.created_at.isoformat(),
+        "created_at": brand.created_at,
         "campaigns": [
             {
                 "id": str(campaign.id),
                 "status": campaign.status,
-                "created_at": campaign.created_at.isoformat(),
+                "created_at": campaign.created_at,
             }
             for campaign in brand.campaigns
         ],
     }
-
-
-from typing import Optional
-from pydantic import validator
-from sqlalchemy.exc import IntegrityError
-
 
 class AnswersModel(BaseModel):
     style: Optional[str] = None
@@ -164,6 +176,7 @@ class CreateCreativeBibleRequest(BaseModel):
 async def create_creative_bible(
     brand_id: str,
     request: CreateCreativeBibleRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Create a creative bible from user preferences"""
@@ -179,7 +192,8 @@ async def create_creative_bible(
         # Get brand
         print(f"📋 Step 1: Looking up brand with ID: {brand_id}")
         brand = db.query(Brand).filter(
-            Brand.id == uuid.UUID(brand_id)
+            Brand.id == uuid.UUID(brand_id),
+            Brand.user_id == current_user.id
         ).first()
 
         if not brand:
@@ -310,5 +324,3 @@ async def create_creative_bible(
             status_code=500,
             detail="Failed to create creative bible. Please try again."
         )
-
-

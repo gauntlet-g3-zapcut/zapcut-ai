@@ -9,6 +9,7 @@ import StorylineReview from "./pages/StorylineReview"
 import VideoProgress from "./pages/VideoProgress"
 import VideoPlayer from "./pages/VideoPlayer"
 import Editor from "./pages/Editor"
+import CampaignsList from "./pages/CampaignsList"
 
 function PrivateRoute({ children }) {
   // Skip authentication check - always allow access
@@ -25,6 +26,14 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <Dashboard />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/campaigns"
+        element={
+          <PrivateRoute>
+            <CampaignsList />
           </PrivateRoute>
         }
       />

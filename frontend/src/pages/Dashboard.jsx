@@ -9,12 +9,25 @@ import { AppSidebar } from "../components/layout/AppSidebar"
 import { PRIMARY_SIDEBAR_LINKS } from "../config/navigation"
 
 export default function Dashboard() {
-  const { user, logout } = useAuth()
+  const { user, logout, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [brands, setBrands] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
+    // Wait for auth to finish loading and user to be available
+    if (authLoading) {
+      setLoading(true)
+      return
+    }
+
+    if (!user) {
+      // User not authenticated, redirect will happen via PrivateRoute
+      setLoading(false)
+      return
+    }
+
     const fetchBrands = async () => {
       // Only fetch if user is authenticated
       if (!user) {
@@ -23,21 +36,24 @@ export default function Dashboard() {
       }
 
       try {
+        setLoading(true)
+        setError(null)
         const data = await api.getBrands()
         setBrands(data)
       } catch (error) {
+        console.error("Failed to fetch brands:", error)
         // Silently handle authentication errors
         if (error.message && error.message.includes("token")) {
           console.log("User not authenticated, skipping brands fetch")
         } else {
-          console.error("Failed to fetch brands:", error)
+          setError(error.message || "Failed to load brands")
         }
       } finally {
         setLoading(false)
       }
     }
     fetchBrands()
-  }, [user])
+  }, [user, authLoading])
 
   const handleLogout = useCallback(async () => {
     await logout()
@@ -68,6 +84,20 @@ export default function Dashboard() {
             <div className="text-center py-12 text-muted-foreground">
               Loading brands...
             </div>
+          ) : error ? (
+            <Card className="p-12 text-center">
+              <CardHeader>
+                <CardTitle className="text-2xl mb-2 text-destructive">Error</CardTitle>
+                <CardDescription>
+                  {error}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={() => window.location.reload()}>
+                  Retry
+                </Button>
+              </CardContent>
+            </Card>
           ) : brands.length === 0 ? (
             <Card className="p-12 text-center">
               <CardHeader>

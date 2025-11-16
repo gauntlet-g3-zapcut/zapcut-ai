@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { api } from "../services/api"
-import { Play } from "lucide-react"
+import { Play, Sparkles, Loader2 } from "lucide-react"
 
 export default function StorylineReview() {
   const { brandId, creativeBibleId } = useParams()
@@ -93,36 +93,46 @@ export default function StorylineReview() {
 
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(false)
 
   const handleApprove = async () => {
     setIsGenerating(true)
     setError(null)
+    setLoading(true)
 
     try {
-      // TESTING MODE: Use test IDs if not provided
-      const testBrandId = brandId || "00000000-0000-0000-0000-000000000001"
-      const testCreativeBibleId = creativeBibleId || "00000000-0000-0000-0000-000000000002"
-
-      console.log("🚀 EPIC 5 TEST: Starting video generation...")
-      console.log("  Brand ID:", testBrandId)
-      console.log("  Creative Bible ID:", testCreativeBibleId)
-
-      // Create campaign - THIS TRIGGERS EPIC 5 VIDEO PIPELINE!
       const response = await api.createCampaign({
-        brand_id: testBrandId,
-        creative_bible_id: testCreativeBibleId
+        brand_id: brandId,
+        creative_bible_id: creativeBibleId
       })
-
-      console.log("✅ Campaign created:", response.campaign_id)
-      console.log("📹 Epic 5 video generation pipeline started!")
-
-      // Navigate to progress page with real campaign ID
+      
+      if (!response?.campaign_id) {
+        throw new Error("No campaign_id in response")
+      }
+      
+      // Navigate to video generation progress page immediately
       navigate(`/campaigns/${response.campaign_id}/progress`)
+      
+      // Don't set generating to false - let navigation happen
+      // The component will unmount anyway
     } catch (err) {
-      console.error("❌ Failed to create campaign:", err)
-      setError(err.message || "Failed to start video generation")
+      console.error("Failed to start generation:", err)
       setIsGenerating(false)
+      setLoading(false)
+      setError(err.message || "Failed to start video generation")
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <div className="text-lg font-medium">Creating Script</div>
+          <div className="text-sm text-muted-foreground">Please wait...</div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -165,7 +175,7 @@ export default function StorylineReview() {
                   <div className="flex gap-2">
                     {creativeBible.colors?.map((color, idx) => (
                       <div
-                        key={idx}
+                        key={`color-${idx}-${color}`}
                         className="w-8 h-8 rounded border"
                         style={{ backgroundColor: color }}
                         title={color}
@@ -187,8 +197,8 @@ export default function StorylineReview() {
           <div className="space-y-6">
             <h2 className="text-2xl font-semibold">Video Scenes (30 seconds)</h2>
             
-            {storyline.scenes?.map((scene) => (
-              <Card key={scene.scene_number}>
+            {storyline.scenes?.map((scene, idx) => (
+              <Card key={`scene-${scene.scene_number || idx}-${scene.title || idx}`}>
                 <CardHeader>
                   <div className="flex justify-between items-start">
                     <div>

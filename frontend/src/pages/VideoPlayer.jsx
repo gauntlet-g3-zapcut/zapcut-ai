@@ -1,22 +1,45 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { Button } from "../components/ui/button"
 import { Card } from "../components/ui/card"
 import { api } from "../services/api"
-import { Download, Share2, ArrowLeft } from "lucide-react"
+import { Download, Share2, ArrowLeft, Play, Volume2, VolumeX } from "lucide-react"
 
 export default function VideoPlayer() {
   const { campaignId } = useParams()
   const navigate = useNavigate()
   const [campaign, setCampaign] = useState(null)
+  const [statusData, setStatusData] = useState(null)
+  const [selectedScene, setSelectedScene] = useState(null)
   const [loading, setLoading] = useState(true)
   const [shareLink, setShareLink] = useState("")
+  const [isPlayingAll, setIsPlayingAll] = useState(false)
+  const [currentSceneIndex, setCurrentSceneIndex] = useState(0)
+  const [audioMuted, setAudioMuted] = useState(false)
+  const videoRef = useRef(null)
+  const audioRef = useRef(null)
+  const scenesRef = useRef([])
 
   useEffect(() => {
-    const fetchCampaign = async () => {
+    const fetchData = async () => {
       try {
-        const data = await api.getCampaign(campaignId)
-        setCampaign(data)
+        const [campaignData, statusResponse] = await Promise.all([
+          api.getCampaign(campaignId),
+          api.getCampaignStatus(campaignId)
+        ])
+        setCampaign(campaignData)
+        setStatusData(statusResponse)
+        
+        // Set first completed scene as selected by default
+        if (statusResponse?.progress?.scenes) {
+          const completedScenes = statusResponse.progress.scenes.filter(
+            s => s.status === "completed" && s.video_url
+          )
+          scenesRef.current = completedScenes
+          if (completedScenes.length > 0) {
+            setSelectedScene(completedScenes[0])
+          }
+        }
       } catch (error) {
         console.error("Failed to fetch campaign:", error)
         // DO NOT show placeholder video - just show error
@@ -25,12 +48,13 @@ export default function VideoPlayer() {
         setLoading(false)
       }
     }
-    fetchCampaign()
+    fetchData()
   }, [campaignId])
 
-  const handleDownloadMP4 = () => {
-    if (campaign?.final_video_url) {
-      window.open(campaign.final_video_url, "_blank")
+  const handleDownloadMP4 = (videoUrl) => {
+    const url = videoUrl || selectedScene?.video_url || campaign?.final_video_url
+    if (url) {
+      window.open(url, "_blank")
     }
   }
 
@@ -50,6 +74,67 @@ export default function VideoPlayer() {
       alert("Link copied to clipboard!")
     } catch (error) {
       console.error("Failed to copy link:", error)
+    }
+  }
+
+  const handlePlayAll = () => {
+    const completedScenes = scenesRef.current
+    if (completedScenes.length === 0) return
+
+    setIsPlayingAll(true)
+    setCurrentSceneIndex(0)
+    setSelectedScene(completedScenes[0])
+    
+    // Start audio if available
+    if (statusData?.audio?.audio_url && audioRef.current) {
+      audioRef.current.play().catch(err => {
+        console.error("Failed to play audio:", err)
+      })
+    }
+
+    // Start first video
+    setTimeout(() => {
+      if (videoRef.current) {
+        videoRef.current.play().catch(err => {
+          console.error("Failed to play video:", err)
+        })
+      }
+    }, 100)
+  }
+
+  const handleVideoEnd = () => {
+    if (!isPlayingAll) return
+
+    const completedScenes = scenesRef.current
+    const nextIndex = currentSceneIndex + 1
+
+    if (nextIndex < completedScenes.length) {
+      setCurrentSceneIndex(nextIndex)
+      setSelectedScene(completedScenes[nextIndex])
+      
+      // Play next video
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.currentTime = 0
+          videoRef.current.play().catch(err => {
+            console.error("Failed to play video:", err)
+          })
+        }
+      }, 100)
+    } else {
+      // All scenes played
+      setIsPlayingAll(false)
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.currentTime = 0
+      }
+    }
+  }
+
+  const toggleAudioMute = () => {
+    if (audioRef.current) {
+      audioRef.current.muted = !audioMuted
+      setAudioMuted(!audioMuted)
     }
   }
 
@@ -93,32 +178,88 @@ export default function VideoPlayer() {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Video Player */}
           <div className="lg:col-span-2">
-            <Card className="p-0 overflow-hidden">
-              <video
-                controls
-                autoPlay
-                className="w-full aspect-video bg-black"
-                src={campaign.final_video_url}
-              >
-                Your browser does not support the video tag.
-              </video>
-            </Card>
+            {selectedScene?.video_url ? (
+              <Card className="p-0 overflow-hidden">
+                <div className="relative">
+                  <video
+                    ref={videoRef}
+                    controls
+                    className="w-full aspect-video bg-black"
+                    src={selectedScene.video_url}
+                    key={selectedScene.scene_number}
+                    onEnded={handleVideoEnd}
+                    muted={false}
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                  {/* Background audio track */}
+                  {statusData?.audio?.audio_url && (
+                    <audio
+                      ref={audioRef}
+                      src={statusData.audio.audio_url}
+                      loop={false}
+                      muted={audioMuted}
+                    />
+                  )}
+                </div>
+              </Card>
+            ) : (
+              <Card className="p-12 text-center">
+                <p className="text-muted-foreground">No video selected</p>
+              </Card>
+            )}
 
             {/* Action Buttons */}
-            <div className="mt-6 grid grid-cols-3 gap-4">
-              <Button onClick={handleDownloadMP4} variant="outline">
-                <Download className="mr-2 h-4 w-4" />
-                Download MP4
-              </Button>
-              <Button onClick={handleDownloadWebM} variant="outline">
-                <Download className="mr-2 h-4 w-4" />
-                Download WebM
-              </Button>
-              <Button onClick={handleShare} variant="outline">
-                <Share2 className="mr-2 h-4 w-4" />
-                Share Link
-              </Button>
-            </div>
+            {selectedScene?.video_url && (
+              <div className="mt-6 space-y-4">
+                {/* Play All Button */}
+                {scenesRef.current.length > 1 && (
+                  <Button 
+                    onClick={handlePlayAll} 
+                    className="w-full"
+                    disabled={isPlayingAll}
+                  >
+                    <Play className="mr-2 h-4 w-4" />
+                    {isPlayingAll ? "Playing All Scenes..." : "Play All Scenes with Soundtrack"}
+                  </Button>
+                )}
+                
+                {/* Audio Controls */}
+                {statusData?.audio?.audio_url && (
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      onClick={toggleAudioMute} 
+                      variant="outline"
+                      size="sm"
+                    >
+                      {audioMuted ? (
+                        <VolumeX className="h-4 w-4" />
+                      ) : (
+                        <Volume2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      {audioMuted ? "Soundtrack Muted" : "Soundtrack Playing"}
+                    </span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-4">
+                  <Button onClick={() => handleDownloadMP4(selectedScene.video_url)} variant="outline">
+                    <Download className="mr-2 h-4 w-4" />
+                    Download MP4
+                  </Button>
+                  <Button onClick={handleDownloadWebM} variant="outline">
+                    <Download className="mr-2 h-4 w-4" />
+                    Download WebM
+                  </Button>
+                  <Button onClick={handleShare} variant="outline">
+                    <Share2 className="mr-2 h-4 w-4" />
+                    Share Link
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Sidebar Info */}
@@ -137,6 +278,23 @@ export default function VideoPlayer() {
                 <div>
                   <p className="text-muted-foreground">Quality</p>
                   <p className="font-medium">4K (3840x2160)</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Soundtrack</p>
+                  <p className={`font-medium ${
+                    statusData?.audio?.status === "completed" 
+                      ? "text-green-500" 
+                      : statusData?.audio?.status === "failed"
+                      ? "text-red-500"
+                      : statusData?.audio?.status === "generating"
+                      ? "text-yellow-500"
+                      : ""
+                  }`}>
+                    {statusData?.audio?.status === "completed" ? "Ready" :
+                     statusData?.audio?.status === "generating" ? "Generating..." :
+                     statusData?.audio?.status === "failed" ? "Failed" :
+                     "Pending"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Created</p>
@@ -169,15 +327,63 @@ export default function VideoPlayer() {
           </div>
         </div>
 
-        {/* Storyline Display */}
-        {campaign.storyline && campaign.storyline.scenes && (
+        {/* All Scene Videos */}
+        {statusData?.progress?.scenes && statusData.progress.scenes.length > 0 && (
           <div className="mt-12">
-            <h2 className="text-2xl font-semibold mb-6">Storyline</h2>
-            <div className="grid md:grid-cols-5 gap-4">
-              {campaign.storyline.scenes.map((scene) => (
-                <Card key={scene.scene_number} className="p-4">
-                  <p className="text-sm font-medium mb-2">Scene {scene.scene_number}</p>
-                  <p className="text-xs text-muted-foreground">{scene.title}</p>
+            <h2 className="text-2xl font-semibold mb-6">All Scene Videos</h2>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {statusData.progress.scenes.map((scene) => (
+                <Card 
+                  key={scene.scene_number} 
+                  className={`p-4 cursor-pointer transition-all hover:shadow-lg ${
+                    selectedScene?.scene_number === scene.scene_number 
+                      ? "ring-2 ring-primary" 
+                      : ""
+                  }`}
+                  onClick={() => scene.video_url && setSelectedScene(scene)}
+                >
+                  {scene.video_url ? (
+                    <div className="relative aspect-video bg-black rounded mb-2 overflow-hidden">
+                      <video
+                        src={scene.video_url}
+                        className="w-full h-full object-cover"
+                        muted
+                        onMouseEnter={(e) => e.target.play()}
+                        onMouseLeave={(e) => {
+                          e.target.pause()
+                          e.target.currentTime = 0
+                        }}
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                        <Play className="h-8 w-8 text-white" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="aspect-video bg-muted rounded mb-2 flex items-center justify-center">
+                      <p className="text-xs text-muted-foreground">
+                        {scene.status === "generating" ? "Generating..." : 
+                         scene.status === "failed" ? "Failed" : "Pending"}
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-sm font-medium mb-1">Scene {scene.scene_number}</p>
+                  <p className="text-xs text-muted-foreground line-clamp-2">
+                    {scene.title || `Scene ${scene.scene_number}`}
+                  </p>
+                  {scene.video_url && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="mt-2 w-full"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDownloadMP4(scene.video_url)
+                      }}
+                    >
+                      <Download className="mr-2 h-3 w-3" />
+                      Download
+                    </Button>
+                  )}
                 </Card>
               ))}
             </div>

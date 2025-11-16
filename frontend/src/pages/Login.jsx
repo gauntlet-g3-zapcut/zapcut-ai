@@ -29,7 +29,6 @@ export default function Login() {
     setLoading(true)
 
     try {
-      console.log('Login attempt:', { email, isSignup })
       if (isSignup) {
         await signupWithEmail(email, password)
         setSuccess("Account created successfully! Please sign in.")
@@ -37,8 +36,7 @@ export default function Login() {
         setPassword("")
         setIsSignup(false)
       } else {
-        const result = await loginWithEmail(email, password)
-        console.log('Login result:', result)
+        await loginWithEmail(email, password)
         // Wait a moment for auth state to update
         setTimeout(() => {
           navigate("/dashboard")

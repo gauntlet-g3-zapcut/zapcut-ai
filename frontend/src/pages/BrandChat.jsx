@@ -73,38 +73,16 @@ export default function BrandChat() {
     setError(null)
 
     try {
-      console.log("\n📤 Step 1: Calling createCreativeBible API...")
-
-      // Call backend to generate creative bible from answers
-      const response = await api.createCreativeBible(brandId, answers)
-
-      console.log("✅ Step 1 Success: Creative bible created")
-      console.log(`   Creative Bible ID: ${response.creative_bible_id}`)
-
-      console.log("\n📤 Step 2: Navigating to storyline review page...")
-      const targetUrl = `/brands/${brandId}/storyline/${response.creative_bible_id}`
-      console.log(`   Target URL: ${targetUrl}`)
-
-      // Navigate to storyline review with the creative_bible_id
-      navigate(targetUrl)
-
-      console.log("✅ Step 2 Success: Navigation initiated")
-      console.log("=".repeat(80) + "\n")
-    } catch (error) {
-      console.error("\n" + "=".repeat(80))
-      console.error("❌ ERROR in handleSubmit")
-      console.error("=".repeat(80))
-      console.error("   Error type:", error.constructor.name)
-      console.error("   Error message:", error.message)
-      console.error("   Full error:", error)
-      if (error.stack) {
-        console.error("   Stack trace:", error.stack)
+      const response = await api.submitCampaignAnswers(brandId, answers)
+      if (!response?.creative_bible_id) {
+        throw new Error("Invalid response: missing creative_bible_id")
       }
-      console.error("=".repeat(80) + "\n")
-
-      // Show error to user instead of silent fallback
-      const errorMessage = error.message || "Failed to save your preferences. Please try again."
+      navigate(`/brands/${brandId}/storyline/${response.creative_bible_id}`)
+    } catch (error) {
+      console.error("Failed to submit answers:", error)
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
       setError(errorMessage)
+    } finally {
       setLoading(false)
     }
   }
