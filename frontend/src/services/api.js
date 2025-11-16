@@ -113,7 +113,7 @@ export const api = {
   getCampaigns: (brandId) => apiRequest(`/api/brands/${brandId}/campaigns`),
   getCampaign: (campaignId) => apiRequest(`/api/campaigns/${campaignId}`),
   getCampaignStatus: (campaignId) => apiRequest(`/api/campaigns/${campaignId}/status`),
-  createCampaign: (data) => apiRequest("/api/campaigns", {
+  createCampaign: (data) => apiRequest("/api/campaigns/", {
     method: "POST",
     body: JSON.stringify(data),
   }),
