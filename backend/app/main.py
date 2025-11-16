@@ -58,14 +58,36 @@ app.add_middleware(
     max_age=3600,
 )
 
-# Include routers
-app.include_router(auth.router)
-app.include_router(brands.router)
-app.include_router(chat.router)
-app.include_router(campaigns.router)
-app.include_router(webhooks.router)
+# Include routers with error handling
+try:
+    app.include_router(auth.router)
+    app.include_router(brands.router)
+    app.include_router(chat.router)
+    app.include_router(campaigns.router)
+    app.include_router(webhooks.router)
+    logger.info("All routers included successfully")
+except Exception as e:
+    logger.error(f"Error including routers: {e}", exc_info=True)
+    # Don't fail startup - routers will fail at request time if there's an issue
+    pass
 
 logger.info("FastAPI app initialized successfully")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Startup event handler - test database connection."""
+    try:
+        from app.database import get_engine
+        from sqlalchemy import text
+        # Test database connection
+        engine = get_engine()
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("Database connection verified on startup")
+    except Exception as e:
+        logger.warning(f"Database connection test failed on startup (non-fatal): {e}")
+        # Don't fail startup - database will be tested when actually used
 
 
 @app.get("/")
