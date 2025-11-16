@@ -12,13 +12,13 @@ class Campaign(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     brand_id = Column(UUID(as_uuid=True), ForeignKey("brands.id"), nullable=False, index=True)
     creative_bible_id = Column(UUID(as_uuid=True), ForeignKey("creative_bibles.id"), nullable=False, index=True)
-    storyline = Column(JSONB, nullable=False)  # Full storyline/script with scenes
-    sora_prompts = Column(JSONB, nullable=False)  # Array of 5 prompts
-    suno_prompt = Column(Text, nullable=False)
+    storyline = Column(JSONB, nullable=True)  # Full storyline/script with scenes (populated during chat/script phase)
+    sora_prompts = Column(JSONB, nullable=True)  # Array of 5 prompts (populated during script phase)
+    suno_prompt = Column(Text, nullable=True)  # Music prompt (populated during script phase)
     video_urls = Column(JSONB)  # {scene_1, scene_2, ..., scene_5} S3 URLs
     voiceover_urls = Column(JSONB)  # Array of voiceover URLs per scene
     music_url = Column(String)  # S3 URL
-    final_video_url = Column(String, nullable=False)  # S3 URL
+    final_video_url = Column(String, nullable=True)  # S3 URL (populated after generation)
     status = Column(String, nullable=False, default="pending", index=True)  # pending, generating, completed, failed
     generation_stage = Column(String(50), default="not_started")  # Current pipeline stage
     generation_progress = Column(Integer, default=0)  # Progress percentage 0-100

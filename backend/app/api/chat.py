@@ -94,21 +94,34 @@ async def get_storyline(
         Brand.id == uuid.UUID(brand_id),
         Brand.user_id == current_user.id
     ).first()
-    
+
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
-    
-    # Get creative bible
-    creative_bible = db.query(CreativeBible).filter(
-        CreativeBible.id == uuid.UUID(creative_bible_id),
-        CreativeBible.brand_id == brand.id
-    ).first()
-    
+
+    # Handle creative_bible_id (may be "default" string or UUID)
+    if creative_bible_id == "default":
+        # Look for a creative bible with name="default"
+        creative_bible = db.query(CreativeBible).filter(
+            CreativeBible.brand_id == brand.id,
+            CreativeBible.name == "default"
+        ).first()
+    else:
+        # Try to parse as UUID
+        try:
+            creative_bible_uuid = uuid.UUID(creative_bible_id)
+            creative_bible = db.query(CreativeBible).filter(
+                CreativeBible.id == creative_bible_uuid,
+                CreativeBible.brand_id == brand.id
+            ).first()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid creative_bible_id format")
+
     if not creative_bible:
         raise HTTPException(status_code=404, detail="Creative Bible not found")
     
     # Check if creative_bible already has data, if not generate it
-    if not creative_bible.creative_bible or not creative_bible.creative_bible.get("brand_style"):
+    bible_data = creative_bible.creative_bible or {}
+    if not bible_data or not bible_data.get("brand_style"):
         brand_info = {
             "title": brand.title,
             "description": brand.description
@@ -140,15 +153,17 @@ async def get_storyline(
         
         db.commit()
         db.refresh(creative_bible)
-    
+        # Reload bible_data after generation
+        bible_data = creative_bible.creative_bible or {}
+
     return {
         "creative_bible": {
-            "brand_style": creative_bible.creative_bible.get("brand_style"),
-            "vibe": creative_bible.creative_bible.get("vibe"),
-            "colors": creative_bible.creative_bible.get("colors", []),
-            "energy_level": creative_bible.creative_bible.get("energy_level")
+            "brand_style": bible_data.get("brand_style"),
+            "vibe": bible_data.get("vibe"),
+            "colors": bible_data.get("colors", []),
+            "energy_level": bible_data.get("energy_level")
         },
-        "storyline": creative_bible.creative_bible.get("storyline", {}),
-        "suno_prompt": creative_bible.creative_bible.get("suno_prompt", "")
+        "storyline": bible_data.get("storyline", {}),
+        "suno_prompt": bible_data.get("suno_prompt", "")
     }
 

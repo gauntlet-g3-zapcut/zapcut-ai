@@ -139,17 +139,25 @@ Return ONLY the JSON object."""
 def generate_sora_prompts(storyline, creative_bible, reference_images, brand_info):
     """Generate Sora prompts for each scene"""
     sora_prompts = []
-    
+
+    # Safe access to creative_bible with defaults
+    brand_style = creative_bible.get('brand_style', 'Modern and professional')
+    vibe = creative_bible.get('vibe', 'Engaging and dynamic')
+    colors = creative_bible.get('colors', ['#3b82f6', '#1e40af'])
+    lighting = creative_bible.get('lighting', 'Professional lighting')
+    camera = creative_bible.get('camera', 'Smooth camera movements')
+    motion = creative_bible.get('motion', 'Dynamic motion')
+
     for scene in storyline["scenes"]:
         prompt = f"""SCENE {scene['scene_number']} PROMPT
 
 Creative Direction (locked):
-- Style: {creative_bible['brand_style']}
-- Vibe: {creative_bible['vibe']}
-- Colors: {', '.join(creative_bible['colors'])}
-- Lighting: {creative_bible['lighting']}
-- Camera: {creative_bible['camera']}
-- Motion: {creative_bible['motion']}
+- Style: {brand_style}
+- Vibe: {vibe}
+- Colors: {', '.join(colors)}
+- Lighting: {lighting}
+- Camera: {camera}
+- Motion: {motion}
 
 Reference Images (style anchors):
 {format_reference_images(reference_images)}
@@ -165,7 +173,7 @@ Requirements:
 - Use reference images as visual style guide
 - Maintain EXACT product appearance from user-uploaded images
 - Use ONLY the locked colors above
-- Keep {creative_bible['motion']} motion style
+- Keep {motion} motion style
 - Match energy progression: {scene['energy_start']} to {scene['energy_end']}
 - Professional, cinematic quality
 - Follow visual notes: {scene['visual_notes']}

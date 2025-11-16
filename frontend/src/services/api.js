@@ -2,17 +2,24 @@ import { supabase } from "./supabase"
 
 // API Configuration - HTTPS in production, HTTP in development
 const getApiUrl = () => {
+  console.log("🔧 API Configuration:")
+  console.log("  VITE_API_URL:", import.meta.env.VITE_API_URL)
+  console.log("  VITE_PROD:", import.meta.env.VITE_PROD)
+
   if (import.meta.env.VITE_API_URL) {
+    console.log("  ✅ Using VITE_API_URL:", import.meta.env.VITE_API_URL)
     return import.meta.env.VITE_API_URL
   }
-  const apiUrl = import.meta.env.VITE_PROD 
-    ? "https://zapcut-ai-production.up.railway.app" 
+  const apiUrl = import.meta.env.VITE_PROD
+    ? "https://zapcut-ai-production.up.railway.app"
     : "http://localhost:8000"
-  console.log("API URL:", apiUrl)
+  console.log("  ✅ Using default API URL:", apiUrl)
+  console.log("  🌍 Environment:", import.meta.env.VITE_PROD ? "Production" : "Development")
   return apiUrl
 }
 
 const API_URL = getApiUrl()
+console.log("🚀 Final API_URL:", API_URL)
 
 async function getAuthToken() {
   // Skip authentication - return mock token

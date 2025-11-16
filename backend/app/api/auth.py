@@ -14,8 +14,8 @@ print("🧪 TESTING MODE: Authentication validation DISABLED")
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """TESTING MODE: Skip token verification, return mock data"""
     return {
-        "sub": "test-user-123",
-        "email": "test@zapcut.video",
+        "sub": "mock-user-123",
+        "email": "dev@example.com",
         "aud": "authenticated"
     }
 
@@ -24,13 +24,13 @@ async def get_current_user(
     token_data: dict = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
-    """TESTING MODE: Return test user without validation"""
+    """TESTING MODE: Return mock user without validation"""
     try:
-        # Try to get or create a test user
-        user = db.query(User).filter(User.supabase_uid == "test-user-123").first()
+        # Try to get or create the mock user (matches brand owner)
+        user = db.query(User).filter(User.supabase_uid == "mock-user-123").first()
 
         if not user:
-            user = User(supabase_uid="test-user-123", email="test@zapcut.video")
+            user = User(supabase_uid="mock-user-123", email="dev@example.com")
             db.add(user)
             db.commit()
             db.refresh(user)
@@ -41,8 +41,8 @@ async def get_current_user(
         # Return a mock user if DB fails
         class MockUser:
             id = "00000000-0000-0000-0000-000000000099"
-            email = "test@zapcut.video"
-            supabase_uid = "test-user-123"
+            email = "dev@example.com"
+            supabase_uid = "mock-user-123"
         return MockUser()
 
 

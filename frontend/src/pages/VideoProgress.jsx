@@ -20,6 +20,15 @@ export default function VideoProgress() {
     const pollStatus = async () => {
       try {
         const response = await api.getCampaignStatus(campaignId)
+
+        // 🔥 ADD LOGGING HERE
+        console.log("📊 Status update:", {
+          status: response.status,
+          stage: response.stage,
+          progress: response.progress,
+          campaign_id: campaignId
+        })
+
         setStatus(response.status)
         setStage(response.stage || "not_started")
         setProgress(response.progress || 0)
@@ -57,10 +66,12 @@ export default function VideoProgress() {
     }
 
     // Initial poll
+    console.log("🎬 Starting to poll for campaign:", campaignId)
     pollStatus()
 
-    // Poll every 5 seconds
-    pollingInterval = setInterval(pollStatus, 5000)
+    // Poll every 30 seconds
+    console.log("⏱️  Polling every 30 seconds for updates...")
+    pollingInterval = setInterval(pollStatus, 30000)
 
     return () => {
       clearInterval(pollingInterval)

@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Optional
 from urllib.parse import quote_plus
 
@@ -36,10 +36,12 @@ class Settings(BaseSettings):
     # API Configuration
     API_URL: str = "http://localhost:8000"
     CORS_ORIGINS: str = "http://localhost:5174,http://localhost:5173,http://localhost:3000,https://app.zapcut.video"
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",  # Ignore extra environment variables (like PORT which is used by uvicorn)
+    )
     
     @property
     def cors_origins_list(self) -> List[str]:

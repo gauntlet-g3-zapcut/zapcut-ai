@@ -38,12 +38,31 @@ class VideoGenerationTask(Task):
 @celery_app.task(bind=True)
 def generate_campaign_video_test_mode(self, campaign_id: str):
     """
-    🧪 TEST MODE: Generate video without database
+    🧪 TEST MODE: Generate video with database updates for progress tracking
     Runs full Epic 5 pipeline with test data
     """
-    print(f"🧪 TEST MODE: Starting Epic 5 for campaign {campaign_id}")
+    print(f"\n{'='*80}")
+    print(f"🧪 EPIC 5 TEST MODE - STARTED")
+    print(f"{'='*80}")
+    print(f"📋 Campaign ID: {campaign_id}")
+    print(f"🔧 Task ID: {self.request.id}")
+    print(f"{'='*80}\n")
+
+    # Get database session
+    db = SessionLocal()
 
     try:
+        # Get campaign from database
+        campaign = db.query(Campaign).filter(
+            Campaign.id == uuid.UUID(campaign_id)
+        ).first()
+
+        if campaign:
+            campaign.status = "generating"
+            campaign.generation_stage = "starting"
+            campaign.generation_progress = 0
+            db.commit()
+            print(f"✅ Campaign status updated in database: generating")
         # Test data (no database)
         brand_info = {
             "title": "ZapCut Test Brand",
@@ -52,33 +71,60 @@ def generate_campaign_video_test_mode(self, campaign_id: str):
 
         creative_bible_data = {
             "vibe": "Modern & Professional",
-            "style": "Clean, minimalist with dynamic motion",
+            "brand_style": "Clean, minimalist with dynamic motion",
             "colors": ["#3b82f6", "#1e40af", "#60a5fa"],
-            "energy_level": "High"
+            "energy_level": "High",
+            "lighting": "Bright, professional lighting with soft shadows",
+            "camera": "Smooth tracking shots and dynamic angles",
+            "motion": "Energetic with smooth transitions"
         }
 
         # Step 1: Generate reference images
         self.update_state(state="PROGRESS", meta={"stage": "Generating reference images...", "progress": 10})
-        print("📸 Step 1: Generating reference images...")
+        if campaign:
+            campaign.generation_stage = "reference_images"
+            campaign.generation_progress = 10
+            db.commit()
+        print(f"\n📸 STEP 1/6: Generating Reference Images")
+        print(f"   Progress: 10%")
+        print(f"   Generating prompts for 3 reference images...")
 
         image_prompts = generate_reference_image_prompts(creative_bible_data, brand_info)
+        print(f"   ✓ Generated {len(image_prompts)} image prompts")
+        print(f"   Calling Replicate API for image generation...")
+
         reference_images = generate_reference_images(image_prompts)
         reference_image_urls = {img["type"]: img["url"] for img in reference_images}
+        print(f"   ✓ Generated {len(reference_images)} reference images")
+        for img in reference_images:
+            print(f"     - {img['type']}: {img['url'][:60]}...")
 
         # Step 2: Generate storyline and prompts
         self.update_state(state="PROGRESS", meta={"stage": "Creating storyboard...", "progress": 20})
-        print("📝 Step 2: Generating storyline...")
+        if campaign:
+            campaign.generation_stage = "storyboard"
+            campaign.generation_progress = 20
+            db.commit()
+        print(f"\n📝 STEP 2/6: Generating Storyline & Prompts")
+        print(f"   Progress: 20%")
+        print(f"   Creating AI-generated storyboard...")
 
         storyline_data = generate_storyline_and_prompts(creative_bible_data, brand_info)
+        print(f"   ✓ Generated storyline with {len(storyline_data.get('storyline', {}).get('scenes', []))} scenes")
+        print(f"   Generating Sora video prompts...")
+
         sora_prompts = generate_sora_prompts(
             storyline_data["storyline"],
             creative_bible_data,
             reference_image_urls,
             brand_info
         )
+        print(f"   ✓ Generated {len(sora_prompts)} Sora prompts")
 
         # Step 3: Generate video scenes
-        print("🎬 Step 3: Generating video scenes...")
+        print(f"\n🎬 STEP 3/6: Generating Video Scenes (Sequential)")
+        print(f"   Total scenes to generate: 5")
+        print(f"   Estimated time: ~5-10 minutes per scene")
         video_urls = {}
         prev_scene_url = None
 
@@ -90,22 +136,41 @@ def generate_campaign_video_test_mode(self, campaign_id: str):
                 state="PROGRESS",
                 meta={"stage": f"Generating scene {scene_num}/5...", "progress": progress}
             )
-            print(f"   Scene {scene_num}/5...")
+            if campaign:
+                campaign.generation_stage = "scene_videos"
+                campaign.generation_progress = progress
+                db.commit()
+            print(f"\n   🎥 Scene {scene_num}/5:")
+            print(f"      Progress: {progress}%")
+            print(f"      Prompt: {prompt_data.get('prompt', '')[:100]}...")
+            print(f"      Calling Replicate Sora API...")
 
             from app.services.replicate_service import generate_video_with_sora
             result = generate_video_with_sora(prompt_data, scene_num, prev_scene_url=prev_scene_url)
 
             if result.get("url"):
+                print(f"      ✓ Video generated, downloading...")
                 video_data = download_file(result["url"])
+                print(f"      Downloaded {len(video_data)} bytes")
+
                 key = f"test-campaigns/{campaign_id}/scene_{scene_num}.mp4"
+                print(f"      Uploading to Supabase: {key}")
                 s3_url = upload_to_s3_bytes(video_data, key, "video/mp4")
                 video_urls[f"scene_{scene_num}"] = s3_url
                 prev_scene_url = s3_url
-                print(f"   ✅ Scene {scene_num} generated")
+                print(f"      ✅ Scene {scene_num} complete: {s3_url[:60]}...")
+            else:
+                print(f"      ❌ Scene {scene_num} failed: {result.get('error', 'Unknown error')}")
 
         # Step 4: Generate voiceovers
         self.update_state(state="PROGRESS", meta={"stage": "Generating voiceovers...", "progress": 70})
-        print("🎙️ Step 4: Generating voiceovers...")
+        if campaign:
+            campaign.generation_stage = "voiceovers"
+            campaign.generation_progress = 70
+            db.commit()
+        print(f"\n🎙️ STEP 4/6: Generating Voiceovers (Parallel)")
+        print(f"   Progress: 70%")
+        print(f"   Extracting voiceover text from storyline...")
 
         scenes_with_text = []
         if storyline_data.get("storyline", {}).get("scenes"):
@@ -115,34 +180,60 @@ def generate_campaign_video_test_mode(self, campaign_id: str):
                     "voiceover_text": scene.get("voiceover_text", scene.get("description", ""))
                 })
 
+        print(f"   Generating {len(scenes_with_text)} voiceovers with Replicate TTS...")
         voiceover_results = generate_voiceovers_parallel(scenes_with_text)
         voiceover_urls = []
 
         for result in voiceover_results:
             if result.get("url"):
                 scene_num = result["scene_number"]
+                print(f"   ✓ Voiceover {scene_num} generated, downloading...")
                 audio_data = download_file(result["url"])
                 key = f"test-campaigns/{campaign_id}/voiceover_{scene_num}.mp3"
                 voiceover_url = upload_to_s3_bytes(audio_data, key, "audio/mpeg")
                 voiceover_urls.append(voiceover_url)
+                print(f"      Uploaded: {voiceover_url[:60]}...")
             else:
                 voiceover_urls.append(None)
+                print(f"   ⚠️ Voiceover {result.get('scene_number')} skipped")
+
+        print(f"   ✅ Generated {len([v for v in voiceover_urls if v])} voiceovers")
 
         # Step 5: Generate music
         self.update_state(state="PROGRESS", meta={"stage": "Generating soundtrack...", "progress": 80})
-        print("🎵 Step 5: Generating music...")
+        if campaign:
+            campaign.generation_stage = "music"
+            campaign.generation_progress = 80
+            db.commit()
+        print(f"\n🎵 STEP 5/6: Generating Background Music")
+        print(f"   Progress: 80%")
+        print(f"   Music prompt: {storyline_data.get('suno_prompt', 'Upbeat modern electronic music')[:100]}...")
+        print(f"   Calling Replicate Suno API...")
 
         music_result = generate_music_with_suno(storyline_data.get("suno_prompt", "Upbeat modern electronic music"))
         music_url = None
 
         if music_result.get("url"):
+            print(f"   ✓ Music generated, downloading...")
             music_data = download_file(music_result["url"])
             key = f"test-campaigns/{campaign_id}/music.mp3"
             music_url = upload_to_s3_bytes(music_data, key, "audio/mpeg")
+            print(f"   ✅ Music uploaded: {music_url[:60]}...")
+        else:
+            print(f"   ⚠️ Music generation skipped or failed")
 
         # Step 6: Compose final video
         self.update_state(state="PROGRESS", meta={"stage": "Composing final video...", "progress": 90})
-        print("🎞️ Step 6: Composing final video...")
+        if campaign:
+            campaign.generation_stage = "compositing"
+            campaign.generation_progress = 90
+            db.commit()
+        print(f"\n🎞️ STEP 6/6: Composing Final Video")
+        print(f"   Progress: 90%")
+        print(f"   Using FFmpeg to stitch {len(video_urls)} scenes...")
+        print(f"   - Adding crossfade transitions")
+        print(f"   - Mixing voiceover (100%) + music (30%)")
+        print(f"   - Encoding to H.264 1080p 30fps")
 
         final_video_path = compose_video(
             video_urls,
@@ -152,17 +243,36 @@ def generate_campaign_video_test_mode(self, campaign_id: str):
             voiceover_urls=voiceover_urls if voiceover_urls else None
         )
 
+        print(f"   ✓ Video composed successfully")
+        print(f"   Uploading final video to Supabase...")
+
         # Upload final video
         with open(final_video_path, "rb") as f:
             video_data = f.read()
 
+        print(f"   Final video size: {len(video_data) / (1024*1024):.2f} MB")
         key = f"test-campaigns/{campaign_id}/final.mp4"
         final_url = upload_to_s3_bytes(video_data, key, "video/mp4")
 
         os.remove(final_video_path)
 
-        self.update_state(state="SUCCESS", meta={"stage": "Complete!", "progress": 100})
-        print(f"✅ TEST MODE: Epic 5 complete! Final video: {final_url}")
+        self.update_state(state="SUCCESS", meta={"stage": "Complete!", "progress": 100, "final_video_url": final_url})
+
+        # Update campaign to completed
+        if campaign:
+            campaign.status = "completed"
+            campaign.generation_stage = "complete"
+            campaign.generation_progress = 100
+            campaign.final_video_url = final_url
+            db.commit()
+            print(f"✅ Campaign marked as completed in database")
+
+        print(f"\n{'='*80}")
+        print(f"✅ EPIC 5 TEST MODE - COMPLETE!")
+        print(f"{'='*80}")
+        print(f"📹 Final video: {final_url}")
+        print(f"⏱️ Task completed successfully")
+        print(f"{'='*80}\n")
 
         return {
             "campaign_id": campaign_id,
@@ -172,10 +282,17 @@ def generate_campaign_video_test_mode(self, campaign_id: str):
         }
 
     except Exception as e:
+        # Update campaign to failed
+        if campaign:
+            campaign.status = "failed"
+            campaign.generation_stage = "error"
+            db.commit()
         print(f"❌ TEST MODE ERROR: {e}")
         import traceback
         traceback.print_exc()
         raise
+    finally:
+        db.close()
 
 
 @celery_app.task(base=VideoGenerationTask, bind=True)

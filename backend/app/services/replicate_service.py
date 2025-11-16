@@ -49,24 +49,20 @@ def generate_reference_images(prompts):
 
 def generate_video_with_sora(scene_prompt, scene_number, prev_scene_url=None):
     """
-    Generate video using Sora 2 on Replicate with optional continuity
+    Generate video using text-to-video model on Replicate
 
     Args:
         scene_prompt: Dict with prompt and scene info
         scene_number: Scene number (1-5)
         prev_scene_url: URL of previous scene for visual continuity (optional)
 
-    Note: At the time of writing, Sora might not be publicly available on Replicate.
-    This is a placeholder for when it becomes available.
-    For now, we'll use an alternative video generation model.
+    Note: Using CogVideoX as Sora is not publicly available yet.
+    CogVideoX is a state-of-the-art text-to-video model.
     """
     try:
-        # Check if Sora is available, otherwise use alternative
-        # Example: using a placeholder video generation model
-        # Replace with actual Sora model when available
-
-        # For demonstration, using Stable Video Diffusion
-        model = "stability-ai/stable-video-diffusion"
+        # Use CogVideoX official model from THUDM (Text-to-Video)
+        # Model: thudm/cogvideox-t2v
+        model = "thudm/cogvideox-t2v"
 
         # Enhance prompt with continuity context if previous scene exists
         prompt = scene_prompt["prompt"]
@@ -75,15 +71,10 @@ def generate_video_with_sora(scene_prompt, scene_number, prev_scene_url=None):
 
         input_params = {
             "prompt": prompt,
-            "frames_per_second": 30,
-            "num_frames": 180,  # 6 seconds at 30fps
-            "motion_bucket_id": 127,
+            "num_frames": 49,  # CogVideoX generates 49 frames
+            "num_inference_steps": 50,
+            "guidance_scale": 6,
         }
-
-        # If prev_scene_url is provided, use it for continuity (when model supports it)
-        # Note: SVD doesn't support init_image in the same way, but Sora will
-        if prev_scene_url:
-            input_params["context_url"] = prev_scene_url  # Placeholder for Sora continuity
 
         output = client.run(model, input=input_params)
 
