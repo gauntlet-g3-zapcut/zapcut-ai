@@ -26,21 +26,39 @@ export function AuthProvider({ children }) {
   }, [])
 
   const loginWithEmail = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-    if (error) throw error
-    return data
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+      if (error) {
+        console.error('Login error:', error)
+        throw new Error(error.message || 'Failed to sign in')
+      }
+      console.log('Login successful:', data?.user?.email)
+      return data
+    } catch (err) {
+      console.error('Login exception:', err)
+      throw err
+    }
   }
 
   const signupWithEmail = async (email, password) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    })
-    if (error) throw error
-    return data
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      })
+      if (error) {
+        console.error('Signup error:', error)
+        throw new Error(error.message || 'Failed to create account')
+      }
+      console.log('Signup successful:', data?.user?.email)
+      return data
+    } catch (err) {
+      console.error('Signup exception:', err)
+      throw err
+    }
   }
 
   const loginWithGoogle = async () => {

@@ -17,77 +17,35 @@ const API_URL = getApiUrl()
 /**
  * Decode JWT header to check algorithm without verification
  */
-function getTokenAlgorithm(token: string): string | null {
+function getTokenAlgorithm(token: string | null): string | null {
+  if (!token) return null
   try {
-    const parts = token.split('.')
-    if (parts.length !== 3) return null
-    const header = JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/')))
-    return header.alg
-  } catch (e) {
+    const header = JSON.parse(atob(token.split('.')[0].replace(/-/g, '+').replace(/_/g, '/')))
+    return header.alg || null
+  } catch {
     return null
   }
 }
 
 /**
- * Get a valid Supabase auth token, refreshing if necessary
- * Supabase tokens should always use RS256 algorithm
+ * Get a valid Supabase auth token
+ * Note: Supabase may issue RS256 (modern/JWKS) or HS256 (legacy/JWT secret) tokens
+ * The backend handles verification for both algorithms
  */
-async function getAuthToken() {
-  // First, try to get the current session
-  let { data: { session }, error } = await supabase.auth.getSession()
+async function getAuthToken(): Promise<string> {
+  const { data: { session }, error } = await supabase.auth.getSession()
 
-  if (error || !session) {
-    throw new Error("User not authenticated")
+  if (error || !session?.access_token) {
+    throw new Error('User not authenticated')
   }
 
-  // Check if the token has the correct algorithm (Supabase uses RS256)
-  const tokenAlgorithm = getTokenAlgorithm(session.access_token)
+  const token = session.access_token
   
-  if (tokenAlgorithm && tokenAlgorithm !== "RS256") {
-    console.warn(`Invalid token algorithm detected: ${tokenAlgorithm}. Expected RS256. Clearing invalid session...`)
-    
-    // If we have a non-RS256 token, it's likely corrupted or from a different source
-    // Clear the session immediately and force re-authentication
-    await supabase.auth.signOut()
-    
-    // Clear localStorage to remove any stale tokens
-    if (typeof window !== 'undefined') {
-      const keys = Object.keys(localStorage)
-      keys.forEach(key => {
-        if (key.includes('supabase') || key.includes('auth')) {
-          localStorage.removeItem(key)
-        }
-      })
-    }
-    
-    throw new Error(`Invalid token algorithm: ${tokenAlgorithm}. Supabase uses RS256. Please log in again.`)
-  }
-
-  // Verify the token is from the correct Supabase project
-  try {
-    const tokenParts = session.access_token.split('.')
-    if (tokenParts.length === 3) {
-      const payload = JSON.parse(atob(tokenParts[1].replace(/-/g, '+').replace(/_/g, '/')))
-      const issuer = payload.iss
-      
-      // Verify issuer is from Supabase (should contain supabase.co or supabase.io)
-      if (issuer && !issuer.includes('supabase.co') && !issuer.includes('supabase.io')) {
-        console.warn(`Token issuer mismatch. Expected Supabase issuer, got: ${issuer}`)
-        await supabase.auth.signOut()
-        throw new Error("Invalid token issuer. Please log in again.")
-      }
-    }
-  } catch (e) {
-    // If we can't verify the token structure, it's invalid
-    if (e instanceof Error && e.message.includes("Invalid token issuer")) {
-      throw e // Re-throw issuer errors
-    }
-    console.error("Failed to verify token structure:", e)
-    await supabase.auth.signOut()
-    throw new Error("Invalid token format. Please log in again.")
-  }
-
-  return session.access_token
+  // Note: Supabase may issue either RS256 (modern) or HS256 (legacy) tokens
+  // The backend now supports both algorithms, so we just return the token
+  // The backend will verify it appropriately based on the algorithm
+  
+  return token
 }
 
 interface RequestOptions extends RequestInit {

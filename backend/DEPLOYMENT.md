@@ -67,6 +67,8 @@ REPLICATE_API_TOKEN=r8_...
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 SUPABASE_DB_PASSWORD=your_password
+# Optional: Only needed if Supabase is issuing HS256 tokens (legacy projects)
+# SUPABASE_JWT_SECRET=your_jwt_secret
 
 # CORS (optional, has defaults)
 CORS_ORIGINS=http://localhost:5173,https://app.zapcut.video

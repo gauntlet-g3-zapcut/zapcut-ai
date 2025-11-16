@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     SUPABASE_DB_PASSWORD: Optional[str] = None
+    SUPABASE_JWT_SECRET: Optional[str] = None  # For HS256 token verification (legacy)
     
     # Redis Configuration (for Celery)
     REDIS_URL: Optional[str] = None
