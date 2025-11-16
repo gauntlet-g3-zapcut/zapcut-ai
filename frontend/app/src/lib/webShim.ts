@@ -6,6 +6,7 @@ import type {
     PreviewResult,
     ExportSettings,
     ExportResult,
+    ProgressEvent,
     DisplayDevice,
     ListDevices,
     IngestRequest,
@@ -290,14 +291,33 @@ async function generatePreviewWeb(_projectJson: string, _atMs: number): Promise<
     throw new Error('Preview generation requires ffmpeg.wasm support (coming soon)');
 }
 
-async function exportProjectWeb(_projectJson: string, _settings: ExportSettings): Promise<ExportResult> {
-    // Export would use ffmpeg.wasm to render the final video
-    // This is a placeholder - full implementation would process the project
-    throw new Error('Video export requires ffmpeg.wasm support (coming soon). Use the Electron app for full export functionality.');
+// Progress callback storage
+let exportProgressCallback: ((event: ProgressEvent) => void) | null = null;
+
+async function exportProjectWeb(projectJson: string, settings: ExportSettings): Promise<ExportResult> {
+    // Import and use the web export service
+    const { exportProjectWeb: exportProject, setExportProgressCallback } = await import('./webExport');
+    
+    // Set up progress callback
+    setExportProgressCallback((event) => {
+        if (exportProgressCallback) {
+            exportProgressCallback(event);
+        }
+    });
+    
+    try {
+        return await exportProject(projectJson, settings);
+    } finally {
+        // Clear progress callback after export
+        setExportProgressCallback(null);
+    }
 }
 
-function onExportProgressWeb(): () => void {
-    return () => { }; // No-op
+function onExportProgressWeb(callback: (event: ProgressEvent) => void): () => void {
+    exportProgressCallback = callback;
+    return () => {
+        exportProgressCallback = null;
+    };
 }
 
 async function startScreenRecordWeb(): Promise<{ recordingId: string; outPath: string }> {
