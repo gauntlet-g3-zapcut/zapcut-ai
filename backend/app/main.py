@@ -1,9 +1,41 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from app.config import settings
-from app.api import auth, brands, chat, campaigns
+import sys
+import traceback
 
-app = FastAPI(title="AdCraft API", version="1.0.0")
+# Add comprehensive error logging at the very start
+def log_error_and_exit(msg, exc=None):
+    """Log error and exit gracefully"""
+    print(f"❌ FATAL ERROR: {msg}", file=sys.stderr)
+    if exc:
+        traceback.print_exc(file=sys.stderr)
+    sys.stderr.flush()
+    sys.exit(1)
+
+# Try to import with error handling
+try:
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+except ImportError as e:
+    log_error_and_exit(f"Failed to import FastAPI: {e}", e)
+
+try:
+    from app.config import settings
+except Exception as e:
+    log_error_and_exit(f"Failed to import settings: {e}", e)
+
+try:
+    from app.api import auth, brands, chat, campaigns
+except Exception as e:
+    log_error_and_exit(f"Failed to import API routers: {e}", e)
+
+print("✅ All imports successful", file=sys.stderr)
+sys.stderr.flush()
+
+try:
+    app = FastAPI(title="AdCraft API", version="1.0.0")
+    print("✅ FastAPI app created", file=sys.stderr)
+    sys.stderr.flush()
+except Exception as e:
+    log_error_and_exit(f"Failed to create FastAPI app: {e}", e)
 
 # CORS middleware - specify exact origins for credentialed requests
 # CRITICAL: Always includes production frontend - this must never be removed
