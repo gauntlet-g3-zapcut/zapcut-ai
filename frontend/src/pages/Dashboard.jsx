@@ -71,7 +71,7 @@ export default function Dashboard() {
             <div>
               <h1 className="text-3xl font-bold mb-2">Brands</h1>
               <p className="text-muted-foreground">
-                See your projects and create new ones under the selected brand.
+                See your projects and create new ones under the selected brand!
               </p>
             </div>
             <Button onClick={() => navigate("/brands/create")}>
