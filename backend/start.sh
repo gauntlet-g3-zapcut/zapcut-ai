@@ -64,11 +64,5 @@ echo "=========================================="
 echo "Starting uvicorn server on port $PORT..."
 echo "=========================================="
 
-# Start uvicorn with explicit error handling and logging
-exec python -m uvicorn app.main:app \
-    --host 0.0.0.0 \
-    --port $PORT \
-    --log-level debug \
-    --proxy-headers \
-    --forwarded-allow-ips="*" \
-    2>&1
+# Start uvicorn server
+exec uvicorn app.main:app --host 0.0.0.0 --port $PORT
