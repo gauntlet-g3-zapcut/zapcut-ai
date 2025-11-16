@@ -14,9 +14,9 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Expose port
-EXPOSE ${PORT:-3000}
+# Expose port (Railway will set PORT env var)
+EXPOSE 3000
 
-# Start the application
-CMD ["npx", "serve", "-s", "dist", "-l", "${PORT:-3000}"]
+# Start the application (Railway will override with startCommand)
+CMD ["npx", "serve", "-s", "dist", "-l", "3000"]
 
