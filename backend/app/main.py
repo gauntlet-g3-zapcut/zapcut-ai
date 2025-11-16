@@ -48,11 +48,9 @@ except Exception as e:
 
 # CORS middleware - specify exact origins for credentialed requests
 # CRITICAL: Always includes production frontend - this must never be removed
-PRODUCTION_FRONTEND = "https://app.zapcut.video"
+PRODUCTION_FRONTEND = "https://frontend-adcraft-production.up.railway.app"
 
 default_origins = [
-    "https://app.zapcut.video",  # Production frontend (old)
-    "https://frontend-adcraft-production.up.railway.app",  # Production frontend (new)
     PRODUCTION_FRONTEND,  # Production frontend - REQUIRED
     "http://localhost:5173",     # Local development
     "http://localhost:5175",
