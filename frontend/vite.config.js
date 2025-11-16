@@ -70,9 +70,13 @@ function serveEditorApp() {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   root: '.',  // Explicitly set root to current directory (where index.html is)
-  plugins: [react(), serveEditorApp()],
+  plugins: [
+    react(),
+    // Only use serveEditorApp in development mode
+    ...(mode === 'development' ? [serveEditorApp()] : [])
+  ],
   publicDir: 'public',
   build: {
     rollupOptions: {
@@ -85,4 +89,4 @@ export default defineConfig({
       allow: ['..']
     }
   }
-})
+}))
