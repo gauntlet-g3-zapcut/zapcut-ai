@@ -53,8 +53,11 @@ celery_app.conf.update(
     },
 )
 
-# Auto-discover tasks after celery_app is fully configured
-# This avoids circular import issues since celery_app is defined first
-celery_app.autodiscover_tasks(['app.tasks'])
+# Auto-discover tasks - only called when worker starts, not during FastAPI import
+# This avoids circular import issues
+# Tasks will be discovered when celery worker starts with: celery -A app.celery_app worker
+# For FastAPI, tasks are imported via the API routes, so autodiscover isn't needed here
+# Uncomment the line below if you need explicit task discovery in worker mode:
+# celery_app.autodiscover_tasks(['app.tasks'])
 
 logger.info("Celery app initialized")

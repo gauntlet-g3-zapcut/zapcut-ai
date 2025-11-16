@@ -12,6 +12,8 @@ from app.models.creative_bible import CreativeBible
 from app.models.campaign import Campaign
 from app.models.generation_job import GenerationJob
 from app.api.auth import get_current_user
+# Import celery_app before importing tasks to ensure it's available
+from app.celery_app import celery_app  # noqa: F401
 from app.tasks.video_generation import start_video_generation_task
 from app.config import settings
 from datetime import datetime
