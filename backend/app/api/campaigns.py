@@ -117,6 +117,8 @@ async def get_campaign_status(
     return {
         "campaign_id": str(campaign.id),
         "status": campaign.status,
+        "stage": campaign.generation_stage if hasattr(campaign, 'generation_stage') else "not_started",
+        "progress": campaign.generation_progress if hasattr(campaign, 'generation_progress') else 0,
         "final_video_url": campaign.final_video_url if campaign.status == "completed" else None
     }
 

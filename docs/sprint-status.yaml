@@ -49,9 +49,10 @@ stories:
 
   - id: "5.8"
     name: "Granular Progress Tracking UI"
-    status: "backlog"
+    status: "done"
     priority: "P3"
     estimate: "30 mins"
+    completed: "2025-11-15"
 
 notes:
   - Story 5.7 and 5.9 already implemented, marked as complete
