@@ -1,13 +1,11 @@
 [phases.setup]
+nixpkgsArchive = "a343533bccc62400e8a9560423486a3b6c11a23b"
 
 [phases.install]
 cmds = ["npm install"]
 
 [phases.build]
-cmds = [
-  "cd app && npm install && npm run build:web && cd ..",
-  "npm run build"
-]
+cmds = ["npm run build:all"]
 
 [start]
 cmd = "npx serve -s dist -l $PORT"
