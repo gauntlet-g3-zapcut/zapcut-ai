@@ -2,6 +2,22 @@
 .bmad-core/
 .bmad-*/
 .bmad/
+.claude/
+
+# Environment files - NEVER COMMIT THESE
+.env
+.env.*
+.env.local
+.env.*.local
+**/.env
+**/.env.*
+**/.env.local
+
+# Railway deployment files - NEVER COMMIT THESE
+.railway.env
+.railway.state
+.railway-worker-vars.txt
+=======
 
 # Claude Code (local only)
 .claude/

@@ -10,13 +10,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.database import Base
 from app.config import settings
-from app.models import User, Brand, CreativeBible, Campaign
+from app.models import User, Brand, CreativeBible, Campaign, GenerationJob
 
 # this is the Alembic Config object
 config = context.config
 
-# Override sqlalchemy.url with our settings
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Store database URL directly (avoid ConfigParser interpolation issues with %)
+database_url = settings.database_url
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
@@ -28,9 +28,8 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=database_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "postgresql"},
@@ -42,11 +41,9 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    from sqlalchemy import create_engine
+
+    connectable = create_engine(database_url, poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)

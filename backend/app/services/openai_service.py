@@ -104,16 +104,63 @@ Return ONLY valid JSON, no markdown or extra text."""
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.7,
+        timeout=30.0  # 30 second timeout
     )
-    
+
     import json
     content = response.choices[0].message.content.strip()
-    # Remove markdown code blocks if present
-    if content.startswith("```"):
-        content = content.split("```")[1]
-        if content.startswith("json"):
-            content = content[4:]
-    return json.loads(content.strip())
+
+    # Safely parse JSON response with fallback
+    try:
+        # Remove markdown code blocks if present
+        if content.startswith("```"):
+            parts = content.split("```")
+            if len(parts) >= 2:
+                content = parts[1]
+                if content.startswith("json"):
+                    content = content[4:]
+
+        creative_bible = json.loads(content.strip())
+
+        # Validate required fields
+        required_fields = ['brand_style', 'vibe', 'colors', 'lighting', 'camera', 'motion', 'energy_level']
+        missing_fields = [f for f in required_fields if f not in creative_bible]
+
+        if missing_fields:
+            print(f"⚠️  OpenAI response missing fields: {missing_fields}, using defaults")
+            # Add default values for missing fields
+            defaults = {
+                'brand_style': answers.get('style', 'Modern & Professional'),
+                'vibe': answers.get('pacing', 'Steady & Engaging'),
+                'colors': ['#3b82f6', '#1e40af', '#60a5fa', '#93c5fd'],
+                'lighting': 'Bright and professional',
+                'camera': 'Smooth, professional movements',
+                'motion': 'Clean and purposeful',
+                'energy_level': 'Medium'
+            }
+            for field in missing_fields:
+                creative_bible[field] = defaults.get(field, 'Professional')
+
+        # Validate colors is an array with at least 3 items
+        if not isinstance(creative_bible.get('colors'), list) or len(creative_bible['colors']) < 3:
+            print(f"⚠️  Invalid colors format, using defaults")
+            creative_bible['colors'] = ['#3b82f6', '#1e40af', '#60a5fa', '#93c5fd']
+
+        return creative_bible
+
+    except (json.JSONDecodeError, IndexError, KeyError) as e:
+        print(f"❌ Failed to parse OpenAI response: {e}")
+        print(f"   Raw content: {content[:200]}...")
+        # Return fallback creative bible based on user answers
+        return {
+            'brand_style': answers.get('style', 'Modern & Professional'),
+            'vibe': answers.get('pacing', 'Steady & Engaging'),
+            'colors': ['#3b82f6', '#1e40af', '#60a5fa', '#93c5fd'],
+            'lighting': 'Bright and professional to highlight the product',
+            'camera': 'Smooth, professional camera movements',
+            'motion': 'Clean and purposeful transitions',
+            'energy_level': 'Medium - engaging but professional'
+        }
 
 
 def generate_storyline_and_prompts(creative_bible, brand_info):
@@ -124,33 +171,32 @@ def generate_storyline_and_prompts(creative_bible, brand_info):
 
 Generate a complete video ad plan with:
 
-1. A 5-scene storyline (30 seconds total, 6 seconds each)
-2. Sora video prompts for each scene
+1. A 1-scene storyline (3 seconds total)
+2. Sora video prompts for the scene
 3. A Suno music prompt
 
 Return as JSON with this structure:
 {{
   "storyline": {{
-    "total_duration": 30,
+    "total_duration": 3,
     "scenes": [
       {{
         "scene_number": 1,
         "title": "Scene Title",
-        "duration": 6,
+        "duration": 3,
         "start_time": 0,
-        "end_time": 6,
+        "end_time": 3,
         "description": "Detailed description",
         "energy_start": 3,
         "energy_end": 5,
         "visual_notes": "Notes about visual style"
-      }},
-      // ... 4 more scenes
+      }}
     ]
   }},
-  "suno_prompt": "Detailed music prompt with exact timing..."
+  "suno_prompt": "Detailed music prompt for 3 seconds..."
 }}
 
-Make the Suno prompt VERY specific about timing and transitions at 0s, 6s, 12s, 18s, 24s, and 30s.
+Make the Suno prompt VERY specific about timing for the single 3-second scene.
 Return ONLY the JSON object."""
 
     response = client.chat.completions.create(
@@ -166,17 +212,25 @@ Return ONLY the JSON object."""
 def generate_sora_prompts(storyline, creative_bible, reference_images, brand_info):
     """Generate Sora prompts for each scene"""
     sora_prompts = []
-    
+
+    # Safe access to creative_bible with defaults
+    brand_style = creative_bible.get('brand_style', 'Modern and professional')
+    vibe = creative_bible.get('vibe', 'Engaging and dynamic')
+    colors = creative_bible.get('colors', ['#3b82f6', '#1e40af'])
+    lighting = creative_bible.get('lighting', 'Professional lighting')
+    camera = creative_bible.get('camera', 'Smooth camera movements')
+    motion = creative_bible.get('motion', 'Dynamic motion')
+
     for scene in storyline["scenes"]:
         prompt = f"""SCENE {scene['scene_number']} PROMPT
 
 Creative Direction (locked):
-- Style: {creative_bible['brand_style']}
-- Vibe: {creative_bible['vibe']}
-- Colors: {', '.join(creative_bible['colors'])}
-- Lighting: {creative_bible['lighting']}
-- Camera: {creative_bible['camera']}
-- Motion: {creative_bible['motion']}
+- Style: {brand_style}
+- Vibe: {vibe}
+- Colors: {', '.join(colors)}
+- Lighting: {lighting}
+- Camera: {camera}
+- Motion: {motion}
 
 Reference Images (style anchors):
 {format_reference_images(reference_images)}
@@ -192,7 +246,7 @@ Requirements:
 - Use reference images as visual style guide
 - Maintain EXACT product appearance from user-uploaded images
 - Use ONLY the locked colors above
-- Keep {creative_bible['motion']} motion style
+- Keep {motion} motion style
 - Match energy progression: {scene['energy_start']} to {scene['energy_end']}
 - Professional, cinematic quality
 - Follow visual notes: {scene['visual_notes']}

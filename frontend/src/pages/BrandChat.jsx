@@ -37,29 +37,51 @@ export default function BrandChat() {
   const navigate = useNavigate()
   const [answers, setAnswers] = useState({})
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
 
   const handleOptionSelect = (questionId, option) => {
     setAnswers(prev => ({
       ...prev,
       [questionId]: option
     }))
+    // Clear error when user makes a selection
+    if (error) setError(null)
   }
 
+  // Check if all questions are answered
+  const allQuestionsAnswered = QUESTIONS.every(q => answers[q.id])
+  const answeredCount = QUESTIONS.filter(q => answers[q.id]).length
+
   const handleSubmit = async () => {
-    // Check if all questions are answered
-    const allAnswered = QUESTIONS.every(q => answers[q.id])
-    if (!allAnswered) {
-      alert("Please answer all questions before continuing.")
+    console.log("\n" + "=".repeat(80))
+    console.log("🚀 BRAND CHAT - Continue to Storyline button clicked")
+    console.log("=".repeat(80))
+
+    // Double-check validation before submitting
+    if (!allQuestionsAnswered) {
+      console.log("❌ Validation failed: Not all questions answered")
+      console.log(`   Answered: ${answeredCount}/${QUESTIONS.length}`)
+      setError(`Please answer all ${QUESTIONS.length} questions (${answeredCount}/${QUESTIONS.length} answered)`)
       return
     }
 
+    console.log("✅ Validation passed")
+    console.log(`   Brand ID: ${brandId}`)
+    console.log(`   Answers:`, answers)
+
     setLoading(true)
+    setError(null)
+
     try {
       const response = await api.submitCampaignAnswers(brandId, answers)
+      if (!response?.creative_bible_id) {
+        throw new Error("Invalid response: missing creative_bible_id")
+      }
       navigate(`/brands/${brandId}/storyline/${response.creative_bible_id}`)
     } catch (error) {
       console.error("Failed to submit answers:", error)
-      alert("Failed to submit answers. Please try again.")
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -104,14 +126,28 @@ export default function BrandChat() {
               </div>
             ))}
 
-            <div className="pt-6">
+            <div className="pt-6 space-y-4">
+              {error && (
+                <div className="bg-destructive/15 text-destructive px-4 py-3 rounded-md text-sm">
+                  {error}
+                </div>
+              )}
+
+              {!allQuestionsAnswered && !error && (
+                <div className="bg-muted px-4 py-3 rounded-md text-sm text-muted-foreground">
+                  Please answer all questions to continue ({answeredCount}/{QUESTIONS.length} answered)
+                </div>
+              )}
+
               <Button
                 onClick={handleSubmit}
-                disabled={loading || Object.keys(answers).length < QUESTIONS.length}
                 className="w-full"
                 size="lg"
+                disabled={loading || !allQuestionsAnswered}
               >
-                {loading ? "Processing..." : "Continue to Storyline →"}
+                {loading ? "Creating your creative bible..." :
+                 !allQuestionsAnswered ? `Answer all questions (${answeredCount}/${QUESTIONS.length})` :
+                 "Continue to Storyline →"}
               </Button>
             </div>
           </CardContent>
