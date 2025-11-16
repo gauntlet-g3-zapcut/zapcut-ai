@@ -240,10 +240,10 @@ def generate_campaign_video_test_mode(self, campaign_id: str):
         )
         add_log(f"   ✅ Generated {len(sora_prompts)} video prompts")
 
-        # Step 3: Generate video scenes in PARALLEL (with resume capability)
+        # Step 3: Generate video scenes in PARALLEL
         add_log("\n🎬 STEP 3/6: Generating Video Scenes (Parallel)")
         add_log(f"   Total scenes to generate: {len(sora_prompts)}")
-        add_log("   ⏱️  Estimated time: ~3-5 minutes per scene")
+        add_log("   ⏱️  Estimated time: ~3-5 minutes")
 
         self.update_state(
             state="PROGRESS",
@@ -254,65 +254,36 @@ def generate_campaign_video_test_mode(self, campaign_id: str):
             campaign.generation_progress = 30
             db.commit()
 
-        # Check for existing completed scenes (error recovery)
-        existing_jobs = db.query(GenerationJob).filter(
-            GenerationJob.campaign_id == uuid.UUID(campaign_id),
-            GenerationJob.job_type == "scene_video",
-            GenerationJob.status == "completed"
-        ).all()
+        add_log(f"   📡 Starting {len(sora_prompts)} scene generation(s) in parallel...")
 
-        existing_scenes = {job.scene_number: job.output_url for job in existing_jobs if job.output_url}
+        # Create generation jobs for each scene
+        scene_jobs = {}
+        for prompt_data in sora_prompts:
+            scene_num = prompt_data["scene_number"]
+            job = create_generation_job(
+                db,
+                campaign_id,
+                "scene_video",
+                scene_number=scene_num,
+                input_params={"prompt": prompt_data["prompt"]}
+            )
+            scene_jobs[scene_num] = job
+            job.status = "processing"
+            db.commit()
 
-        if existing_scenes:
-            add_log(f"\n🔄 RESUMING: Found {len(existing_scenes)} already-completed scene(s)")
-            for scene_num, url in existing_scenes.items():
-                add_log(f"   ✓ Scene {scene_num} already exists: {url[:60]}...")
+        try:
+            import time
+            start_time = time.time()
 
-        # Filter out scenes that are already completed
-        scenes_to_generate = [p for p in sora_prompts if p["scene_number"] not in existing_scenes]
+            # Generate all scenes in parallel
+            video_results = generate_videos_parallel(sora_prompts)
 
-        if scenes_to_generate:
-            add_log(f"   📡 Generating {len(scenes_to_generate)} new scene(s) in parallel...")
+            elapsed = time.time() - start_time
+            print(f"⏱️  Parallel video generation took {elapsed:.2f} seconds total")
 
-            # Create generation jobs for scenes that need to be generated
-            scene_jobs = {}
-            for prompt_data in scenes_to_generate:
-                scene_num = prompt_data["scene_number"]
-                job = create_generation_job(
-                    db,
-                    campaign_id,
-                    "scene_video",
-                    scene_number=scene_num,
-                    input_params={"prompt": prompt_data["prompt"]}
-                )
-                scene_jobs[scene_num] = job
-                job.status = "processing"
-                db.commit()
-
-            try:
-                import time
-                start_time = time.time()
-
-                # Generate all new scenes in parallel with logging callback
-                video_results = generate_videos_parallel(scenes_to_generate, log_callback=add_log)
-
-                elapsed = time.time() - start_time
-                add_log(f"⏱️  Parallel video generation took {elapsed:.2f} seconds total")
-        else:
-            add_log(f"   ✅ All scenes already generated, skipping to next step...")
-            video_results = []
-            scene_jobs = {}
-
-        # Merge existing scenes with newly generated ones
-        video_urls = {}
-        total_scenes = len(sora_prompts)
-
-        # Add existing scenes to video_urls
-        for scene_num, url in existing_scenes.items():
-            video_urls[f"scene_{scene_num}"] = url
-
-        # Download and upload all newly generated successful videos
-        if video_results:
+            # Download and upload all successful videos
+            video_urls = {}
+            total_scenes = len(sora_prompts)
             for result in video_results:
                 scene_num = result.get("scene_number")
 
@@ -798,22 +769,9 @@ def generate_campaign_video(self, campaign_id: str):
         raise
 
 
-def download_file(url, timeout=300.0):
-    """
-    Download file from URL with timeout
-
-    Args:
-        url: URL to download from
-        timeout: Timeout in seconds (default 300 = 5 minutes)
-
-    Returns:
-        File content as bytes
-
-    Raises:
-        httpx.TimeoutException: If download times out
-        httpx.HTTPStatusError: If HTTP error occurs
-    """
-    response = httpx.get(url, timeout=timeout, follow_redirects=True)
+def download_file(url):
+    """Download file from URL"""
+    response = httpx.get(url)
     response.raise_for_status()
     return response.content
 
