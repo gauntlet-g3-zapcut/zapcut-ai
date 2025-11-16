@@ -4,5 +4,14 @@
 .bmad/
 .claude/
 
+# Environment files - NEVER COMMIT THESE
+.env
+.env.*
+.env.local
+.env.*.local
+**/.env
+**/.env.*
+**/.env.local
+
 # macOS
 .DS_Store

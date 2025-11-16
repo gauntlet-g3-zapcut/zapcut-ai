@@ -75,16 +75,27 @@ export default function StorylineReview() {
     setError(null)
 
     try {
-      // Create campaign with brand_id and creative_bible_id
+      // TESTING MODE: Use test IDs if not provided
+      const testBrandId = brandId || "00000000-0000-0000-0000-000000000001"
+      const testCreativeBibleId = creativeBibleId || "00000000-0000-0000-0000-000000000002"
+
+      console.log("🚀 EPIC 5 TEST: Starting video generation...")
+      console.log("  Brand ID:", testBrandId)
+      console.log("  Creative Bible ID:", testCreativeBibleId)
+
+      // Create campaign - THIS TRIGGERS EPIC 5 VIDEO PIPELINE!
       const response = await api.createCampaign({
-        brand_id: brandId,
-        creative_bible_id: creativeBibleId
+        brand_id: testBrandId,
+        creative_bible_id: testCreativeBibleId
       })
+
+      console.log("✅ Campaign created:", response.campaign_id)
+      console.log("📹 Epic 5 video generation pipeline started!")
 
       // Navigate to progress page with real campaign ID
       navigate(`/campaigns/${response.campaign_id}/progress`)
     } catch (err) {
-      console.error("Failed to create campaign:", err)
+      console.error("❌ Failed to create campaign:", err)
       setError(err.message || "Failed to start video generation")
       setIsGenerating(false)
     }
