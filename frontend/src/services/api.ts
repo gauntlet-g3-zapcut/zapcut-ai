@@ -30,6 +30,7 @@ function getTokenAlgorithm(token: string): string | null {
 
 /**
  * Get a valid Supabase auth token, refreshing if necessary
+ * Supabase tokens should always use RS256 algorithm
  */
 async function getAuthToken() {
   // First, try to get the current session
@@ -41,16 +42,49 @@ async function getAuthToken() {
 
   // Check if the token has the correct algorithm (Supabase uses RS256)
   const tokenAlgorithm = getTokenAlgorithm(session.access_token)
+  
   if (tokenAlgorithm && tokenAlgorithm !== "RS256") {
-    console.warn(`Invalid token algorithm detected: ${tokenAlgorithm}. Refreshing session...`)
-    // Try to refresh the session
-    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
-    if (refreshError || !refreshData.session) {
-      // If refresh fails, clear the session and throw error
-      await supabase.auth.signOut()
-      throw new Error("Session expired. Please log in again.")
+    console.warn(`Invalid token algorithm detected: ${tokenAlgorithm}. Expected RS256. Clearing invalid session...`)
+    
+    // If we have a non-RS256 token, it's likely corrupted or from a different source
+    // Clear the session immediately and force re-authentication
+    await supabase.auth.signOut()
+    
+    // Clear localStorage to remove any stale tokens
+    if (typeof window !== 'undefined') {
+      const keys = Object.keys(localStorage)
+      keys.forEach(key => {
+        if (key.includes('supabase') || key.includes('auth')) {
+          localStorage.removeItem(key)
+        }
+      })
     }
-    session = refreshData.session
+    
+    throw new Error(`Invalid token algorithm: ${tokenAlgorithm}. Supabase uses RS256. Please log in again.`)
+  }
+
+  // Verify the token is from the correct Supabase project
+  try {
+    const tokenParts = session.access_token.split('.')
+    if (tokenParts.length === 3) {
+      const payload = JSON.parse(atob(tokenParts[1].replace(/-/g, '+').replace(/_/g, '/')))
+      const issuer = payload.iss
+      
+      // Verify issuer is from Supabase (should contain supabase.co or supabase.io)
+      if (issuer && !issuer.includes('supabase.co') && !issuer.includes('supabase.io')) {
+        console.warn(`Token issuer mismatch. Expected Supabase issuer, got: ${issuer}`)
+        await supabase.auth.signOut()
+        throw new Error("Invalid token issuer. Please log in again.")
+      }
+    }
+  } catch (e) {
+    // If we can't verify the token structure, it's invalid
+    if (e instanceof Error && e.message.includes("Invalid token issuer")) {
+      throw e // Re-throw issuer errors
+    }
+    console.error("Failed to verify token structure:", e)
+    await supabase.auth.signOut()
+    throw new Error("Invalid token format. Please log in again.")
   }
 
   return session.access_token
