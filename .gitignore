@@ -17,6 +17,7 @@
 .railway.env
 .railway.state
 .railway-worker-vars.txt
+=======
 
 # Claude Code (local only)
 .claude/
