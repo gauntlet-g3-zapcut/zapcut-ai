@@ -27,7 +27,8 @@ celery_app = Celery(
     'zapcut',
     broker=broker_url,
     backend=backend_url,
-    include=['app.tasks.video_generation', 'app.tasks.audio_generation']
+    # Tasks are auto-discovered via imports, no need to include here
+    # This avoids circular import issues
 )
 
 # Celery configuration
@@ -51,5 +52,9 @@ celery_app.conf.update(
         'ssl_cert_reqs': ssl.CERT_NONE,
     },
 )
+
+# Auto-discover tasks after celery_app is fully configured
+# This avoids circular import issues since celery_app is defined first
+celery_app.autodiscover_tasks(['app.tasks'])
 
 logger.info("Celery app initialized")

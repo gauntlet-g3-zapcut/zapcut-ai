@@ -4,6 +4,8 @@ import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
+# Import celery_app early to ensure it's available when tasks are imported
+from app.celery_app import celery_app  # noqa: F401
 from app.api import auth, brands, chat, campaigns, webhooks
 
 # Configure logging
