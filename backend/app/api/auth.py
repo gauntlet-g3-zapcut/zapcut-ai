@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from jwt import PyJWKClient
+import sys
 from app.database import get_db
 from app.models.user import User
 from sqlalchemy.orm import Session
@@ -89,7 +90,17 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
                     audience="authenticated",
                     options={"verify_exp": True, "verify_signature": True}
                 )
+            except jwt.ExpiredSignatureError:
+                raise HTTPException(status_code=401, detail="Token has expired")
+            except jwt.InvalidSignatureError:
+                raise HTTPException(status_code=401, detail="Invalid token signature")
+            except jwt.DecodeError as e:
+                raise HTTPException(status_code=401, detail=f"Token decode error: {str(e)}")
+            except jwt.InvalidTokenError as e:
+                raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
             except Exception as e:
+                # Log for debugging
+                print(f"❌ HS256 verification error: {type(e).__name__}: {e}", file=sys.stderr)
                 raise HTTPException(
                     status_code=401,
                     detail=f"Failed to verify HS256 token: {str(e)}"
@@ -125,21 +136,40 @@ async def get_current_user(
     db: Session = Depends(get_db)
 ):
     """Get or create user from Supabase token"""
-    supabase_uid = token_data.get("sub")  # Supabase uses 'sub' for user ID
-    email = token_data.get("email")
-    
-    if not supabase_uid:
-        raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
-    
-    user = db.query(User).filter(User.supabase_uid == supabase_uid).first()
-    
-    if not user:
-        user = User(supabase_uid=supabase_uid, email=email)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    
-    return user
+    try:
+        supabase_uid = token_data.get("sub")  # Supabase uses 'sub' for user ID
+        email = token_data.get("email")
+        
+        if not supabase_uid:
+            raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
+        
+        user = db.query(User).filter(User.supabase_uid == supabase_uid).first()
+        
+        if not user:
+            user = User(supabase_uid=supabase_uid, email=email)
+            db.add(user)
+            try:
+                db.commit()
+                db.refresh(user)
+            except Exception as db_error:
+                db.rollback()
+                # Log but don't expose internal errors
+                print(f"❌ Database error creating user: {db_error}", file=sys.stderr)
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to create user account. Please try again."
+                )
+        
+        return user
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Catch any other unexpected errors
+        print(f"❌ get_current_user error: {type(e).__name__}: {e}", file=sys.stderr)
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error during authentication"
+        )
 
 
 @router.post("/verify")
