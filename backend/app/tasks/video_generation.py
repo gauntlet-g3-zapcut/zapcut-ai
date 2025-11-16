@@ -1,5 +1,6 @@
 import logging
 from celery import Task
+from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.campaign import Campaign
 from app.models.generation_job import GenerationJob
