@@ -21,13 +21,26 @@ export default function VideoProgress() {
       try {
         const response = await api.getCampaignStatus(campaignId)
 
-        // 🔥 ADD LOGGING HERE
+        // 🔥 Log status update
         console.log("📊 Status update:", {
           status: response.status,
           stage: response.stage,
           progress: response.progress,
           campaign_id: campaignId
         })
+
+        // 🔥 Log generation progress messages
+        if (response.logs && response.logs.length > 0) {
+          // Only log new messages (track last seen log index)
+          const lastLogIndex = window._lastLogIndex || 0
+          const newLogs = response.logs.slice(lastLogIndex)
+
+          newLogs.forEach(log => {
+            console.log(`🎬 ${log.message}`)
+          })
+
+          window._lastLogIndex = response.logs.length
+        }
 
         setStatus(response.status)
         setStage(response.stage || "not_started")
@@ -45,23 +58,9 @@ export default function VideoProgress() {
         }
       } catch (error) {
         console.error("Failed to fetch status:", error)
-        // Simulate progress on API failure for demo purposes
-        clearInterval(pollingInterval)
-
-        // Simulate generation stages
-        setTimeout(() => {
-          setStatus("generating")
-          setStage("scene_videos")
-          setProgress(40)
-        }, 2000)
-        setTimeout(() => {
-          setStatus("completed")
-          setStage("complete")
-          setProgress(100)
-        }, 8000)
-        setTimeout(() => {
-          navigate(`/campaigns/${campaignId}/video`)
-        }, 10000)
+        // DO NOT show default video - stay on error state
+        setStatus("failed")
+        setStage("error")
       }
     }
 

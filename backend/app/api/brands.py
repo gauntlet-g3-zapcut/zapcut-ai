@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List
+from pydantic import BaseModel
 from app.database import get_db
 from app.models.brand import Brand
 from app.models.user import User
+from app.models.creative_bible import CreativeBible
 from app.api.auth import get_current_user
 from app.services.storage import upload_file_to_storage
+from app.services.openai_service import generate_creative_bible_from_answers
 import uuid
 
 router = APIRouter(prefix="/api/brands", tags=["brands"])
@@ -121,5 +124,141 @@ async def get_brand(
             for campaign in brand.campaigns
         ],
     }
+
+
+from typing import Optional
+from pydantic import validator
+from sqlalchemy.exc import IntegrityError
+
+
+class AnswersModel(BaseModel):
+    style: Optional[str] = None
+    audience: Optional[str] = None
+    emotion: Optional[str] = None
+    pacing: Optional[str] = None
+    colors: Optional[str] = None
+
+    @validator('*', pre=True)
+    def empty_str_to_none(cls, v):
+        """Convert empty strings to None"""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
+
+class CreateCreativeBibleRequest(BaseModel):
+    answers: AnswersModel
+
+    @validator('answers')
+    def validate_has_answers(cls, v):
+        """Ensure at least one answer is provided"""
+        values_dict = v.dict()
+        if not any(values_dict.values()):
+            raise ValueError('At least one answer must be provided')
+        return v
+
+
+@router.post("/{brand_id}/creative-bible")
+async def create_creative_bible(
+    brand_id: str,
+    request: CreateCreativeBibleRequest,
+    db: Session = Depends(get_db)
+):
+    """Create a creative bible from user preferences"""
+
+    try:
+        # Get brand
+        brand = db.query(Brand).filter(
+            Brand.id == uuid.UUID(brand_id)
+        ).first()
+
+        if not brand:
+            raise HTTPException(status_code=404, detail="Brand not found")
+
+        # Prepare brand info for OpenAI
+        brand_info = {
+            "title": brand.title,
+            "description": brand.description
+        }
+
+        # Convert answers model to dict
+        answers_dict = request.answers.dict(exclude_none=True)
+
+        # Generate creative bible from user answers using OpenAI
+        print(f"\n🎨 Generating creative bible for brand: {brand.title}")
+        print(f"   User preferences: {answers_dict}")
+
+        try:
+            creative_bible_data = generate_creative_bible_from_answers(
+                answers_dict,
+                brand_info
+            )
+            print(f"   ✅ Creative bible generated")
+        except Exception as e:
+            print(f"   ❌ OpenAI generation failed: {e}")
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate creative bible: {str(e)}"
+            )
+
+        # Check if creative bible already exists for this brand
+        existing_bible = db.query(CreativeBible).filter(
+            CreativeBible.brand_id == brand.id
+        ).first()
+
+        if existing_bible:
+            # Update existing
+            existing_bible.creative_bible = creative_bible_data
+            existing_bible.conversation_history = answers_dict  # Store answers for compatibility
+            db.commit()
+            db.refresh(existing_bible)
+            creative_bible = existing_bible
+            print(f"   ✅ Updated existing creative bible: {creative_bible.id}")
+        else:
+            # Create new
+            creative_bible = CreativeBible(
+                brand_id=brand.id,
+                name=f"{brand.title} Creative Bible",
+                creative_bible=creative_bible_data,
+                conversation_history=answers_dict,  # Store answers for compatibility
+                reference_image_urls={}
+            )
+
+            try:
+                db.add(creative_bible)
+                db.commit()
+                db.refresh(creative_bible)
+                print(f"   ✅ Created new creative bible: {creative_bible.id}")
+            except IntegrityError:
+                # Race condition: another request created it
+                db.rollback()
+                existing_bible = db.query(CreativeBible).filter(
+                    CreativeBible.brand_id == brand.id
+                ).first()
+                if existing_bible:
+                    existing_bible.creative_bible = creative_bible_data
+                    existing_bible.conversation_history = answers_dict
+                    db.commit()
+                    db.refresh(existing_bible)
+                    creative_bible = existing_bible
+                    print(f"   ✅ Updated (race condition) creative bible: {creative_bible.id}")
+                else:
+                    raise
+
+        return {
+            "creative_bible_id": str(creative_bible.id),
+            "creative_bible": creative_bible_data
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error creating creative bible: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create creative bible. Please try again."
+        )
 
 

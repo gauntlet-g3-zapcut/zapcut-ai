@@ -15,7 +15,7 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
-    task_time_limit=3600,  # 1 hour max
-    task_soft_time_limit=3000,  # 50 minutes soft limit
+    task_time_limit=7200,  # 2 hours max (hard limit)
+    task_soft_time_limit=6600,  # 110 minutes soft limit (gives 10 min warning before hard limit)
 )
 

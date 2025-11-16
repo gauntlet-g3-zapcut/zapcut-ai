@@ -22,6 +22,7 @@ class Campaign(Base):
     status = Column(String, nullable=False, default="pending", index=True)  # pending, generating, completed, failed
     generation_stage = Column(String(50), default="not_started")  # Current pipeline stage
     generation_progress = Column(Integer, default=0)  # Progress percentage 0-100
+    generation_logs = Column(JSONB, default=list)  # Array of log messages for streaming to frontend
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

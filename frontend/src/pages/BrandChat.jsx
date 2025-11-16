@@ -37,17 +37,48 @@ export default function BrandChat() {
   const navigate = useNavigate()
   const [answers, setAnswers] = useState({})
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
 
   const handleOptionSelect = (questionId, option) => {
     setAnswers(prev => ({
       ...prev,
       [questionId]: option
     }))
+    // Clear error when user makes a selection
+    if (error) setError(null)
   }
 
-  const handleSubmit = () => {
-    // Navigate directly to storyline without validation or API call
-    navigate(`/brands/${brandId}/storyline/default`)
+  // Check if all questions are answered
+  const allQuestionsAnswered = QUESTIONS.every(q => answers[q.id])
+  const answeredCount = QUESTIONS.filter(q => answers[q.id]).length
+
+  const handleSubmit = async () => {
+    // Double-check validation before submitting
+    if (!allQuestionsAnswered) {
+      setError(`Please answer all ${QUESTIONS.length} questions (${answeredCount}/${QUESTIONS.length} answered)`)
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      console.log("📤 Submitting user preferences:", answers)
+
+      // Call backend to generate creative bible from answers
+      const response = await api.createCreativeBible(brandId, answers)
+
+      console.log("✅ Creative bible created:", response.creative_bible_id)
+
+      // Navigate to storyline review with the creative_bible_id
+      navigate(`/brands/${brandId}/storyline/${response.creative_bible_id}`)
+    } catch (error) {
+      console.error("❌ Failed to create creative bible:", error)
+      // Show error to user instead of silent fallback
+      const errorMessage = error.message || "Failed to save your preferences. Please try again."
+      setError(errorMessage)
+      setLoading(false)
+    }
   }
 
   return (
@@ -89,13 +120,28 @@ export default function BrandChat() {
               </div>
             ))}
 
-            <div className="pt-6">
+            <div className="pt-6 space-y-4">
+              {error && (
+                <div className="bg-destructive/15 text-destructive px-4 py-3 rounded-md text-sm">
+                  {error}
+                </div>
+              )}
+
+              {!allQuestionsAnswered && !error && (
+                <div className="bg-muted px-4 py-3 rounded-md text-sm text-muted-foreground">
+                  Please answer all questions to continue ({answeredCount}/{QUESTIONS.length} answered)
+                </div>
+              )}
+
               <Button
                 onClick={handleSubmit}
                 className="w-full"
                 size="lg"
+                disabled={loading || !allQuestionsAnswered}
               >
-                Continue to Storyline →
+                {loading ? "Creating your creative bible..." :
+                 !allQuestionsAnswered ? `Answer all questions (${answeredCount}/${QUESTIONS.length})` :
+                 "Continue to Storyline →"}
               </Button>
             </div>
           </CardContent>

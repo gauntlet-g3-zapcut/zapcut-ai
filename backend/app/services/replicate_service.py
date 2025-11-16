@@ -10,13 +10,25 @@ def generate_reference_images(prompts):
     Generate reference images using Replicate
     Using Flux Pro or SDXL (best available model)
     """
+    print(f"\n🔧 REPLICATE SERVICE - generate_reference_images()")
+    print(f"   📥 Generating {len(prompts)} reference images")
+
     results = []
-    
+
     # Flux Pro 1.1 is one of the best models on Replicate
+    # Using official model (no version pinning needed for official models)
     model = "black-forest-labs/flux-1.1-pro"
-    
-    for prompt_data in prompts:
+    print(f"   🎨 Using model: {model}")
+
+    for i, prompt_data in enumerate(prompts, start=1):
+        print(f"\n   ─── Image {i}/{len(prompts)}: {prompt_data['type']} ───")
+        print(f"   📝 Prompt: {prompt_data['prompt'][:100]}...")
+
         try:
+            import time
+            api_start = time.time()
+
+            print(f"   📡 Calling Replicate API...")
             output = client.run(
                 model,
                 input={
@@ -27,42 +39,60 @@ def generate_reference_images(prompts):
                     "safety_tolerance": 2,
                 }
             )
-            
+
+            api_elapsed = time.time() - api_start
+            print(f"   ✅ API responded in {api_elapsed:.2f} seconds")
+
             # Get the image URL from output
             image_url = output if isinstance(output, str) else output[0]
-            
+            print(f"   ✅ Image URL: {image_url[:80]}...")
+
             results.append({
                 "type": prompt_data["type"],
                 "url": image_url,
                 "prompt": prompt_data["prompt"]
             })
         except Exception as e:
-            print(f"Error generating {prompt_data['type']} image: {e}")
+            print(f"   ❌ ERROR generating {prompt_data['type']} image:")
+            print(f"      - Exception: {type(e).__name__}")
+            print(f"      - Message: {str(e)}")
+
+            import traceback
+            traceback.print_exc()
+
             results.append({
                 "type": prompt_data["type"],
                 "url": "",
-                "error": str(e)
+                "error": str(e),
+                "error_type": type(e).__name__
             })
-    
+
+    successful_count = len([r for r in results if r.get('url')])
+    print(f"\n   ✅ Reference image generation complete: {successful_count}/{len(results)} successful")
     return results
 
 
 def generate_video_with_sora(scene_prompt, scene_number, prev_scene_url=None):
     """
-    Generate video using text-to-video model on Replicate
+    Generate video using OpenAI Sora 2 on Replicate
 
     Args:
         scene_prompt: Dict with prompt and scene info
         scene_number: Scene number (1-5)
         prev_scene_url: URL of previous scene for visual continuity (optional)
 
-    Note: Using CogVideoX as Sora is not publicly available yet.
-    CogVideoX is a state-of-the-art text-to-video model.
+    Note: Using OpenAI Sora 2 - flagship video generation with synced audio
     """
+    print(f"\n🔧 REPLICATE SERVICE - generate_video_with_sora()")
+    print(f"   📥 Input Parameters:")
+    print(f"      - Scene Number: {scene_number}")
+    print(f"      - Scene Prompt Keys: {list(scene_prompt.keys())}")
+    print(f"      - Prev Scene URL: {prev_scene_url[:60] if prev_scene_url else 'None'}...")
+
     try:
-        # Use CogVideoX official model from THUDM (Text-to-Video)
-        # Model: thudm/cogvideox-t2v
-        model = "thudm/cogvideox-t2v"
+        # Use OpenAI Sora 2 - official model on Replicate
+        # Generates video with synchronized audio
+        model = "openai/sora-2"
 
         # Enhance prompt with continuity context if previous scene exists
         prompt = scene_prompt["prompt"]
@@ -71,15 +101,30 @@ def generate_video_with_sora(scene_prompt, scene_number, prev_scene_url=None):
 
         input_params = {
             "prompt": prompt,
-            "num_frames": 49,  # CogVideoX generates 49 frames
-            "num_inference_steps": 50,
-            "guidance_scale": 6,
+            "seconds": 4,  # Sora 2 supports 4, 8, or 12 seconds
+            "aspect_ratio": "landscape",  # landscape (1280x720) or portrait (720x1280)
         }
 
+        print(f"   📡 Calling Replicate API:")
+        print(f"      - Model: {model}")
+        print(f"      - Prompt: {prompt[:100]}...")
+        print(f"      - Duration: {input_params['seconds']} seconds")
+        print(f"      - Aspect Ratio: {input_params['aspect_ratio']}")
+        print(f"   ⏳ Waiting for Replicate response...")
+
+        import time
+        api_start = time.time()
         output = client.run(model, input=input_params)
+        api_elapsed = time.time() - api_start
+
+        print(f"   ✅ Replicate API responded in {api_elapsed:.2f} seconds")
+        print(f"   📦 Response Type: {type(output)}")
+        print(f"   📦 Response Value: {output if isinstance(output, str) else str(output)[:200]}...")
 
         # Get video URL
         video_url = output if isinstance(output, str) else output[0]
+
+        print(f"   ✅ Video URL extracted: {video_url[:80]}...")
 
         return {
             "scene_number": scene_number,
@@ -88,11 +133,25 @@ def generate_video_with_sora(scene_prompt, scene_number, prev_scene_url=None):
             "prev_scene": prev_scene_url
         }
     except Exception as e:
-        print(f"Error generating video for scene {scene_number}: {e}")
+        print(f"   ❌ REPLICATE API ERROR:")
+        print(f"      - Exception Type: {type(e).__name__}")
+        print(f"      - Exception Message: {str(e)}")
+        print(f"      - Scene Number: {scene_number}")
+
+        # Try to get more detailed error information
+        import traceback
+        print(f"      - Stack Trace:")
+        traceback.print_exc()
+
+        # Check if it's a Replicate-specific error
+        if hasattr(e, '__dict__'):
+            print(f"      - Error Attributes: {e.__dict__}")
+
         return {
             "scene_number": scene_number,
             "url": "",
-            "error": str(e)
+            "error": str(e),
+            "error_type": type(e).__name__
         }
 
 
@@ -109,7 +168,8 @@ def generate_voiceover(text, scene_number):
     """
     try:
         # Using Bark TTS model for high-quality voiceover
-        model = "suno-ai/bark"
+        # Pinned to specific version for production stability
+        model = "suno-ai/bark:b76242b40d67c76ab6742e987628a2a9ac019e11d56ab96c4e91ce03b79b2787"
 
         output = client.run(
             model,
@@ -177,12 +237,9 @@ def generate_music_with_suno(suno_prompt):
     Generate music using Suno on Replicate
     """
     try:
-        # Suno v3.5 model on Replicate
-        model = "suno-ai/bark"  # or the actual Suno model when available
-
-        # For now, using a music generation model available on Replicate
-        # Replace with actual Suno model identifier
-        model = "meta/musicgen"
+        # Using Meta's MusicGen for background music generation
+        # Pinned to specific version for production stability
+        model = "meta/musicgen:b05b1dff1d8c6dc63d14b0cdb42135378dcb87f6373b0d3d341ede46e59e2b38"
 
         output = client.run(
             model,
@@ -264,58 +321,114 @@ def generate_videos_sequential(sora_prompts):
 
 def generate_videos_parallel(sora_prompts):
     """
-    Generate multiple videos in parallel using Replicate
-    """
-    predictions = []
+    Generate multiple videos in parallel using OpenAI Sora 2
 
-    # Start all predictions
+    Args:
+        sora_prompts: List of prompt dicts with scene_number and prompt
+
+    Returns:
+        List of results with scene_number, url, and prompt
+    """
+    print(f"\n🔧 REPLICATE SERVICE - generate_videos_parallel()")
+    print(f"   📥 Generating {len(sora_prompts)} videos in parallel")
+
+    predictions = []
+    model = "openai/sora-2"
+
+    # Get the latest version of the model
+    try:
+        model_obj = client.models.get(model)
+        version = model_obj.latest_version.id
+        print(f"   📦 Using Sora 2 version: {version[:16]}...")
+    except Exception as e:
+        print(f"   ❌ Failed to get Sora 2 version: {e}")
+        return []
+
+    # Start all predictions in parallel
     for prompt_data in sora_prompts:
+        scene_number = prompt_data["scene_number"]
+        prompt = prompt_data["prompt"]
+
+        print(f"\n   🚀 Starting scene {scene_number} (async)...")
+        print(f"   📝 Prompt: {prompt[:100]}...")
+
         try:
             prediction = client.predictions.create(
-                version="stability-ai/stable-video-diffusion",
+                version=version,  # Fixed: use version instead of model
                 input={
-                    "prompt": prompt_data["prompt"],
-                    "frames_per_second": 30,
-                    "num_frames": 180,
+                    "prompt": prompt,
+                    "seconds": 4,  # Sora 2 supports 4, 8, or 12 seconds
+                    "aspect_ratio": "landscape",  # landscape (1280x720) or portrait (720x1280)
                 }
             )
             predictions.append({
                 "prediction_id": prediction.id,
-                "scene_number": prompt_data["scene_number"]
+                "scene_number": scene_number,
+                "prompt": prompt
             })
+            print(f"   ✓ Scene {scene_number} prediction started: {prediction.id}")
         except Exception as e:
-            print(f"Error starting video generation for scene {prompt_data['scene_number']}: {e}")
+            print(f"   ❌ Error starting scene {scene_number}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    print(f"\n   ⏳ All {len(predictions)} predictions started, waiting for completion...")
 
     # Wait for all predictions to complete
     results = []
     for pred_info in predictions:
+        scene_number = pred_info["scene_number"]
+        prediction_id = pred_info["prediction_id"]
+
+        print(f"\n   ⏳ Waiting for scene {scene_number} (prediction {prediction_id})...")
+
         try:
-            output = wait_for_prediction(pred_info["prediction_id"])
+            output = wait_for_prediction(prediction_id)
             video_url = output if isinstance(output, str) else output[0]
 
+            print(f"   ✅ Scene {scene_number} complete: {video_url[:80]}...")
+
             results.append({
-                "scene_number": pred_info["scene_number"],
-                "url": video_url
+                "scene_number": scene_number,
+                "url": video_url,
+                "prompt": pred_info["prompt"],
+                "prediction_id": prediction_id
             })
         except Exception as e:
-            print(f"Error waiting for scene {pred_info['scene_number']}: {e}")
+            print(f"   ❌ Error waiting for scene {scene_number}: {e}")
+            import traceback
+            traceback.print_exc()
+
             results.append({
-                "scene_number": pred_info["scene_number"],
+                "scene_number": scene_number,
                 "url": "",
-                "error": str(e)
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "prediction_id": prediction_id
             })
 
+    print(f"\n   ✅ Parallel video generation complete: {len([r for r in results if r.get('url')])}/{len(results)} successful")
     return results
 
 
-# Model identifiers (update these with actual model versions when available)
+# Model identifiers with pinned versions for production stability
+# Version format: owner/model:version_hash
+# Official models (flux-1.1-pro) don't require version hashing
 MODELS = {
-    "flux_pro": "black-forest-labs/flux-1.1-pro",
-    "flux_dev": "black-forest-labs/flux-dev",
-    "sdxl": "stability-ai/sdxl",
-    "sora": "openai/sora",  # Placeholder - update when available
-    "suno": "suno-ai/bark",  # Placeholder - update when available
-    "musicgen": "meta/musicgen",
-    "stable_video": "stability-ai/stable-video-diffusion",
+    # Image Generation Models
+    "flux_pro": "black-forest-labs/flux-1.1-pro",  # Official model - no version pinning needed
+    "flux_dev": "black-forest-labs/flux-dev",  # Open weights image generation
+    "sdxl": "stability-ai/sdxl",  # Stable Diffusion XL
+
+    # Video Generation Models (PRIMARY)
+    "sora_2": "openai/sora-2",  # OpenAI Sora 2 - flagship video generation with synced audio
+    "cogvideox_5b": "cuuupid/cogvideox-5b:5b14e2c2c648efecc8d36c6353576552f8a124e690587212f8e8bb17ecda3d8c",  # Legacy fallback
+
+    # Audio Generation Models
+    "bark_tts": "suno-ai/bark:b76242b40d67c76ab6742e987628a2a9ac019e11d56ab96c4e91ce03b79b2787",  # TTS
+    "musicgen": "meta/musicgen:b05b1dff1d8c6dc63d14b0cdb42135378dcb87f6373b0d3d341ede46e59e2b38",  # Music
+
+    # Unused/Legacy
+    "stable_video": "stability-ai/stable-video-diffusion",  # Image-to-Video (not currently used)
 }
 

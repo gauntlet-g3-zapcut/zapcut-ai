@@ -84,6 +84,10 @@ export const api = {
   getBrands: () => apiRequest("/api/brands/"),
   getBrand: (brandId) => apiRequest(`/api/brands/${brandId}`),
   createBrand: (formData) => apiRequestWithFormData("/api/brands/", formData),
+  createCreativeBible: (brandId, answers) => apiRequest(`/api/brands/${brandId}/creative-bible`, {
+    method: "POST",
+    body: JSON.stringify({ answers }),
+  }),
   
   // Campaigns
   getCampaigns: (brandId) => apiRequest(`/api/brands/${brandId}/campaigns`),

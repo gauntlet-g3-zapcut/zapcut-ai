@@ -6,6 +6,7 @@ from app.models.user import User
 from app.models.brand import Brand
 from app.models.creative_bible import CreativeBible
 from app.models.campaign import Campaign
+from app.models.generation_job import GenerationJob
 from app.api.auth import get_current_user
 from app.tasks.video_generation import generate_campaign_video, generate_campaign_video_test_mode
 import uuid
@@ -187,7 +188,8 @@ async def get_campaign_status(
         "status": campaign.status,
         "stage": campaign.generation_stage if hasattr(campaign, 'generation_stage') else "not_started",
         "progress": campaign.generation_progress if hasattr(campaign, 'generation_progress') else 0,
-        "final_video_url": campaign.final_video_url if campaign.status == "completed" else None
+        "final_video_url": campaign.final_video_url if campaign.status == "completed" else None,
+        "logs": campaign.generation_logs if hasattr(campaign, 'generation_logs') and campaign.generation_logs else []
     }
 
 
@@ -251,4 +253,50 @@ async def get_task_status(
         response["stage"] = task_result.state.lower()
 
     return response
+
+
+@router.get("/{campaign_id}/generation-jobs")
+async def get_generation_jobs(
+    campaign_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all generation jobs for a campaign"""
+    # Verify campaign exists and user owns it
+    campaign = db.query(Campaign).filter(
+        Campaign.id == uuid.UUID(campaign_id)
+    ).first()
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if campaign.brand.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # Query all generation jobs for this campaign
+    jobs = db.query(GenerationJob).filter(
+        GenerationJob.campaign_id == uuid.UUID(campaign_id)
+    ).order_by(GenerationJob.created_at).all()
+
+    # Format results
+    return {
+        "campaign_id": campaign_id,
+        "total_jobs": len(jobs),
+        "jobs": [
+            {
+                "id": str(job.id),
+                "job_type": job.job_type,
+                "scene_number": job.scene_number,
+                "status": job.status,
+                "replicate_job_id": job.replicate_job_id,
+                "output_url": job.output_url,
+                "error_message": job.error_message,
+                "input_params": job.input_params,
+                "started_at": job.started_at.isoformat() if job.started_at else None,
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+                "created_at": job.created_at.isoformat() if job.created_at else None
+            }
+            for job in jobs
+        ]
+    }
 

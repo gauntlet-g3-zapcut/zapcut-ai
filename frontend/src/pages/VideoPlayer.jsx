@@ -19,23 +19,8 @@ export default function VideoPlayer() {
         setCampaign(data)
       } catch (error) {
         console.error("Failed to fetch campaign:", error)
-        // Use placeholder demo data
-        setCampaign({
-          id: campaignId,
-          brand_id: "00000000-0000-0000-0000-000000000001",
-          status: "completed",
-          final_video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-          created_at: new Date().toISOString(),
-          storyline: {
-            scenes: [
-              { scene_number: 1, title: "Opening Shot" },
-              { scene_number: 2, title: "Feature Highlight" },
-              { scene_number: 3, title: "Product Demo" },
-              { scene_number: 4, title: "Lifestyle Shot" },
-              { scene_number: 5, title: "Call to Action" }
-            ]
-          }
-        })
+        // DO NOT show placeholder video - just show error
+        setCampaign(null)
       } finally {
         setLoading(false)
       }
@@ -68,10 +53,27 @@ export default function VideoPlayer() {
     }
   }
 
-  if (loading || !campaign) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-muted-foreground">Loading video...</div>
+      </div>
+    )
+  }
+
+  if (!campaign) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-8">
+        <Card className="w-full max-w-md p-8 text-center">
+          <h2 className="text-2xl font-semibold mb-4">Video Not Found</h2>
+          <p className="text-muted-foreground mb-6">
+            The video you're looking for doesn't exist or failed to generate.
+          </p>
+          <Button onClick={() => navigate("/dashboard")}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+        </Card>
       </div>
     )
   }

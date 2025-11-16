@@ -13,5 +13,10 @@
 **/.env.*
 **/.env.local
 
+# Railway deployment files - NEVER COMMIT THESE
+.railway.env
+.railway.state
+.railway-worker-vars.txt
+
 # macOS
 .DS_Store
