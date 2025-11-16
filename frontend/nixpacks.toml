@@ -1,11 +1,14 @@
 [phases.setup]
-nixPkgs = ["nodejs_22"]
+nixPkgs = ["nodejs"]
 
 [phases.install]
 cmds = ["npm install"]
 
 [phases.build]
-cmds = ["npm run build:all"]
+cmds = [
+  "cd app && npm install && npm run build:web && cd ..",
+  "npm run build"
+]
 
 [start]
 cmd = "npx serve -s dist -l $PORT"
