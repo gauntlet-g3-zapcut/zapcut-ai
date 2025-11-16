@@ -1,8 +1,13 @@
+# Nixpacks configuration for Python backend
+
 [phases.setup]
-nixPkgs = ["python311", "gcc", "postgresql"]
+nixPkgs = ["python311", "postgresql"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+dependsOn = ["setup"]
+
+[phases.build]
+dependsOn = ["install"]
 
 [start]
 cmd = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2"
