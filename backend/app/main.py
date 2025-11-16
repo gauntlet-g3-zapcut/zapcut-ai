@@ -65,7 +65,8 @@ app.add_middleware(RequestLoggingMiddleware)
 # CORS middleware - specify exact origins for credentialed requests
 # Always includes production frontend and localhost for development
 default_origins = [
-    "https://app.zapcut.video",  # Production frontend
+    "https://app.zapcut.video",  # Production frontend (old)
+    "https://frontend-adcraft-production.up.railway.app",  # Production frontend (new)
     "http://localhost:5173",     # Local development
     "http://localhost:5174",
     "http://localhost:5175",
