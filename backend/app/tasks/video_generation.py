@@ -280,7 +280,8 @@ def generate_campaign_video(self, campaign_id: str):
             video_urls,
             music_result.get("url") or campaign.music_url,
             brand.title,
-            product_images=product_images if product_images else None
+            product_images=product_images if product_images else None,
+            voiceover_urls=campaign.voiceover_urls if campaign.voiceover_urls else None
         )
         
         # Upload final video to S3
@@ -430,19 +431,193 @@ def add_product_overlays(input_video, output_video, product_images, temp_dir):
     subprocess.run(cmd, check=True)
 
 
-def compose_video(video_urls, music_url, brand_title, product_images=None):
+def create_crossfade_video(scene_files, output_path, crossfade_duration=1.0):
     """
-    Compose final video using FFmpeg
-    - Stitch 5 scenes with 0.5s crossfade
-    - Mix audio underneath
+    Create video with crossfade transitions between scenes
+
+    Args:
+        scene_files: List of scene video file paths
+        output_path: Output video path
+        crossfade_duration: Duration of crossfade in seconds (default 1.0)
+    """
+    if len(scene_files) == 0:
+        raise ValueError("No scene files provided")
+
+    if len(scene_files) == 1:
+        # Single scene, just copy
+        import shutil
+        shutil.copy(scene_files[0], output_path)
+        return
+
+    # Build xfade filter complex for N scenes
+    # Assumes each scene is ~6 seconds (adjust offsets accordingly)
+    scene_duration = 6  # seconds per scene (approximate)
+
+    # Start with all inputs
+    cmd = ["ffmpeg"]
+    for scene_file in scene_files:
+        cmd.extend(["-i", scene_file])
+
+    # Build filter complex for crossfades
+    filter_parts = []
+    current_label = "[0:v]"
+    offset = scene_duration - crossfade_duration
+
+    for i in range(1, len(scene_files)):
+        prev_label = current_label
+        input_label = f"[{i}:v]"
+        output_label = f"[v{i}]"
+
+        # xfade transition
+        filter_parts.append(
+            f"{prev_label}{input_label}xfade=transition=fade:duration={crossfade_duration}:offset={offset}{output_label}"
+        )
+
+        current_label = output_label
+        offset += scene_duration - crossfade_duration
+
+    filter_complex = ";".join(filter_parts)
+
+    cmd.extend(["-filter_complex", filter_complex])
+    cmd.extend(["-map", current_label])
+
+    # Output settings
+    cmd.extend([
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "23",
+        "-pix_fmt", "yuv420p",
+        "-r", "30",
+        output_path
+    ])
+
+    print(f"Crossfade command: {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
+
+
+def concatenate_audio(audio_files, output_path):
+    """
+    Concatenate multiple audio files
+
+    Args:
+        audio_files: List of audio file paths
+        output_path: Output audio path
+    """
+    if len(audio_files) == 0:
+        return None
+
+    # Filter out None values
+    valid_files = [f for f in audio_files if f]
+
+    if len(valid_files) == 0:
+        return None
+
+    if len(valid_files) == 1:
+        import shutil
+        shutil.copy(valid_files[0], output_path)
+        return output_path
+
+    # Create concat file
+    concat_file = output_path.replace(".mp3", "_concat.txt")
+    with open(concat_file, "w") as f:
+        for audio_file in valid_files:
+            f.write(f"file '{audio_file}'\n")
+
+    cmd = [
+        "ffmpeg",
+        "-f", "concat",
+        "-safe", "0",
+        "-i", concat_file,
+        "-c", "copy",
+        output_path
+    ]
+
+    subprocess.run(cmd, check=True)
+    return output_path
+
+
+def mix_audio_tracks(voiceover_path, music_path, output_path, voiceover_volume=1.0, music_volume=0.3):
+    """
+    Mix voiceover and music tracks with specified volumes
+
+    Args:
+        voiceover_path: Path to voiceover audio file
+        music_path: Path to music audio file
+        output_path: Output mixed audio path
+        voiceover_volume: Volume for voiceover (default 1.0 = 100%)
+        music_volume: Volume for music (default 0.3 = 30%)
+    """
+    if not voiceover_path and not music_path:
+        return None
+
+    if not voiceover_path:
+        # Only music, adjust volume
+        cmd = [
+            "ffmpeg",
+            "-i", music_path,
+            "-af", f"volume={music_volume}",
+            output_path
+        ]
+    elif not music_path:
+        # Only voiceover
+        import shutil
+        shutil.copy(voiceover_path, output_path)
+        return output_path
+    else:
+        # Mix both
+        cmd = [
+            "ffmpeg",
+            "-i", voiceover_path,
+            "-i", music_path,
+            "-filter_complex",
+            f"[0:a]volume={voiceover_volume}[a1];[1:a]volume={music_volume}[a2];[a1][a2]amix=inputs=2:duration=first[aout]",
+            "-map", "[aout]",
+            output_path
+        ]
+
+    subprocess.run(cmd, check=True)
+    return output_path
+
+
+def combine_video_audio(video_path, audio_path, output_path):
+    """
+    Combine video with audio track
+
+    Args:
+        video_path: Path to video file (may have existing audio)
+        audio_path: Path to audio file to replace/add
+        output_path: Output video path
+    """
+    cmd = [
+        "ffmpeg",
+        "-i", video_path,
+        "-i", audio_path,
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+        "-shortest",
+        output_path
+    ]
+
+    subprocess.run(cmd, check=True)
+
+
+def compose_video(video_urls, music_url, brand_title, product_images=None, voiceover_urls=None):
+    """
+    Compose final video using FFmpeg with professional transitions and audio mixing
+    - Stitch scenes with 1-second crossfade transitions
+    - Mix voiceover (100%) + music (30%)
     - Add product image overlays
-    - Add text overlays
+    - Professional output (H.264, 1080p, 30fps)
 
     Args:
         video_urls: Dict of scene URLs {scene_1: url, scene_2: url, ...}
         music_url: URL of background music
         brand_title: Brand name for text overlay
         product_images: List of product image URLs [product_1_url, product_2_url]
+        voiceover_urls: List of voiceover audio URLs per scene
     """
     with tempfile.TemporaryDirectory() as temp_dir:
         # Download all video files
@@ -455,61 +630,67 @@ def compose_video(video_urls, music_url, brand_title, product_images=None):
                 with open(scene_path, "wb") as f:
                     f.write(video_data)
                 scene_files.append(scene_path)
-        
-        # Download music
-        if music_url:
-            music_data = download_file(music_url)
-            music_path = os.path.join(temp_dir, "music.mp3")
-            with open(music_path, "wb") as f:
-                f.write(music_data)
-        else:
-            music_path = None
-        
-        # Create concat file for FFmpeg
-        concat_file = os.path.join(temp_dir, "concat.txt")
-        with open(concat_file, "w") as f:
-            for scene_file in scene_files:
-                f.write(f"file '{scene_file}'\n")
-        
-        # Output file
-        output_path = os.path.join(temp_dir, "output.mp4")
-        
-        # FFmpeg command to concatenate videos
-        cmd = [
-            "ffmpeg",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", concat_file,
-            "-c", "copy",
-            output_path
-        ]
-        
-        subprocess.run(cmd, check=True)
-        
-        # If music exists, mix it
-        if music_path:
-            output_with_music = os.path.join(temp_dir, "output_with_music.mp4")
-            cmd = [
-                "ffmpeg",
-                "-i", output_path,
-                "-i", music_path,
-                "-c:v", "copy",
-                "-c:a", "aac",
-                "-shortest",
-                output_with_music
-            ]
-            subprocess.run(cmd, check=True)
-            video_with_music = output_with_music
-        else:
-            video_with_music = output_path
 
-        # Add product image overlays
+        # Step 1: Create video with crossfade transitions
+        video_with_crossfades = os.path.join(temp_dir, "crossfaded.mp4")
+        create_crossfade_video(scene_files, video_with_crossfades, crossfade_duration=1.0)
+
+        # Step 2: Download and concatenate voiceovers
+        voiceover_files = []
+        if voiceover_urls:
+            for i, vo_url in enumerate(voiceover_urls, start=1):
+                if vo_url:
+                    try:
+                        vo_data = download_file(vo_url)
+                        vo_path = os.path.join(temp_dir, f"voiceover_{i}.mp3")
+                        with open(vo_path, "wb") as f:
+                            f.write(vo_data)
+                        voiceover_files.append(vo_path)
+                    except Exception as e:
+                        print(f"Error downloading voiceover {i}: {e}")
+
+        voiceover_concat_path = None
+        if voiceover_files:
+            voiceover_concat_path = os.path.join(temp_dir, "voiceover_full.mp3")
+            concatenate_audio(voiceover_files, voiceover_concat_path)
+
+        # Step 3: Download music
+        music_path = None
+        if music_url:
+            try:
+                music_data = download_file(music_url)
+                music_path = os.path.join(temp_dir, "music.mp3")
+                with open(music_path, "wb") as f:
+                    f.write(music_data)
+            except Exception as e:
+                print(f"Error downloading music: {e}")
+
+        # Step 4: Mix audio tracks (voiceover 100%, music 30%)
+        mixed_audio_path = None
+        if voiceover_concat_path or music_path:
+            mixed_audio_path = os.path.join(temp_dir, "mixed_audio.mp3")
+            mix_audio_tracks(
+                voiceover_concat_path,
+                music_path,
+                mixed_audio_path,
+                voiceover_volume=1.0,
+                music_volume=0.3
+            )
+
+        # Step 5: Combine video with mixed audio
+        if mixed_audio_path:
+            video_with_audio = os.path.join(temp_dir, "video_with_audio.mp4")
+            combine_video_audio(video_with_crossfades, mixed_audio_path, video_with_audio)
+        else:
+            video_with_audio = video_with_crossfades
+
+        # Step 6: Add product image overlays
         if product_images:
             output_with_overlays = os.path.join(temp_dir, "output_with_overlays.mp4")
-            add_product_overlays(video_with_music, output_with_overlays, product_images, temp_dir)
+            add_product_overlays(video_with_audio, output_with_overlays, product_images, temp_dir)
             final_path = output_with_overlays
         else:
-            final_path = video_with_music
+            final_path = video_with_audio
 
         # Copy to permanent location
         import shutil

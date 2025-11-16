@@ -42,9 +42,10 @@ stories:
 
   - id: "5.6"
     name: "Enhanced FFmpeg Video Composition"
-    status: "backlog"
+    status: "done"
     priority: "P2"
     estimate: "2 hours"
+    completed: "2025-11-15"
 
   - id: "5.8"
     name: "Granular Progress Tracking UI"
