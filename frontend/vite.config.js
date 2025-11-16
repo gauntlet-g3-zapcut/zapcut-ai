@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
-import { createReadStream, statSync } from 'fs'
+import { createReadStream, statSync, existsSync, cpSync } from 'fs'
 
 // Plugin to serve Electron app's dist folder at /editor-app
 function serveEditorApp() {
@@ -53,6 +53,18 @@ function serveEditorApp() {
         
         next()
       })
+    },
+    // Copy app/dist to build output during production builds
+    writeBundle() {
+      const editorDistPath = resolve(__dirname, 'app/dist')
+      const buildOutputPath = resolve(__dirname, 'dist/editor-app')
+      
+      if (existsSync(editorDistPath)) {
+        cpSync(editorDistPath, buildOutputPath, { recursive: true })
+        console.log(`✓ Copied app/dist to dist/editor-app`)
+      } else {
+        console.warn(`⚠ app/dist not found at ${editorDistPath}. Make sure to build the app first.`)
+      }
     }
   }
 }

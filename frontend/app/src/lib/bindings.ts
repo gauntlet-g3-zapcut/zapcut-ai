@@ -74,16 +74,49 @@ export interface GenerateImageResult {
   path: string;
 }
 
+// Helper to ensure API is available
+async function ensureAPI(): Promise<void> {
+  // Check immediately
+  if (window.electronAPI && typeof window.electronAPI.openFileDialog === 'function') {
+    return; // API is available
+  }
+  
+  // Try to initialize web shim if in browser
+  if (typeof window !== 'undefined' && !navigator.userAgent.includes('Electron')) {
+    try {
+      const { initWebShim } = await import('./webShim');
+      initWebShim();
+      
+      // Check again after initialization
+      if (window.electronAPI && typeof window.electronAPI.openFileDialog === 'function') {
+        return; // Success
+      }
+    } catch (error) {
+      console.error('Failed to initialize web shim:', error);
+    }
+    
+    // If still not available, throw error
+    if (!window.electronAPI) {
+      throw new Error('File dialog API is not available. Please refresh the page or check your browser console for errors.');
+    }
+  } else {
+    throw new Error('File dialog API is not available. Please ensure Electron is running.');
+  }
+}
+
 // Electron API calls
 export async function getMediaMetadata(path: string): Promise<MediaMeta> {
+  await ensureAPI();
   return window.electronAPI.getMediaMetadata(path);
 }
 
 export async function applyEdits(projectJson: string): Promise<{ success: boolean }> {
+  await ensureAPI();
   return window.electronAPI.applyEdits(projectJson);
 }
 
 export async function generatePreview(projectJson: string, atMs: number): Promise<PreviewResult> {
+  await ensureAPI();
   return window.electronAPI.generatePreview(projectJson, atMs);
 }
 
@@ -91,67 +124,80 @@ export async function exportProject(
   projectJson: string,
   settings: ExportSettings
 ): Promise<ExportResult> {
+  await ensureAPI();
   return window.electronAPI.exportProject(projectJson, settings);
 }
 
 export async function listenExportProgress(
   handler: (event: ProgressEvent) => void
 ): Promise<() => void> {
+  await ensureAPI();
   return window.electronAPI.onExportProgress(handler);
 }
 
 // Screen recording
 export async function listCaptureDevices(): Promise<ListDevices> {
+  await ensureAPI();
   return window.electronAPI.listCaptureDevices();
 }
 
 export async function startScreenRecord(settings: RecordSettings): Promise<{ recordingId: string; outPath: string }> {
+  await ensureAPI();
   return window.electronAPI.startScreenRecord(settings);
 }
 
 export async function stopScreenRecord(recordingId: string): Promise<string> {
+  await ensureAPI();
   return window.electronAPI.stopScreenRecord(recordingId);
 }
 
 export async function listenStartRecording(
   handler: (event: { recordingId: string; sourceId: string; outputPath: string; settings: RecordSettings }) => void
 ): Promise<() => void> {
+  await ensureAPI();
   return window.electronAPI.onStartRecording(handler);
 }
 
 export async function listenStopRecording(
   handler: (event: { recordingId: string }) => void
 ): Promise<() => void> {
+  await ensureAPI();
   return window.electronAPI.onStopRecording(handler);
 }
 
 // File ingestion
 export async function ingestFiles(request: IngestRequest): Promise<IngestResult[]> {
+  await ensureAPI();
   return window.electronAPI.ingestFiles(request);
 }
 
 // Open file dialog
 export async function openFileDialog(): Promise<{ filePaths: string[] }> {
+  await ensureAPI();
   return window.electronAPI.openFileDialog();
 }
 
 // Save blob to file
 export async function saveBlobToFile(blobData: ArrayBuffer, filePath: string): Promise<{ success: boolean; path: string }> {
+  await ensureAPI();
   return window.electronAPI.saveBlobToFile(blobData, filePath);
 }
 
 // Reveal file in Finder/Explorer
 export async function revealInFinder(filePath: string): Promise<{ success: boolean }> {
+  await ensureAPI();
   return window.electronAPI.revealInFinder(filePath);
 }
 
 // Delete file
 export async function deleteFile(filePath: string): Promise<{ success: boolean }> {
+  await ensureAPI();
   return window.electronAPI.deleteFile(filePath);
 }
 
 // Generate cosmic image using AI
 export async function generateCosmicImage(prompt: string): Promise<GenerateImageResult> {
+  await ensureAPI();
   return window.electronAPI.generateImage(prompt);
 }
 

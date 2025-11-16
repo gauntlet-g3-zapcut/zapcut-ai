@@ -80,8 +80,11 @@ export class CanvasVideoRenderer {
       video.muted = true; // Canvas rendering is silent, audio handled separately
       video.playsInline = true;
       
-      // Set crossOrigin for media:// protocol
-      video.crossOrigin = 'anonymous';
+      // Set crossOrigin for blob URLs (not needed, but safe)
+      // Only set for non-blob URLs (like media:// protocol)
+      if (!asset.url.startsWith('blob:')) {
+        video.crossOrigin = 'anonymous';
+      }
 
       video.addEventListener('loadedmetadata', () => {
         console.log(`[CanvasVideoRenderer] Video loaded successfully: ${asset.id}`);

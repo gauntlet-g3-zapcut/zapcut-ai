@@ -176,14 +176,39 @@ export const useProjectStore = create<ProjectStore>()(
           const ingestResults = await ingestFiles({ file_paths: filePaths });
 
           const newAssets: Asset[] = ingestResults.map((result: IngestResult) => {
-            const assetType = getAssetTypeFromPath(result.file_path);
+            // Determine asset type from metadata or file path
+            // Prefer metadata-based detection for accuracy
+            let assetType: 'video' | 'audio' | 'image';
+            if (result.metadata.width && result.metadata.height && result.metadata.duration_ms > 0) {
+              assetType = 'video';
+            } else if (result.metadata.duration_ms > 0 && !result.metadata.width && !result.metadata.height) {
+              assetType = 'audio';
+            } else if (result.metadata.width && result.metadata.height && result.metadata.duration_ms === 0) {
+              assetType = 'image';
+            } else {
+              // Fallback to path-based detection
+              assetType = getAssetTypeFromPath(result.file_path);
+            }
+
+            // Check if it's already a URL (blob:, http:, https:) or needs media:// protocol
+            const isUrl = result.file_path.startsWith('blob:') ||
+              result.file_path.startsWith('http:') ||
+              result.file_path.startsWith('https:');
+            const url = isUrl ? result.file_path : `media://${result.file_path}`;
+            const thumbnailUrl = result.thumbnail_path
+              ? (result.thumbnail_path.startsWith('blob:') ||
+                result.thumbnail_path.startsWith('http:') ||
+                result.thumbnail_path.startsWith('https:')
+                ? result.thumbnail_path
+                : `media://${result.thumbnail_path}`)
+              : undefined;
 
             return {
               id: result.asset_id,
               type: assetType,
               name: result.original_file_name, // Use original file name
-              url: `media://${result.file_path}`, // Use custom media:// protocol for local files
-              thumbnailUrl: result.thumbnail_path ? `media://${result.thumbnail_path}` : undefined,
+              url, // Use blob URL directly for web, or media:// for Electron
+              thumbnailUrl,
               fileSize: result.file_size,
               duration: result.metadata.duration_ms,
               metadata: {
@@ -291,13 +316,13 @@ export const useProjectStore = create<ProjectStore>()(
           if (!asset || !track) return;
 
           clipId = generateId();
-          
+
           // For images, ensure minimum duration and cap at 60 seconds (60000ms)
           const defaultImageDuration = 5000; // Default 5 seconds
           const minClipDuration = 100; // Minimum 100ms for all clips
           const maxImageDuration = 60000; // Maximum 60 seconds
           let effectiveDuration = asset.duration;
-          
+
           if (asset.type === 'image') {
             // If duration is 0 or invalid, use default 5 seconds
             if (!effectiveDuration || effectiveDuration <= 0) {
@@ -306,7 +331,7 @@ export const useProjectStore = create<ProjectStore>()(
             // Ensure minimum and cap at maximum
             effectiveDuration = Math.max(minClipDuration, Math.min(effectiveDuration, maxImageDuration));
           }
-          
+
           const clip: Clip = {
             id: clipId,
             assetId,
@@ -325,9 +350,9 @@ export const useProjectStore = create<ProjectStore>()(
           // Find first video track to determine if this is Track 1 (Main Track)
           const firstVideoTrack = state.tracks.find((t: Track) => t.type === 'video');
           const isMainTrack = track.type === 'video' && track.id === firstVideoTrack?.id;
-          
+
           const nodeId = generateId();
-          
+
           if (isMainTrack) {
             // Track 1 (Main Track): Full canvas dimensions
             state.canvasNodes[nodeId] = {
@@ -346,15 +371,15 @@ export const useProjectStore = create<ProjectStore>()(
             const defaultMaxWidth = 480;
             const defaultMaxHeight = 270;
             const padding = 40;
-            
+
             let pipWidth = defaultMaxWidth;
             let pipHeight = defaultMaxHeight;
-            
+
             // If asset has dimensions, preserve aspect ratio
             if (asset.metadata.width && asset.metadata.height && asset.metadata.width > 0 && asset.metadata.height > 0) {
               const assetAspect = asset.metadata.width / asset.metadata.height;
               const defaultAspect = defaultMaxWidth / defaultMaxHeight;
-              
+
               if (assetAspect > defaultAspect) {
                 // Asset is wider - fit to width
                 pipWidth = defaultMaxWidth;
@@ -365,7 +390,7 @@ export const useProjectStore = create<ProjectStore>()(
                 pipWidth = defaultMaxHeight * assetAspect;
               }
             }
-            
+
             state.canvasNodes[nodeId] = {
               id: nodeId,
               clipId,
@@ -415,7 +440,7 @@ export const useProjectStore = create<ProjectStore>()(
 
           // Remove clip and canvas node
           delete state.clips[clipId];
-          
+
           // Find and delete canvas node by clipId
           const canvasNode = Object.values(state.canvasNodes).find(
             (node: CanvasNode) => node.clipId === clipId
@@ -598,7 +623,7 @@ export const useProjectStore = create<ProjectStore>()(
           const parentCanvasNode = Object.values(state.canvasNodes).find(
             (node: CanvasNode) => node.clipId === clipId
           );
-          
+
           const nodeId = generateId();
           if (parentCanvasNode) {
             // Inherit parent's transform properties
@@ -806,6 +831,18 @@ function getAssetType(filename: string): 'video' | 'audio' | 'image' {
 
 // Helper function to get asset type from file path
 function getAssetTypeFromPath(filePath: string): 'video' | 'audio' | 'image' {
-  const filename = filePath.split('/').pop() || filePath;
+  // Handle blob URLs and object URLs
+  if (filePath.startsWith('blob:') || filePath.startsWith('web-file-')) {
+    // For blob URLs, try to extract from the URL or use a default
+    // In practice, the metadata should have been set during ingestion
+    // But we need to handle the case where we only have the URL
+    // Try to get extension from original filename if stored
+    // For now, default to video as it's most common
+    // The actual type should come from metadata during ingestion
+    return 'video';
+  }
+  
+  // Handle regular file paths
+  const filename = filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
   return getAssetType(filename);
 }

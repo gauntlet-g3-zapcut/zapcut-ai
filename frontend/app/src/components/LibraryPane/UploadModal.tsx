@@ -14,55 +14,80 @@ interface UploadModalProps {
 
 export function UploadModal({ open, onOpenChange, onDuplicateDetected }: UploadModalProps) {
   const [isUploading, setIsUploading] = useState(false);
-  const [electronAvailable, setElectronAvailable] = useState(false);
+  const [apiAvailable, setApiAvailable] = useState(false);
+  const [isWebMode, setIsWebMode] = useState(false);
   const { addAssetsFromPaths, assets } = useProjectStore();
 
-  // Check if Electron is available when modal opens
+  // Check if API is available when modal opens
   useEffect(() => {
     if (open) {
-      waitForElectronAPI().then((available) => {
-        setElectronAvailable(available);
-        if (!available) {
-          console.warn('Electron API not available. Make sure you are running the app through Electron, not in a browser.');
+      // Force initialization check
+      const checkAPI = () => {
+        // Check immediately if API exists (web shim or Electron)
+        if (window.electronAPI && typeof window.electronAPI.openFileDialog === 'function') {
+          setApiAvailable(true);
+          // Check if it's web mode by checking if it's the shim (has web-specific behavior)
+          setIsWebMode(typeof (window as any).__WEB_SHIM_INITIALIZED !== 'undefined' ||
+            !navigator.userAgent.includes('Electron'));
+          return true;
         }
-      });
+        return false;
+      };
+
+      // Check immediately
+      if (checkAPI()) {
+        return;
+      }
+
+      // If not available, try to initialize web shim
+      if (typeof (window as any).__WEB_SHIM_INITIALIZED === 'undefined') {
+        // Import and initialize web shim dynamically
+        import('@/lib/webShim').then(({ initWebShim }) => {
+          initWebShim();
+          if (checkAPI()) {
+            return;
+          }
+          // Wait a bit more for initialization
+          waitForElectronAPI(2000).then((available) => {
+            setApiAvailable(available);
+            setIsWebMode(available && !navigator.userAgent.includes('Electron'));
+          });
+        });
+      } else {
+        // Wait a bit for API to be ready
+        waitForElectronAPI(2000).then((available) => {
+          setApiAvailable(available);
+          setIsWebMode(available && !navigator.userAgent.includes('Electron'));
+        });
+      }
     }
   }, [open]);
 
   // Browser-compatible function to extract filename from path
   const getFilename = (filePath: string): string => {
     // Handle both forward slashes (macOS/Linux) and backslashes (Windows)
+    // Also handle object URLs (blob: or web-file-*)
+    if (filePath.startsWith('blob:') || filePath.startsWith('web-file-')) {
+      // For web files, try to get name from store or use the ID
+      return filePath.includes('/') ? filePath.split('/').pop() || 'file' : filePath;
+    }
     const parts = filePath.replace(/\\/g, '/').split('/');
     return parts[parts.length - 1];
   };
 
   const handleUploadClick = async () => {
     if (isUploading) return; // Prevent multiple clicks
-    
+
     setIsUploading(true);
     try {
-      // Wait for Electron API to be available
-      const available = await waitForElectronAPI(2000);
-      if (!available || !window.electronAPI || !window.electronAPI.openFileDialog) {
-        console.error('Electron API not available');
-        alert(
-          'File selection is not available.\n\n' +
-          'Please ensure:\n' +
-          '1. You are running the app through Electron (not in a browser)\n' +
-          '2. Use "npm run dev" to start both Vite and Electron\n' +
-          '3. Wait for the Electron window to open\n\n' +
-          'If you see this in a browser window, close it and use the Electron window instead.'
-        );
-        setIsUploading(false);
-        return;
-      }
-      
+      // Always try to open file dialog - bindings.ts will handle initialization
+      console.log('Opening file dialog...');
       const result = await openFileDialog();
       if (result.filePaths && result.filePaths.length > 0) {
         // Check for duplicates by filename
         const existingFilenames = new Set(assets.map(a => a.name));
         let hasDuplicates = false;
-        
+
         for (const filePath of result.filePaths) {
           const filename = getFilename(filePath);
           if (existingFilenames.has(filename)) {
@@ -71,7 +96,7 @@ export function UploadModal({ open, onOpenChange, onDuplicateDetected }: UploadM
             break;
           }
         }
-        
+
         if (!hasDuplicates) {
           await addAssetsFromPaths(result.filePaths);
           onOpenChange(false);
@@ -79,7 +104,36 @@ export function UploadModal({ open, onOpenChange, onDuplicateDetected }: UploadM
       }
     } catch (error) {
       console.error('Error selecting files:', error);
-      alert(`Failed to open file dialog: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Check if API exists for debugging
+      const apiExists = typeof window.electronAPI !== 'undefined';
+      const hasFunction = typeof window.electronAPI?.openFileDialog === 'function';
+      const shimInitialized = typeof (window as any).__WEB_SHIM_INITIALIZED !== 'undefined';
+      
+      console.error('File dialog error details:', {
+        errorMessage,
+        apiExists,
+        hasFunction,
+        shimInitialized,
+        userAgent: navigator.userAgent,
+        isElectron: navigator.userAgent.includes('Electron'),
+      });
+      
+      // Show user-friendly error message
+      alert(
+        `Unable to open file dialog.\n\n` +
+        `Error: ${errorMessage}\n\n` +
+        `Debug info:\n` +
+        `- API exists: ${apiExists}\n` +
+        `- Function available: ${hasFunction}\n` +
+        `- Web shim initialized: ${shimInitialized}\n\n` +
+        `Please ensure:\n` +
+        `1. You are using a modern browser (Chrome, Firefox, Safari, Edge)\n` +
+        `2. File access is not blocked by browser settings\n` +
+        `3. Check the browser console for more details\n` +
+        `4. Try refreshing the page if the issue persists`
+      );
     } finally {
       setIsUploading(false);
     }
@@ -95,13 +149,22 @@ export function UploadModal({ open, onOpenChange, onDuplicateDetected }: UploadM
         </DialogHeader>
 
         <div className="space-y-lg py-2">
-          {/* Electron availability warning */}
-          {!electronAvailable && (
-            <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-md text-sm text-yellow-200">
-              <p className="font-semibold mb-1">⚠️ Electron not detected</p>
+          {/* Web mode info banner */}
+          {isWebMode && (
+            <div className="bg-blue-500/20 border border-blue-500/50 rounded-lg p-md text-sm text-blue-200">
+              <p className="font-semibold mb-1">🌐 Web Mode</p>
               <p className="text-xs">
-                Make sure you're running the app through Electron, not in a browser.
-                Use the Electron window that opens when you run <code className="bg-black/30 px-1 rounded">npm run dev</code>.
+                Running in browser. Some features like video export and screen recording require the Electron app.
+              </p>
+            </div>
+          )}
+
+          {/* API availability warning */}
+          {!apiAvailable && (
+            <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-md text-sm text-yellow-200">
+              <p className="font-semibold mb-1">⚠️ File API not available</p>
+              <p className="text-xs">
+                Please refresh the page or check your browser settings.
               </p>
             </div>
           )}
@@ -122,7 +185,7 @@ export function UploadModal({ open, onOpenChange, onDuplicateDetected }: UploadM
                 e.stopPropagation();
                 handleUploadClick();
               }}
-              disabled={isUploading || !electronAvailable}
+              disabled={isUploading}
               className="mb-md"
             >
               Choose Files

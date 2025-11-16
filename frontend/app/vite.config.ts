@@ -7,7 +7,7 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
 
-  // Use relative paths for Electron packaging
+  // Use relative paths for web deployment
   base: './',
 
   // Path aliases
@@ -29,5 +29,22 @@ export default defineConfig(async () => ({
   
   build: {
     outDir: 'dist',
+    // Exclude Electron-specific code from web build
+    rollupOptions: {
+      external: (id) => {
+        // Don't bundle Node.js modules or Electron modules
+        return id.startsWith('electron') || 
+               id === 'fs' || 
+               id === 'fs-extra' ||
+               id === 'path' ||
+               id === 'fluent-ffmpeg' ||
+               id.startsWith('child_process');
+      },
+    },
+  },
+  
+  // Optimize dependencies for browser
+  optimizeDeps: {
+    exclude: ['electron', 'fs', 'fs-extra', 'path', 'fluent-ffmpeg'],
   },
 }));

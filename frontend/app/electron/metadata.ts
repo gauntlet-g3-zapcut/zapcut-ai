@@ -6,7 +6,7 @@ import { MediaMetadata } from './types';
  */
 export async function probeMedia(inputPath: string): Promise<MediaMetadata> {
   return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(inputPath, (err, metadata) => {
+    ffmpeg.ffprobe(inputPath, (err: Error | null, metadata: ffmpeg.FfprobeData) => {
       if (err) {
         reject(new Error(`ffprobe failed: ${err.message}`));
         return;
