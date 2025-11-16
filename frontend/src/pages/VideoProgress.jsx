@@ -19,6 +19,11 @@ export default function VideoProgress() {
     failed_scenes: 0,
     scenes: []
   })
+  const [audioStatus, setAudioStatus] = useState({
+    status: "pending",
+    audio_url: null,
+    error: null
+  })
 
   useEffect(() => {
     // Validate campaignId exists
@@ -53,6 +58,15 @@ export default function VideoProgress() {
             generating_scenes: response.progress.generating_scenes,
             failed_scenes: response.progress.failed_scenes,
             scenes: response.progress.scenes || []
+          })
+        }
+        
+        // Update audio status
+        if (response.audio) {
+          setAudioStatus({
+            status: response.audio.status || "pending",
+            audio_url: response.audio.audio_url,
+            error: response.audio.error
           })
         }
         
@@ -229,6 +243,12 @@ export default function VideoProgress() {
               </div>
             )}
 
+            {/* Audio Generation Status */}
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-3">Soundtrack Generation</h3>
+              <AudioStatusItem audioStatus={audioStatus} />
+            </div>
+
             {/* Individual Scene Progress */}
             {scenes.length > 0 && (
               <div className="space-y-3">
@@ -288,6 +308,65 @@ export default function VideoProgress() {
           </div>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+function AudioStatusItem({ audioStatus }) {
+  const getStatusIcon = () => {
+    switch (audioStatus.status) {
+      case "completed":
+        return <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
+      case "generating":
+        return <Loader2 className="h-5 w-5 animate-spin text-primary flex-shrink-0" />
+      case "failed":
+        return <XCircle className="h-5 w-5 text-destructive flex-shrink-0" />
+      default:
+        return <div className="h-5 w-5 rounded-full border-2 border-muted flex-shrink-0" />
+    }
+  }
+
+  const getStatusText = () => {
+    switch (audioStatus.status) {
+      case "completed":
+        return "Soundtrack Ready"
+      case "generating":
+        return "Generating Soundtrack..."
+      case "failed":
+        return "Soundtrack Generation Failed"
+      default:
+        return "Pending"
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-lg border bg-card">
+      {getStatusIcon()}
+      <div className="flex-1">
+        <div className="flex items-center justify-between">
+          <p className={`font-medium ${
+            audioStatus.status === "completed" 
+              ? "text-foreground" 
+              : "text-muted-foreground"
+          }`}>
+            {getStatusText()}
+          </p>
+          <span className={`text-xs px-2 py-1 rounded ${
+            audioStatus.status === "completed" 
+              ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
+              : audioStatus.status === "failed"
+              ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
+              : audioStatus.status === "generating"
+              ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300"
+              : "bg-muted text-muted-foreground"
+          }`}>
+            {audioStatus.status}
+          </span>
+        </div>
+        {audioStatus.error && (
+          <p className="text-xs text-destructive mt-1">Error: {audioStatus.error}</p>
+        )}
+      </div>
     </div>
   )
 }

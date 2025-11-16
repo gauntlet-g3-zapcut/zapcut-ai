@@ -107,6 +107,7 @@ async def create_campaign(
         suno_prompt=suno_prompt,
         final_video_url="",
         status="pending",
+        audio_status="pending",  # Initialize audio status
         created_at=datetime.utcnow().isoformat()
     )
     
@@ -251,6 +252,11 @@ async def get_campaign_status(
         "status": campaign.status,
         "final_video_url": campaign.final_video_url if campaign.status == "completed" else None,
         "sora_prompts": sora_prompts,  # Include all sora_prompts
+        "audio": {
+            "status": campaign.audio_status or "pending",
+            "audio_url": campaign.audio_url,
+            "error": campaign.audio_generation_error
+        },
         "progress": {
             "current_scene": current_scene,
             "completed_scenes": completed_scenes,

@@ -105,3 +105,60 @@ async def init_database():
         logger.error(f"Database initialization error: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
+
+@app.post("/migrate-audio-columns")
+async def migrate_audio_columns():
+    """Add audio-related columns to campaigns table (migration)."""
+    try:
+        from app.database import get_engine
+        from sqlalchemy import text
+        
+        engine = get_engine()
+        
+        with engine.begin() as conn:
+            # Check if columns exist and add them if they don't
+            migration_sql = """
+            DO $$ 
+            BEGIN
+                -- Add audio_url column if it doesn't exist
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'campaigns' AND column_name = 'audio_url'
+                ) THEN
+                    ALTER TABLE campaigns ADD COLUMN audio_url VARCHAR;
+                    RAISE NOTICE 'Added audio_url column';
+                END IF;
+                
+                -- Add audio_status column if it doesn't exist
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'campaigns' AND column_name = 'audio_status'
+                ) THEN
+                    ALTER TABLE campaigns ADD COLUMN audio_status VARCHAR DEFAULT 'pending';
+                    RAISE NOTICE 'Added audio_status column';
+                END IF;
+                
+                -- Add audio_generation_error column if it doesn't exist
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'campaigns' AND column_name = 'audio_generation_error'
+                ) THEN
+                    ALTER TABLE campaigns ADD COLUMN audio_generation_error VARCHAR;
+                    RAISE NOTICE 'Added audio_generation_error column';
+                END IF;
+            END $$;
+            """
+            
+            conn.execute(text(migration_sql))
+            
+        logger.info("Audio columns migration completed successfully")
+        
+        return {
+            "status": "success",
+            "message": "Audio columns added to campaigns table",
+            "columns_added": ["audio_url", "audio_status", "audio_generation_error"]
+        }
+    except Exception as e:
+        logger.error(f"Migration error: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+

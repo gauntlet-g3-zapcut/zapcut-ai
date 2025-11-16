@@ -16,10 +16,16 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     SUPABASE_JWT_SECRET: Optional[str] = None
     
+    # Supabase S3 Storage
+    SUPABASE_S3_ENDPOINT: Optional[str] = None
+    SUPABASE_S3_ACCESS_KEY: Optional[str] = None
+    SUPABASE_S3_SECRET_KEY: Optional[str] = None
+    
     # External APIs
     OPENAI_API_KEY: Optional[str] = None
     REPLICATE_API_TOKEN: Optional[str] = None
     REPLICATE_WEBHOOK_SECRET: Optional[str] = None
+    ELEVENLABS_API_KEY: Optional[str] = None
     
     # API Configuration
     API_URL: Optional[str] = None  # Base URL for webhook callbacks (e.g., https://zapcut-api.fly.dev)

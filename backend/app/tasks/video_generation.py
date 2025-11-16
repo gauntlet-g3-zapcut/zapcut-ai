@@ -399,6 +399,14 @@ def start_video_generation_task(campaign_id: str) -> None:
             
             logger.info(f"Campaign tasks enqueued | campaign={campaign_id} | task_group_id={result.id}")
             # Webhooks will handle status updates when scenes complete
+            
+            # Start audio generation in parallel
+            if settings.ELEVENLABS_API_KEY:
+                from app.tasks.audio_generation import generate_audio_task
+                generate_audio_task.delay(campaign_id)
+                logger.info(f"Audio generation task enqueued | campaign={campaign_id}")
+            else:
+                logger.warning(f"ELEVENLABS_API_KEY not configured, skipping audio generation | campaign={campaign_id}")
     
     except Exception as e:
         logger.error(f"Campaign generation error | campaign={campaign_id} | error={str(e)}", exc_info=True)

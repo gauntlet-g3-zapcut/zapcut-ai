@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { Button } from "../components/ui/button"
 import { Card } from "../components/ui/card"
 import { api } from "../services/api"
-import { Download, Share2, ArrowLeft, Play } from "lucide-react"
+import { Download, Share2, ArrowLeft, Play, Volume2, VolumeX } from "lucide-react"
 
 export default function VideoPlayer() {
   const { campaignId } = useParams()
@@ -13,6 +13,12 @@ export default function VideoPlayer() {
   const [selectedScene, setSelectedScene] = useState(null)
   const [loading, setLoading] = useState(true)
   const [shareLink, setShareLink] = useState("")
+  const [isPlayingAll, setIsPlayingAll] = useState(false)
+  const [currentSceneIndex, setCurrentSceneIndex] = useState(0)
+  const [audioMuted, setAudioMuted] = useState(false)
+  const videoRef = useRef(null)
+  const audioRef = useRef(null)
+  const scenesRef = useRef([])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -26,11 +32,12 @@ export default function VideoPlayer() {
         
         // Set first completed scene as selected by default
         if (statusResponse?.progress?.scenes) {
-          const firstCompleted = statusResponse.progress.scenes.find(
+          const completedScenes = statusResponse.progress.scenes.filter(
             s => s.status === "completed" && s.video_url
           )
-          if (firstCompleted) {
-            setSelectedScene(firstCompleted)
+          scenesRef.current = completedScenes
+          if (completedScenes.length > 0) {
+            setSelectedScene(completedScenes[0])
           }
         }
       } catch (error) {
@@ -68,6 +75,67 @@ export default function VideoPlayer() {
     }
   }
 
+  const handlePlayAll = () => {
+    const completedScenes = scenesRef.current
+    if (completedScenes.length === 0) return
+
+    setIsPlayingAll(true)
+    setCurrentSceneIndex(0)
+    setSelectedScene(completedScenes[0])
+    
+    // Start audio if available
+    if (statusData?.audio?.audio_url && audioRef.current) {
+      audioRef.current.play().catch(err => {
+        console.error("Failed to play audio:", err)
+      })
+    }
+
+    // Start first video
+    setTimeout(() => {
+      if (videoRef.current) {
+        videoRef.current.play().catch(err => {
+          console.error("Failed to play video:", err)
+        })
+      }
+    }, 100)
+  }
+
+  const handleVideoEnd = () => {
+    if (!isPlayingAll) return
+
+    const completedScenes = scenesRef.current
+    const nextIndex = currentSceneIndex + 1
+
+    if (nextIndex < completedScenes.length) {
+      setCurrentSceneIndex(nextIndex)
+      setSelectedScene(completedScenes[nextIndex])
+      
+      // Play next video
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.currentTime = 0
+          videoRef.current.play().catch(err => {
+            console.error("Failed to play video:", err)
+          })
+        }
+      }, 100)
+    } else {
+      // All scenes played
+      setIsPlayingAll(false)
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.currentTime = 0
+      }
+    }
+  }
+
+  const toggleAudioMute = () => {
+    if (audioRef.current) {
+      audioRef.current.muted = !audioMuted
+      setAudioMuted(!audioMuted)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -101,15 +169,28 @@ export default function VideoPlayer() {
           <div className="lg:col-span-2">
             {selectedScene?.video_url ? (
               <Card className="p-0 overflow-hidden">
-                <video
-                  controls
-                  autoPlay
-                  className="w-full aspect-video bg-black"
-                  src={selectedScene.video_url}
-                  key={selectedScene.scene_number}
-                >
-                  Your browser does not support the video tag.
-                </video>
+                <div className="relative">
+                  <video
+                    ref={videoRef}
+                    controls
+                    className="w-full aspect-video bg-black"
+                    src={selectedScene.video_url}
+                    key={selectedScene.scene_number}
+                    onEnded={handleVideoEnd}
+                    muted={false}
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                  {/* Background audio track */}
+                  {statusData?.audio?.audio_url && (
+                    <audio
+                      ref={audioRef}
+                      src={statusData.audio.audio_url}
+                      loop={false}
+                      muted={audioMuted}
+                    />
+                  )}
+                </div>
               </Card>
             ) : (
               <Card className="p-12 text-center">
@@ -119,19 +200,53 @@ export default function VideoPlayer() {
 
             {/* Action Buttons */}
             {selectedScene?.video_url && (
-              <div className="mt-6 grid grid-cols-3 gap-4">
-                <Button onClick={() => handleDownloadMP4(selectedScene.video_url)} variant="outline">
-                  <Download className="mr-2 h-4 w-4" />
-                  Download MP4
-                </Button>
-                <Button onClick={handleDownloadWebM} variant="outline">
-                  <Download className="mr-2 h-4 w-4" />
-                  Download WebM
-                </Button>
-                <Button onClick={handleShare} variant="outline">
-                  <Share2 className="mr-2 h-4 w-4" />
-                  Share Link
-                </Button>
+              <div className="mt-6 space-y-4">
+                {/* Play All Button */}
+                {scenesRef.current.length > 1 && (
+                  <Button 
+                    onClick={handlePlayAll} 
+                    className="w-full"
+                    disabled={isPlayingAll}
+                  >
+                    <Play className="mr-2 h-4 w-4" />
+                    {isPlayingAll ? "Playing All Scenes..." : "Play All Scenes with Soundtrack"}
+                  </Button>
+                )}
+                
+                {/* Audio Controls */}
+                {statusData?.audio?.audio_url && (
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      onClick={toggleAudioMute} 
+                      variant="outline"
+                      size="sm"
+                    >
+                      {audioMuted ? (
+                        <VolumeX className="h-4 w-4" />
+                      ) : (
+                        <Volume2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      {audioMuted ? "Soundtrack Muted" : "Soundtrack Playing"}
+                    </span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-4">
+                  <Button onClick={() => handleDownloadMP4(selectedScene.video_url)} variant="outline">
+                    <Download className="mr-2 h-4 w-4" />
+                    Download MP4
+                  </Button>
+                  <Button onClick={handleDownloadWebM} variant="outline">
+                    <Download className="mr-2 h-4 w-4" />
+                    Download WebM
+                  </Button>
+                  <Button onClick={handleShare} variant="outline">
+                    <Share2 className="mr-2 h-4 w-4" />
+                    Share Link
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -152,6 +267,23 @@ export default function VideoPlayer() {
                 <div>
                   <p className="text-muted-foreground">Quality</p>
                   <p className="font-medium">4K (3840x2160)</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Soundtrack</p>
+                  <p className={`font-medium ${
+                    statusData?.audio?.status === "completed" 
+                      ? "text-green-500" 
+                      : statusData?.audio?.status === "failed"
+                      ? "text-red-500"
+                      : statusData?.audio?.status === "generating"
+                      ? "text-yellow-500"
+                      : ""
+                  }`}>
+                    {statusData?.audio?.status === "completed" ? "Ready" :
+                     statusData?.audio?.status === "generating" ? "Generating..." :
+                     statusData?.audio?.status === "failed" ? "Failed" :
+                     "Pending"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Created</p>

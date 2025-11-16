@@ -21,6 +21,9 @@ class Campaign(Base):
     music_url = Column(String, nullable=True)
     final_video_url = Column(String, nullable=True)
     task_group_id = Column(String, nullable=True)  # Celery group ID for tracking parallel tasks
+    audio_url = Column(String, nullable=True)
+    audio_status = Column(String, nullable=True, default="pending")  # pending/generating/completed/failed
+    audio_generation_error = Column(String, nullable=True)
     created_at = Column(String, nullable=False)
     
     # Relationships
