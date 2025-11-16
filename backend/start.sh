@@ -37,5 +37,9 @@ echo "=========================================="
 echo "Starting uvicorn server on port $PORT..."
 echo "=========================================="
 
-# Start uvicorn server
-exec uvicorn app.main:app --host 0.0.0.0 --port $PORT
+# Start uvicorn with explicit error handling and logging
+exec python -m uvicorn app.main:app \
+    --host 0.0.0.0 \
+    --port $PORT \
+    --log-level debug \
+    2>&1
