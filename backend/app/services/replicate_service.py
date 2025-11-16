@@ -1,8 +1,61 @@
 import replicate
 from app.config import settings
 import time
+from functools import wraps
 
 client = replicate.Client(api_token=settings.REPLICATE_API_TOKEN)
+
+
+def retry_with_backoff(max_retries=3, initial_delay=2, backoff_factor=2, log_callback=None):
+    """
+    Decorator for retrying functions with exponential backoff
+
+    Args:
+        max_retries: Maximum number of retry attempts (default 3)
+        initial_delay: Initial delay between retries in seconds (default 2)
+        backoff_factor: Multiplier for delay after each retry (default 2)
+        log_callback: Optional callback function for logging retry attempts
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            last_exception = None
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+
+                    # Don't retry on certain errors
+                    error_str = str(e).lower()
+                    if "invalid" in error_str or "unauthorized" in error_str or "not found" in error_str:
+                        # These are likely configuration errors, don't retry
+                        raise
+
+                    if attempt < max_retries:
+                        if log_callback:
+                            log_callback(f"   ⚠️ Attempt {attempt + 1}/{max_retries + 1} failed: {str(e)}")
+                            log_callback(f"   🔄 Retrying in {delay} seconds...")
+                        else:
+                            print(f"   ⚠️ Attempt {attempt + 1}/{max_retries + 1} failed: {str(e)}")
+                            print(f"   🔄 Retrying in {delay} seconds...")
+
+                        time.sleep(delay)
+                        delay *= backoff_factor
+                    else:
+                        if log_callback:
+                            log_callback(f"   ❌ All {max_retries + 1} attempts failed")
+                        else:
+                            print(f"   ❌ All {max_retries + 1} attempts failed")
+                        raise last_exception
+
+            # Should never reach here, but just in case
+            raise last_exception
+
+        return wrapper
+    return decorator
 
 
 def generate_reference_images(prompts):
@@ -266,23 +319,66 @@ def generate_music_with_suno(suno_prompt):
         }
 
 
-def wait_for_prediction(prediction_id, timeout=600):
+def wait_for_prediction(prediction_id, timeout=3600, log_callback=None):
     """
     Wait for a Replicate prediction to complete
+
+    Args:
+        prediction_id: Replicate prediction ID
+        timeout: Maximum wait time in seconds (default 3600 = 60 minutes)
+        log_callback: Optional callback function for logging updates to UI
+
+    Returns:
+        Prediction output on success
+
+    Raises:
+        Exception on failure or timeout
     """
     start_time = time.time()
-    
+    last_log_time = start_time
+    log_interval = 30  # Log every 30 seconds
+
     while time.time() - start_time < timeout:
-        prediction = client.predictions.get(prediction_id)
-        
-        if prediction.status == "succeeded":
-            return prediction.output
-        elif prediction.status == "failed":
-            raise Exception(f"Prediction failed: {prediction.error}")
-        
+        try:
+            prediction = client.predictions.get(prediction_id)
+
+            if prediction.status == "succeeded":
+                elapsed = time.time() - start_time
+                if log_callback:
+                    log_callback(f"   ✅ Prediction completed in {elapsed:.1f} seconds")
+                return prediction.output
+            elif prediction.status == "failed":
+                error_msg = f"Prediction failed: {prediction.error}"
+                if log_callback:
+                    log_callback(f"   ❌ {error_msg}")
+                raise Exception(error_msg)
+
+            # Log progress periodically
+            current_time = time.time()
+            if log_callback and (current_time - last_log_time) >= log_interval:
+                elapsed = current_time - start_time
+                if log_callback:
+                    log_callback(f"   ⏳ Still waiting... ({elapsed:.0f}s elapsed, status: {prediction.status})")
+                last_log_time = current_time
+
+        except Exception as e:
+            # If it's a network error, retry after a short delay
+            if "network" in str(e).lower() or "connection" in str(e).lower():
+                if log_callback:
+                    log_callback(f"   ⚠️ Network error, retrying...")
+                time.sleep(5)
+                continue
+            else:
+                # Re-raise other exceptions
+                raise
+
         time.sleep(2)
-    
-    raise Exception("Prediction timed out")
+
+    elapsed = time.time() - start_time
+    error_msg = f"Prediction timed out after {elapsed:.0f} seconds (limit: {timeout}s)"
+    if log_callback:
+        log_callback(f"   ❌ {error_msg}")
+    raise Exception(error_msg)
 
 
 def generate_videos_sequential(sora_prompts):
@@ -319,60 +415,88 @@ def generate_videos_sequential(sora_prompts):
     return results
 
 
-def generate_videos_parallel(sora_prompts):
+def generate_videos_parallel(sora_prompts, log_callback=None):
     """
-    Generate multiple videos in parallel using OpenAI Sora 2
+    Generate multiple videos in parallel using OpenAI Sora 2 with retry logic
 
     Args:
         sora_prompts: List of prompt dicts with scene_number and prompt
+        log_callback: Optional callback function for logging updates to UI
 
     Returns:
         List of results with scene_number, url, and prompt
     """
-    print(f"\n🔧 REPLICATE SERVICE - generate_videos_parallel()")
-    print(f"   📥 Generating {len(sora_prompts)} videos in parallel")
+    def log(msg):
+        """Helper to log to both console and callback"""
+        print(msg)
+        if log_callback:
+            log_callback(msg)
+
+    log(f"\n🔧 REPLICATE SERVICE - generate_videos_parallel()")
+    log(f"   📥 Generating {len(sora_prompts)} videos in parallel")
 
     predictions = []
     model = "openai/sora-2"
 
-    # Get the latest version of the model
-    try:
+    # Get the latest version of the model with retry
+    @retry_with_backoff(max_retries=3, log_callback=log_callback)
+    def get_model_version():
         model_obj = client.models.get(model)
-        version = model_obj.latest_version.id
-        print(f"   📦 Using Sora 2 version: {version[:16]}...")
+        return model_obj.latest_version.id
+
+    try:
+        version = get_model_version()
+        log(f"   📦 Using Sora 2 version: {version[:16]}...")
     except Exception as e:
-        print(f"   ❌ Failed to get Sora 2 version: {e}")
+        log(f"   ❌ Failed to get Sora 2 version after retries: {e}")
         return []
 
-    # Start all predictions in parallel
-    for prompt_data in sora_prompts:
+    # Start all predictions in parallel with retry logic
+    def start_prediction_with_retry(prompt_data):
+        """Start a prediction with retry logic"""
         scene_number = prompt_data["scene_number"]
         prompt = prompt_data["prompt"]
 
-        print(f"\n   🚀 Starting scene {scene_number} (async)...")
-        print(f"   📝 Prompt: {prompt[:100]}...")
-
-        try:
-            prediction = client.predictions.create(
-                version=version,  # Fixed: use version instead of model
+        @retry_with_backoff(max_retries=3, log_callback=log_callback)
+        def create_prediction():
+            return client.predictions.create(
+                version=version,
                 input={
                     "prompt": prompt,
                     "seconds": 4,  # Sora 2 supports 4, 8, or 12 seconds
                     "aspect_ratio": "landscape",  # landscape (1280x720) or portrait (720x1280)
                 }
             )
-            predictions.append({
+
+        log(f"\n   🚀 Starting scene {scene_number} (async)...")
+        log(f"   📝 Prompt: {prompt[:100]}...")
+
+        try:
+            prediction = create_prediction()
+            log(f"   ✓ Scene {scene_number} prediction started: {prediction.id}")
+            return {
                 "prediction_id": prediction.id,
                 "scene_number": scene_number,
                 "prompt": prompt
-            })
-            print(f"   ✓ Scene {scene_number} prediction started: {prediction.id}")
+            }
         except Exception as e:
-            print(f"   ❌ Error starting scene {scene_number}: {e}")
+            log(f"   ❌ Error starting scene {scene_number} after retries: {e}")
             import traceback
             traceback.print_exc()
+            return None
 
-    print(f"\n   ⏳ All {len(predictions)} predictions started, waiting for completion...")
+    # Start all predictions
+    for prompt_data in sora_prompts:
+        pred_info = start_prediction_with_retry(prompt_data)
+        if pred_info:
+            predictions.append(pred_info)
+
+    if not predictions:
+        log(f"   ❌ Failed to start any predictions")
+        return []
+
+    log(f"\n   ⏳ All {len(predictions)} predictions started, waiting for completion...")
+    log(f"   ⏱️  Timeout: 60 minutes per scene")
 
     # Wait for all predictions to complete
     results = []
@@ -380,13 +504,14 @@ def generate_videos_parallel(sora_prompts):
         scene_number = pred_info["scene_number"]
         prediction_id = pred_info["prediction_id"]
 
-        print(f"\n   ⏳ Waiting for scene {scene_number} (prediction {prediction_id})...")
+        log(f"\n   ⏳ Waiting for scene {scene_number} (prediction {prediction_id})...")
 
         try:
-            output = wait_for_prediction(prediction_id)
+            # Wait with extended timeout and progress logging
+            output = wait_for_prediction(prediction_id, timeout=3600, log_callback=log_callback)
             video_url = output if isinstance(output, str) else output[0]
 
-            print(f"   ✅ Scene {scene_number} complete: {video_url[:80]}...")
+            log(f"   ✅ Scene {scene_number} complete: {video_url[:80]}...")
 
             results.append({
                 "scene_number": scene_number,
@@ -395,7 +520,7 @@ def generate_videos_parallel(sora_prompts):
                 "prediction_id": prediction_id
             })
         except Exception as e:
-            print(f"   ❌ Error waiting for scene {scene_number}: {e}")
+            log(f"   ❌ Error waiting for scene {scene_number}: {e}")
             import traceback
             traceback.print_exc()
 
@@ -407,7 +532,8 @@ def generate_videos_parallel(sora_prompts):
                 "prediction_id": prediction_id
             })
 
-    print(f"\n   ✅ Parallel video generation complete: {len([r for r in results if r.get('url')])}/{len(results)} successful")
+    successful = len([r for r in results if r.get('url')])
+    log(f"\n   ✅ Parallel video generation complete: {successful}/{len(results)} successful")
     return results
 
 
