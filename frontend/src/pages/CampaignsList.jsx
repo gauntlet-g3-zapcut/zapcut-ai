@@ -49,8 +49,17 @@ export default function CampaignsList() {
   }
 
   const handleLogout = async () => {
-    await logout()
-    navigate("/")
+    try {
+      await logout()
+      // Wait a moment for auth state to update
+      setTimeout(() => {
+        navigate("/landing")
+      }, 100)
+    } catch (error) {
+      console.error("Logout failed:", error)
+      // Still navigate even if logout had an error
+      navigate("/landing")
+    }
   }
 
   const getStatusIcon = (status) => {

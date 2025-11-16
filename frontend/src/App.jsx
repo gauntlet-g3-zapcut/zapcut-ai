@@ -19,8 +19,9 @@ function PrivateRoute({ children }) {
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/login" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/" element={<Navigate to="/landing" replace />} />
+      <Route path="/landing" element={<Landing />} />
+      <Route path="/login" element={<Login />} />
       <Route
         path="/dashboard"
         element={
