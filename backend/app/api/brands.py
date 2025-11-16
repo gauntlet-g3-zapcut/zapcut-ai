@@ -166,14 +166,25 @@ async def create_creative_bible(
 ):
     """Create a creative bible from user preferences"""
 
+    print(f"\n{'='*80}")
+    print(f"🎨 CREATE CREATIVE BIBLE - Request received")
+    print(f"{'='*80}")
+    print(f"   Brand ID: {brand_id}")
+    print(f"   Answers: {request.answers.dict(exclude_none=True)}")
+    print(f"{'='*80}\n")
+
     try:
         # Get brand
+        print(f"📋 Step 1: Looking up brand with ID: {brand_id}")
         brand = db.query(Brand).filter(
             Brand.id == uuid.UUID(brand_id)
         ).first()
 
         if not brand:
+            print(f"❌ ERROR: Brand not found for ID: {brand_id}")
             raise HTTPException(status_code=404, detail="Brand not found")
+
+        print(f"✅ Brand found: {brand.title} (ID: {brand.id})")
 
         # Prepare brand info for OpenAI
         brand_info = {
@@ -185,17 +196,24 @@ async def create_creative_bible(
         answers_dict = request.answers.dict(exclude_none=True)
 
         # Generate creative bible from user answers using OpenAI
-        print(f"\n🎨 Generating creative bible for brand: {brand.title}")
+        print(f"\n📋 Step 2: Generating creative bible from user answers")
+        print(f"   Brand: {brand.title}")
         print(f"   User preferences: {answers_dict}")
 
         try:
+            print(f"   🤖 Calling OpenAI to generate creative bible...")
             creative_bible_data = generate_creative_bible_from_answers(
                 answers_dict,
                 brand_info
             )
-            print(f"   ✅ Creative bible generated")
+            print(f"   ✅ OpenAI generation successful")
+            print(f"   Generated data keys: {list(creative_bible_data.keys())}")
         except Exception as e:
-            print(f"   ❌ OpenAI generation failed: {e}")
+            print(f"   ❌ ERROR: OpenAI generation failed")
+            print(f"   Exception type: {type(e).__name__}")
+            print(f"   Exception message: {str(e)}")
+            import traceback
+            print(f"   Traceback:\n{traceback.format_exc()}")
             db.rollback()
             raise HTTPException(
                 status_code=500,
@@ -203,20 +221,34 @@ async def create_creative_bible(
             )
 
         # Check if creative bible already exists for this brand
+        print(f"\n📋 Step 3: Checking for existing creative bible")
         existing_bible = db.query(CreativeBible).filter(
             CreativeBible.brand_id == brand.id
         ).first()
 
         if existing_bible:
+            print(f"   ℹ️  Found existing creative bible: {existing_bible.id}")
+        else:
+            print(f"   ℹ️  No existing creative bible found, will create new one")
+
+        if existing_bible:
             # Update existing
+            print(f"   📝 Updating existing creative bible...")
             existing_bible.creative_bible = creative_bible_data
             existing_bible.conversation_history = answers_dict  # Store answers for compatibility
-            db.commit()
-            db.refresh(existing_bible)
-            creative_bible = existing_bible
-            print(f"   ✅ Updated existing creative bible: {creative_bible.id}")
+            try:
+                db.commit()
+                db.refresh(existing_bible)
+                creative_bible = existing_bible
+                print(f"   ✅ Successfully updated creative bible: {creative_bible.id}")
+            except Exception as e:
+                print(f"   ❌ ERROR: Failed to update existing creative bible")
+                print(f"   Exception: {str(e)}")
+                db.rollback()
+                raise
         else:
             # Create new
+            print(f"   📝 Creating new creative bible...")
             creative_bible = CreativeBible(
                 brand_id=brand.id,
                 name=f"{brand.title} Creative Bible",
@@ -229,9 +261,11 @@ async def create_creative_bible(
                 db.add(creative_bible)
                 db.commit()
                 db.refresh(creative_bible)
-                print(f"   ✅ Created new creative bible: {creative_bible.id}")
-            except IntegrityError:
+                print(f"   ✅ Successfully created new creative bible: {creative_bible.id}")
+            except IntegrityError as e:
                 # Race condition: another request created it
+                print(f"   ⚠️  IntegrityError (race condition detected): {str(e)}")
+                print(f"   🔄 Attempting to update existing record instead...")
                 db.rollback()
                 existing_bible = db.query(CreativeBible).filter(
                     CreativeBible.brand_id == brand.id
@@ -242,20 +276,34 @@ async def create_creative_bible(
                     db.commit()
                     db.refresh(existing_bible)
                     creative_bible = existing_bible
-                    print(f"   ✅ Updated (race condition) creative bible: {creative_bible.id}")
+                    print(f"   ✅ Successfully updated (after race condition) creative bible: {creative_bible.id}")
                 else:
+                    print(f"   ❌ ERROR: Race condition but no existing bible found")
                     raise
+
+        print(f"\n✅ SUCCESS: Creative bible operation completed")
+        print(f"   Creative Bible ID: {creative_bible.id}")
+        print(f"{'='*80}\n")
 
         return {
             "creative_bible_id": str(creative_bible.id),
             "creative_bible": creative_bible_data
         }
 
-    except HTTPException:
+    except HTTPException as http_ex:
+        print(f"\n❌ HTTP EXCEPTION in create_creative_bible")
+        print(f"   Status: {http_ex.status_code}")
+        print(f"   Detail: {http_ex.detail}")
+        print(f"{'='*80}\n")
         raise
     except Exception as e:
         db.rollback()
-        print(f"❌ Error creating creative bible: {e}")
+        print(f"\n❌ UNEXPECTED ERROR in create_creative_bible")
+        print(f"   Exception type: {type(e).__name__}")
+        print(f"   Exception message: {str(e)}")
+        import traceback
+        print(f"   Traceback:\n{traceback.format_exc()}")
+        print(f"{'='*80}\n")
         raise HTTPException(
             status_code=500,
             detail="Failed to create creative bible. Please try again."

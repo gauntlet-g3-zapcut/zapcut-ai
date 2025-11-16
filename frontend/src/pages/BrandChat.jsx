@@ -53,27 +53,55 @@ export default function BrandChat() {
   const answeredCount = QUESTIONS.filter(q => answers[q.id]).length
 
   const handleSubmit = async () => {
+    console.log("\n" + "=".repeat(80))
+    console.log("🚀 BRAND CHAT - Continue to Storyline button clicked")
+    console.log("=".repeat(80))
+
     // Double-check validation before submitting
     if (!allQuestionsAnswered) {
+      console.log("❌ Validation failed: Not all questions answered")
+      console.log(`   Answered: ${answeredCount}/${QUESTIONS.length}`)
       setError(`Please answer all ${QUESTIONS.length} questions (${answeredCount}/${QUESTIONS.length} answered)`)
       return
     }
+
+    console.log("✅ Validation passed")
+    console.log(`   Brand ID: ${brandId}`)
+    console.log(`   Answers:`, answers)
 
     setLoading(true)
     setError(null)
 
     try {
-      console.log("📤 Submitting user preferences:", answers)
+      console.log("\n📤 Step 1: Calling createCreativeBible API...")
 
       // Call backend to generate creative bible from answers
       const response = await api.createCreativeBible(brandId, answers)
 
-      console.log("✅ Creative bible created:", response.creative_bible_id)
+      console.log("✅ Step 1 Success: Creative bible created")
+      console.log(`   Creative Bible ID: ${response.creative_bible_id}`)
+
+      console.log("\n📤 Step 2: Navigating to storyline review page...")
+      const targetUrl = `/brands/${brandId}/storyline/${response.creative_bible_id}`
+      console.log(`   Target URL: ${targetUrl}`)
 
       // Navigate to storyline review with the creative_bible_id
-      navigate(`/brands/${brandId}/storyline/${response.creative_bible_id}`)
+      navigate(targetUrl)
+
+      console.log("✅ Step 2 Success: Navigation initiated")
+      console.log("=".repeat(80) + "\n")
     } catch (error) {
-      console.error("❌ Failed to create creative bible:", error)
+      console.error("\n" + "=".repeat(80))
+      console.error("❌ ERROR in handleSubmit")
+      console.error("=".repeat(80))
+      console.error("   Error type:", error.constructor.name)
+      console.error("   Error message:", error.message)
+      console.error("   Full error:", error)
+      if (error.stack) {
+        console.error("   Stack trace:", error.stack)
+      }
+      console.error("=".repeat(80) + "\n")
+
       // Show error to user instead of silent fallback
       const errorMessage = error.message || "Failed to save your preferences. Please try again."
       setError(errorMessage)

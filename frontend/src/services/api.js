@@ -28,7 +28,9 @@ async function getAuthToken() {
 
 async function apiRequest(endpoint, options = {}) {
   const token = await getAuthToken()
-  
+
+  console.log(`📡 API Request: ${options.method || 'GET'} ${API_URL}${endpoint}`)
+
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers: {
@@ -38,12 +40,30 @@ async function apiRequest(endpoint, options = {}) {
     },
   })
 
+  console.log(`📡 API Response: ${response.status} ${response.statusText}`)
+
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "An error occurred" }))
-    throw new Error(error.detail || error.message || "Request failed")
+    console.error(`❌ API Error: ${response.status} ${response.statusText}`)
+    console.error(`   Endpoint: ${options.method || 'GET'} ${endpoint}`)
+
+    let errorData
+    try {
+      errorData = await response.json()
+      console.error(`   Error details:`, errorData)
+    } catch (e) {
+      errorData = { detail: "An error occurred" }
+      console.error(`   Could not parse error response as JSON`)
+    }
+
+    const errorMessage = errorData.detail || errorData.message || "Request failed"
+    console.error(`   Error message: ${errorMessage}`)
+
+    throw new Error(errorMessage)
   }
 
-  return response.json()
+  const data = await response.json()
+  console.log(`✅ API Success:`, data)
+  return data
 }
 
 async function apiRequestWithFormData(endpoint, formData, options = {}) {

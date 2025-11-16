@@ -25,20 +25,31 @@ async def get_current_user(
     db: Session = Depends(get_db)
 ):
     """TESTING MODE: Return mock user without validation"""
+    print(f"\n🔐 AUTH - get_current_user called")
+    print(f"   Token data: {token_data}")
+
     try:
         # Try to get or create the mock user (matches brand owner)
+        print(f"   🔍 Looking for user with supabase_uid='mock-user-123'")
         user = db.query(User).filter(User.supabase_uid == "mock-user-123").first()
 
         if not user:
+            print(f"   ℹ️  Mock user not found, creating new one...")
             user = User(supabase_uid="mock-user-123", email="dev@example.com")
             db.add(user)
             db.commit()
             db.refresh(user)
+            print(f"   ✅ Created mock user: ID={user.id}, Email={user.email}")
+        else:
+            print(f"   ✅ Found existing mock user: ID={user.id}, Email={user.email}")
 
         return user
     except Exception as e:
-        print(f"⚠️ DB error in get_current_user: {e}")
+        print(f"   ❌ ERROR in get_current_user: {type(e).__name__}: {str(e)}")
+        import traceback
+        print(f"   Traceback:\n{traceback.format_exc()}")
         # Return a mock user if DB fails
+        print(f"   ⚠️  Returning fallback MockUser object")
         class MockUser:
             id = "00000000-0000-0000-0000-000000000099"
             email = "dev@example.com"

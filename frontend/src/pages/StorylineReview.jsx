@@ -55,12 +55,36 @@ export default function StorylineReview() {
   useEffect(() => {
     // Try to fetch real data in background, but don't block on it
     const fetchStoryline = async () => {
+      console.log("\n" + "=".repeat(80))
+      console.log("📖 STORYLINE REVIEW - Fetching storyline data")
+      console.log("=".repeat(80))
+      console.log(`   Brand ID: ${brandId}`)
+      console.log(`   Creative Bible ID: ${creativeBibleId}`)
+
       try {
+        console.log("\n📤 Calling getStoryline API...")
         const response = await api.getStoryline(brandId, creativeBibleId)
+
+        console.log("✅ Successfully fetched storyline")
+        console.log(`   Storyline scenes: ${response.storyline?.scenes?.length || 0}`)
+        console.log(`   Creative bible style: ${response.creative_bible?.brand_style || 'N/A'}`)
+
         setStoryline(response.storyline)
         setCreativeBible(response.creative_bible)
+
+        console.log("=".repeat(80) + "\n")
       } catch (error) {
-        console.error("Failed to fetch storyline:", error)
+        console.error("\n" + "=".repeat(80))
+        console.error("❌ ERROR fetching storyline")
+        console.error("=".repeat(80))
+        console.error("   Error type:", error.constructor.name)
+        console.error("   Error message:", error.message)
+        console.error("   Full error:", error)
+        if (error.stack) {
+          console.error("   Stack trace:", error.stack)
+        }
+        console.error("   ℹ️  Keeping placeholder data")
+        console.error("=".repeat(80) + "\n")
         // Keep using placeholder data that's already set in initial state
       }
     }
