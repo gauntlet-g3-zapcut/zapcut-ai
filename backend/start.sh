@@ -1,28 +1,14 @@
 #!/bin/bash
-# Railway startup script with comprehensive logging
+# Railway startup script
 
-# Don't exit on error - we want to see all errors
-set +e
-
-# Ensure we're in the right directory
-if [ -f "app/main.py" ]; then
-    echo "✅ Found app/main.py in current directory"
-elif [ -f "backend/app/main.py" ]; then
-    echo "✅ Found backend/app/main.py, changing directory"
-    cd backend
-elif [ -f "../backend/app/main.py" ]; then
-    echo "✅ Found backend/app/main.py in parent, changing directory"
-    cd ../backend
-fi
+set -e
 
 echo "=========================================="
 echo "Starting AdCraft API Server"
 echo "=========================================="
-echo "PORT: ${PORT:-not set}"
-echo "PYTHON_VERSION: $(python --version 2>&1 || echo 'not found')"
+echo "PORT: ${PORT:-8000}"
+echo "PYTHON_VERSION: $(python --version 2>&1)"
 echo "Working directory: $(pwd)"
-echo "Python path: $(which python)"
-echo "Files in current dir: $(ls -la | head -5)"
 echo "=========================================="
 
 # Log environment variables (without sensitive values)
@@ -30,35 +16,22 @@ echo "Environment variables:"
 env | grep -E "^(DATABASE_URL|REDIS_URL|OPENAI_API_KEY|SUPABASE|CORS|PORT)=" | sed 's/=.*/=***/' || echo "No relevant env vars found"
 echo "=========================================="
 
-# Check if PORT is set
-if [ -z "$PORT" ]; then
-    echo "⚠️  WARNING: PORT environment variable not set, using 8000"
-    export PORT=8000
-fi
+# Set default PORT if not provided
+export PORT=${PORT:-8000}
 
-# Try to import and test the app before starting
+# Test app import
 echo "Testing app import..."
 python -c "
 import sys
-import traceback
 try:
-    print('Importing app.main...', file=sys.stderr)
-    sys.stderr.flush()
     from app.main import app
-    print('✅ App imported successfully', file=sys.stderr)
-    print(f'✅ App title: {app.title}', file=sys.stderr)
-    sys.stderr.flush()
+    print(f'✅ App imported successfully: {app.title}', file=sys.stderr)
 except Exception as e:
     print(f'❌ Failed to import app: {e}', file=sys.stderr)
+    import traceback
     traceback.print_exc(file=sys.stderr)
-    sys.stderr.flush()
     sys.exit(1)
-" 2>&1
-
-if [ $? -ne 0 ]; then
-    echo "❌ App import failed, exiting"
-    exit 1
-fi
+" || exit 1
 
 echo "=========================================="
 echo "Starting uvicorn server on port $PORT..."

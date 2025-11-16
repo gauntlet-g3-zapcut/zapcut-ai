@@ -58,17 +58,22 @@ async def create_campaign(
     db.refresh(campaign)
     
     # Start video generation task (lazy import to avoid startup failures)
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
-        from queue.tasks.video_generation import generate_campaign_video
-        from queue.celery_app import celery_app
+        from app.tasks.video_generation import generate_campaign_video
+        from app.celery_app import celery_app
         
         if celery_app is not None:
-            generate_campaign_video.delay(str(campaign.id))
+            task = generate_campaign_video.delay(str(campaign.id))
+            logger.info(f"Video generation task started for campaign {campaign.id}, task_id: {task.id}")
             message = "Campaign created. Video generation started."
         else:
+            logger.warning(f"Celery not available - video generation skipped for campaign {campaign.id}")
             message = "Campaign created. Video generation unavailable (Redis not configured)."
     except Exception as e:
-        print(f"⚠️  Failed to start video generation task: {e}")
+        logger.error(f"Failed to start video generation task for campaign {campaign.id}: {e}", exc_info=True)
         message = "Campaign created. Video generation unavailable."
     
     return {

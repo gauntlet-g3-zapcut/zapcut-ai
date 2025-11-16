@@ -1,39 +1,48 @@
 import sys
-import traceback
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stderr),
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 # Add comprehensive error logging at the very start
 def log_error_and_exit(msg, exc=None):
     """Log error and exit gracefully"""
-    print(f"❌ FATAL ERROR: {msg}", file=sys.stderr)
+    logger.error(f"FATAL ERROR: {msg}")
     if exc:
-        traceback.print_exc(file=sys.stderr)
-    sys.stderr.flush()
+        logger.exception("Exception details:")
     sys.exit(1)
 
 # Try to import with error handling
 try:
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
+    logger.info("FastAPI imported successfully")
 except ImportError as e:
     log_error_and_exit(f"Failed to import FastAPI: {e}", e)
 
 try:
     from app.config import settings
+    logger.info("Settings imported successfully")
 except Exception as e:
     log_error_and_exit(f"Failed to import settings: {e}", e)
 
 try:
     from app.api import auth, brands, chat, campaigns
+    logger.info("API routers imported successfully")
 except Exception as e:
     log_error_and_exit(f"Failed to import API routers: {e}", e)
 
-print("✅ All imports successful", file=sys.stderr)
-sys.stderr.flush()
-
 try:
     app = FastAPI(title="AdCraft API", version="1.0.0")
-    print("✅ FastAPI app created", file=sys.stderr)
-    sys.stderr.flush()
+    logger.info("FastAPI app created successfully")
 except Exception as e:
     log_error_and_exit(f"Failed to create FastAPI app: {e}", e)
 
@@ -55,10 +64,10 @@ cors_origins = list(set(default_origins + env_origins))  # Combine and remove du
 # Ensure production frontend is always included (safety check)
 if PRODUCTION_FRONTEND not in cors_origins:
     cors_origins.append(PRODUCTION_FRONTEND)
-    print(f"⚠️  Production frontend was missing from CORS origins, added: {PRODUCTION_FRONTEND}")
+    logger.warning(f"Production frontend was missing from CORS origins, added: {PRODUCTION_FRONTEND}")
 
 # Log CORS origins for debugging
-print(f"🌐 CORS allowed origins: {cors_origins}")
+logger.info(f"CORS allowed origins: {cors_origins}")
 
 app.add_middleware(
     CORSMiddleware,

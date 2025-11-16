@@ -3,10 +3,13 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from jwt import PyJWKClient
 import sys
+import logging
 from app.database import get_db
 from app.models.user import User
 from sqlalchemy.orm import Session
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 security = HTTPBearer()
@@ -20,11 +23,11 @@ try:
         # Supabase uses JWKS for JWT verification (RS256)
         jwks_url = f"{supabase_url}/.well-known/jwks.json"
         jwks_client = PyJWKClient(jwks_url)
-        print("✅ Supabase JWT verification configured")
+        logger.info("Supabase JWT verification configured successfully")
     else:
-        print("⚠️  Supabase URL not configured - authentication disabled")
+        logger.warning("Supabase URL not configured - authentication disabled")
 except Exception as e:
-    print(f"❌ Supabase initialization error: {e}")
+    logger.error(f"Supabase initialization error: {e}", exc_info=True)
     jwks_client = None
 
 
@@ -100,7 +103,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
                 raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
             except Exception as e:
                 # Log for debugging
-                print(f"❌ HS256 verification error: {type(e).__name__}: {e}", file=sys.stderr)
+                logger.error(f"HS256 verification error: {type(e).__name__}: {e}", exc_info=True)
                 raise HTTPException(
                     status_code=401,
                     detail=f"Failed to verify HS256 token: {str(e)}"
@@ -154,7 +157,7 @@ async def get_current_user(
             except Exception as db_error:
                 db.rollback()
                 # Log but don't expose internal errors
-                print(f"❌ Database error creating user: {db_error}", file=sys.stderr)
+                logger.error(f"Database error creating user: {db_error}", exc_info=True)
                 raise HTTPException(
                     status_code=500,
                     detail="Failed to create user account. Please try again."
@@ -165,7 +168,7 @@ async def get_current_user(
         raise
     except Exception as e:
         # Catch any other unexpected errors
-        print(f"❌ get_current_user error: {type(e).__name__}: {e}", file=sys.stderr)
+        logger.error(f"get_current_user error: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Internal server error during authentication"

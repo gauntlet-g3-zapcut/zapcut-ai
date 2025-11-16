@@ -59,7 +59,9 @@ async def create_brand(
             path=image_2_path
         )
     except Exception as e:
-        print(f"⚠️  Supabase Storage upload failed: {e}. Using placeholder URLs.")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Supabase Storage upload failed: {e}. Using placeholder URLs.", exc_info=True)
         # Fallback to simple placeholder (via.placeholder.com is unreliable)
         image_1_url = "https://placehold.co/400x400/e2e8f0/64748b?text=Product+Image+1"
         image_2_url = "https://placehold.co/400x400/e2e8f0/64748b?text=Product+Image+2"

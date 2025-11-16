@@ -1,5 +1,8 @@
+import logging
 from celery import Celery
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Initialize Celery only if REDIS_URL is configured
 # This allows the app to start even if Redis is not available
@@ -11,7 +14,7 @@ if settings.REDIS_URL:
             "adcraft",
             broker=settings.REDIS_URL,
             backend=settings.REDIS_URL,
-            include=["queue.tasks.video_generation"]
+            include=["app.tasks.video_generation"]
         )
         
         celery_app.conf.update(
@@ -24,10 +27,10 @@ if settings.REDIS_URL:
             task_time_limit=3600,  # 1 hour max
             task_soft_time_limit=3000,  # 50 minutes soft limit
         )
-        print("✅ Celery configured with Redis")
+        logger.info("Celery configured with Redis successfully")
     except Exception as e:
-        print(f"⚠️  Celery initialization failed: {e}")
+        logger.error(f"Celery initialization failed: {e}", exc_info=True)
         celery_app = None
 else:
-    print("⚠️  REDIS_URL not configured - Celery tasks will not be available")
+    logger.warning("REDIS_URL not configured - Celery tasks will not be available")
 

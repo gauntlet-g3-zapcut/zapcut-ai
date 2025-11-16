@@ -1,7 +1,10 @@
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
@@ -15,14 +18,19 @@ def get_engine():
     global _engine
     if _engine is None:
         try:
-            _engine = create_engine(settings.database_url)
+            db_url = settings.database_url
+            # Mask password in logs for security
+            masked_url = db_url.split('@')[-1] if '@' in db_url else db_url
+            logger.info(f"Creating database engine: postgresql://***@{masked_url}")
+            _engine = create_engine(db_url)
+            logger.info("Database engine created successfully")
         except ValueError as e:
-            # If database URL can't be constructed, create a dummy engine
-            # This allows the app to start but database operations will fail
-            print(f"⚠️  Database URL not configured: {e}")
-            print("⚠️  App will start but database operations will fail")
-            # Create a dummy engine that will fail on actual use
-            _engine = create_engine("postgresql://dummy:dummy@localhost:5432/dummy")
+            logger.error(f"Database configuration error: {e}")
+            # Fail fast with clear error message
+            raise ValueError(
+                f"Database configuration error: {e}\n"
+                "Please set DATABASE_URL or provide SUPABASE_URL and SUPABASE_DB_PASSWORD"
+            ) from e
     return _engine
 
 

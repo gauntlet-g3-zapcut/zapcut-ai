@@ -1,27 +1,13 @@
 #!/bin/bash
-# Railway Celery worker startup script with comprehensive logging
+# Railway Celery worker startup script
 
-# Don't exit on error - we want to see all errors
-set +e
-
-# Ensure we're in the right directory
-if [ -f "queue/celery_app.py" ]; then
-    echo "✅ Found queue/celery_app.py in current directory"
-elif [ -f "backend/queue/celery_app.py" ]; then
-    echo "✅ Found backend/queue/celery_app.py, changing directory"
-    cd backend
-elif [ -f "../backend/queue/celery_app.py" ]; then
-    echo "✅ Found backend/queue/celery_app.py in parent, changing directory"
-    cd ../backend
-fi
+set -e
 
 echo "=========================================="
 echo "Starting Celery Worker"
 echo "=========================================="
-echo "PYTHON_VERSION: $(python --version 2>&1 || echo 'not found')"
+echo "PYTHON_VERSION: $(python --version 2>&1)"
 echo "Working directory: $(pwd)"
-echo "Python path: $(which python)"
-echo "Files in current dir: $(ls -la | head -5)"
 echo "=========================================="
 
 # Log environment variables (without sensitive values)
@@ -31,54 +17,37 @@ echo "=========================================="
 
 # Check if REDIS_URL is set
 if [ -z "$REDIS_URL" ]; then
-    echo "⚠️  WARNING: REDIS_URL environment variable not set"
-    echo "⚠️  Celery worker will not be able to connect to Redis"
-    echo "⚠️  Worker will start but tasks will not be processed"
+    echo "❌ ERROR: REDIS_URL environment variable not set"
+    echo "❌ Celery worker requires Redis connection"
+    exit 1
 fi
 
-# Try to import and test celery_app before starting
+# Test celery_app import
 echo "Testing celery_app import..."
-CELERY_AVAILABLE=$(python -c "
+python -c "
 import sys
-import traceback
 try:
-    from queue.celery_app import celery_app
-    if celery_app is not None:
-        print('OK', file=sys.stderr)
-        sys.exit(0)
-    else:
-        print('NONE', file=sys.stderr)
+    from app.celery_app import celery_app
+    if celery_app is None:
+        print('❌ Celery app is None (Redis not configured)', file=sys.stderr)
         sys.exit(1)
+    print('✅ Celery app imported successfully', file=sys.stderr)
 except Exception as e:
-    print(f'ERROR: {e}', file=sys.stderr)
+    print(f'❌ Failed to import celery_app: {e}', file=sys.stderr)
+    import traceback
     traceback.print_exc(file=sys.stderr)
-    sys.exit(2)
-" 2>&1)
-
-CELERY_STATUS=$?
-
-if [ $CELERY_STATUS -eq 2 ]; then
-    echo "❌ Failed to import celery_app, exiting"
-    exit 1
-elif [ $CELERY_STATUS -eq 1 ]; then
-    echo "⚠️  Celery app is None (Redis not configured)"
-    echo "⚠️  Worker cannot start without Redis connection"
-    echo "⚠️  Please set REDIS_URL environment variable"
-    exit 1
-fi
-
-echo "✅ Celery app imported successfully"
+    sys.exit(1)
+" || exit 1
 
 echo "=========================================="
 echo "Starting Celery worker..."
 echo "=========================================="
 
-# Start Celery worker with explicit error handling and logging
-exec celery -A queue.celery_app worker \
+# Start Celery worker
+exec celery -A app.celery_app worker \
     --loglevel=info \
     --concurrency=2 \
     --max-tasks-per-child=50 \
     --time-limit=3600 \
-    --soft-time-limit=3000 \
-    2>&1
+    --soft-time-limit=3000
 
