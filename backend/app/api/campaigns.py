@@ -12,7 +12,7 @@ from app.models.creative_bible import CreativeBible
 from app.models.campaign import Campaign
 from app.models.generation_job import GenerationJob
 from app.api.auth import get_current_user
-from app.tasks.video_generation import generate_campaign_video, generate_campaign_video_test_mode
+from app.tasks.video_generation import start_video_generation_task
 from app.config import settings
 from datetime import datetime
 
@@ -192,15 +192,14 @@ async def generate_campaign_video_endpoint(
     print(f"   Campaign ID: {campaign_id}")
 
     try:
-        # Trigger Epic 5 TEST MODE video generation task
-        generate_campaign_video_test_mode.delay(campaign_id)
-        print(f"✅ Epic 5 TEST MODE task queued successfully!")
+        # Trigger video generation task
+        start_video_generation_task.delay(campaign_id)
+        print(f"✅ Video generation task queued successfully!")
 
         return {
             "campaign_id": campaign_id,
             "status": "generating",
-            "message": "🎬 Epic 5 Video Generation Started!",
-            "test_mode": True
+            "message": "🎬 Video Generation Started!"
         }
     except Exception as e:
         print(f"❌ Epic 5 task queue error: {e}")
