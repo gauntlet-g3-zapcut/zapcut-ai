@@ -6,19 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Input } from "../components/ui/input"
 import { Textarea } from "../components/ui/textarea"
 import { api } from "../services/api"
-import { Upload } from "lucide-react"
+import { Upload, Plus, X } from "lucide-react"
 
 export default function EditBrand() {
   const navigate = useNavigate()
   const { brandId } = useParams()
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [image1, setImage1] = useState(null)
-  const [image2, setImage2] = useState(null)
-  const [preview1, setPreview1] = useState(null)
-  const [preview2, setPreview2] = useState(null)
-  const [existingImage1, setExistingImage1] = useState(null)
-  const [existingImage2, setExistingImage2] = useState(null)
+  const [images, setImages] = useState([]) // Array of { file: File | null, preview: string | null, existingUrl: string | null }
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
   const [error, setError] = useState("")
@@ -30,10 +25,29 @@ export default function EditBrand() {
         const brand = await api.getBrand(brandId)
         setTitle(brand.title || "")
         setDescription(brand.description || "")
-        setExistingImage1(brand.product_image_1_url)
-        setExistingImage2(brand.product_image_2_url)
-        setPreview1(brand.product_image_1_url)
-        setPreview2(brand.product_image_2_url)
+        
+        // Initialize with existing images
+        const initialImages = []
+        if (brand.product_image_1_url) {
+          initialImages.push({
+            file: null,
+            preview: brand.product_image_1_url,
+            existingUrl: brand.product_image_1_url
+          })
+        }
+        if (brand.product_image_2_url) {
+          initialImages.push({
+            file: null,
+            preview: brand.product_image_2_url,
+            existingUrl: brand.product_image_2_url
+          })
+        }
+        // If no existing images, start with 2 empty slots
+        if (initialImages.length === 0) {
+          initialImages.push({ file: null, preview: null, existingUrl: null })
+          initialImages.push({ file: null, preview: null, existingUrl: null })
+        }
+        setImages(initialImages)
       } catch (err) {
         setError(err.message || "Failed to load brand")
       } finally {
@@ -46,19 +60,30 @@ export default function EditBrand() {
     }
   }, [brandId])
 
-  const handleImage1Change = (e) => {
+  const handleImageChange = (index, e) => {
     const file = e.target.files[0]
     if (file) {
-      setImage1(file)
-      setPreview1(URL.createObjectURL(file))
+      const newImages = [...images]
+      newImages[index] = {
+        ...newImages[index],
+        file: file,
+        preview: URL.createObjectURL(file)
+      }
+      setImages(newImages)
     }
   }
 
-  const handleImage2Change = (e) => {
-    const file = e.target.files[0]
-    if (file) {
-      setImage2(file)
-      setPreview2(URL.createObjectURL(file))
+  const addImageField = () => {
+    setImages([...images, { file: null, preview: null, existingUrl: null }])
+  }
+
+  const removeImageField = (index) => {
+    const newImages = images.filter((_, i) => i !== index)
+    // Ensure at least one image field remains
+    if (newImages.length === 0) {
+      setImages([{ file: null, preview: null, existingUrl: null }])
+    } else {
+      setImages(newImages)
     }
   }
 
@@ -78,13 +103,12 @@ export default function EditBrand() {
       formData.append("title", title)
       formData.append("description", description)
       
-      // Only append images if new ones are uploaded
-      if (image1) {
-        formData.append("product_image_1", image1)
-      }
-      if (image2) {
-        formData.append("product_image_2", image2)
-      }
+      // Append images - use product_image_1, product_image_2, etc.
+      images.forEach((image, index) => {
+        if (image.file) {
+          formData.append(`product_image_${index + 1}`, image.file)
+        }
+      })
 
       await api.updateBrand(brandId, formData)
       // Navigate back to dashboard to show the updated brand
@@ -145,7 +169,7 @@ export default function EditBrand() {
 
               <div className="space-y-2">
                 <label htmlFor="title" className="text-sm font-medium">
-                  Brand Title *
+                  Brand name:
                 </label>
                 <Input
                   id="title"
@@ -158,7 +182,7 @@ export default function EditBrand() {
 
               <div className="space-y-2">
                 <label htmlFor="description" className="text-sm font-medium">
-                  Description *
+                  Description:
                 </label>
                 <Textarea
                   id="description"
@@ -170,76 +194,77 @@ export default function EditBrand() {
                 />
               </div>
 
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label htmlFor="image1" className="text-sm font-medium">
-                    Product Image 1 {image1 ? "(New)" : "(Current)"}
-                  </label>
-                  <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                    {preview1 ? (
-                      <img
-                        src={preview1}
-                        alt="Preview 1"
-                        className="w-full h-48 object-cover rounded-md mb-4"
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-8">
-                        <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-                        <p className="text-sm text-muted-foreground mb-2">
-                          Click to upload
-                        </p>
-                      </div>
-                    )}
-                    <Input
-                      id="image1"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImage1Change}
-                      className="cursor-pointer"
-                    />
-                  </div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Product Images</label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addImageField}
+                    className="flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Image
+                  </Button>
                 </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="image2" className="text-sm font-medium">
-                    Product Image 2 {image2 ? "(New)" : "(Current)"}
-                  </label>
-                  <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                    {preview2 ? (
-                      <img
-                        src={preview2}
-                        alt="Preview 2"
-                        className="w-full h-48 object-cover rounded-md mb-4"
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-8">
-                        <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-                        <p className="text-sm text-muted-foreground mb-2">
-                          Click to upload
-                        </p>
+                
+                <div className="grid md:grid-cols-2 gap-6">
+                  {images.map((image, index) => (
+                    <div key={index} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label htmlFor={`image${index}`} className="text-sm font-medium">
+                          Product Image {index + 1} {image.file ? "(New)" : image.existingUrl ? "(Current)" : ""}
+                        </label>
+                        {images.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeImageField(index)}
+                            className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
-                    )}
-                    <Input
-                      id="image2"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImage2Change}
-                      className="cursor-pointer"
-                    />
-                  </div>
+                      <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                        {image.preview ? (
+                          <img
+                            src={image.preview}
+                            alt={`Preview ${index + 1}`}
+                            className="w-full h-48 object-cover rounded-md mb-4"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center py-8">
+                            <Upload className="h-12 w-12 text-muted-foreground mb-4" />
+                            <p className="text-sm text-muted-foreground mb-2">
+                              Click to upload
+                            </p>
+                          </div>
+                        )}
+                        <Input
+                          id={`image${index}`}
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleImageChange(index, e)}
+                          className="cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="flex gap-4">
+              <div className="flex gap-4 justify-end">
                 <Button
                   type="button"
-                  variant="outline"
                   onClick={() => navigate("/dashboard")}
-                  className="flex-1"
+                  className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 text-sm"
                 >
                   Cancel
                 </Button>
-                <GradientButton type="submit" disabled={loading} className="flex-1">
+                <GradientButton type="submit" disabled={loading} className="!px-6 !py-2 !text-sm !min-w-0">
                   {loading ? "Updating..." : "Update Brand"}
                 </GradientButton>
               </div>

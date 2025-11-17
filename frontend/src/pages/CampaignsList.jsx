@@ -203,7 +203,7 @@ export default function CampaignsList() {
                       <div className="flex gap-2 mt-4">
                         {campaign.status === "completed" && campaign.final_video_url && (
                           <GradientButton
-                            className="flex-1"
+                            className="flex-1 !px-8 !py-2.5 !text-base !min-w-0"
                             onClick={(e) => {
                               e.stopPropagation()
                               navigate(`/campaigns/${campaign.id}/video`)

@@ -2,7 +2,7 @@
 import logging
 import uuid
 import json
-from typing import List, Optional
+from typing import List, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -21,6 +21,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/brands", tags=["chat"])
 
+# In-memory cache for ChatAgent instances to avoid recreating them on every message
+_agent_cache: Dict[str, ChatAgent] = {}
+
+def clear_agent_cache(creative_bible_id: str = None):
+    """Clear agent cache for a specific creative bible or all agents."""
+    if creative_bible_id:
+        cache_key = str(creative_bible_id)
+        if cache_key in _agent_cache:
+            del _agent_cache[cache_key]
+            logger.debug(f"Cleared agent cache for creative_bible: {creative_bible_id}")
+    else:
+        _agent_cache.clear()
+        logger.debug("Cleared all agent cache")
+
 
 class CampaignAnswers(BaseModel):
     answers: dict
@@ -33,6 +47,9 @@ class ChatMessageRequest(BaseModel):
 class ChatSessionResponse(BaseModel):
     creative_bible_id: str
     message: str
+    messages: Optional[List[dict]] = []
+    progress: Optional[int] = 0
+    is_complete: Optional[bool] = False
 
 
 @router.post("/{brand_id}/campaign-answers")
@@ -475,7 +492,7 @@ async def create_chat_session(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Create a new chat session for campaign creation."""
+    """Create a new chat session for campaign creation and return initial state."""
     try:
         brand_uuid = uuid.UUID(brand_id)
     except ValueError:
@@ -505,10 +522,39 @@ async def create_chat_session(
         
         logger.info(f"Created chat session: {creative_bible.id} for brand: {brand_id}")
         
-        return ChatSessionResponse(
-            creative_bible_id=str(creative_bible.id),
-            message="Chat session created successfully"
-        )
+        # Return messages and status in the same call to reduce frontend requests
+        messages = db.query(ChatMessage).filter(
+            ChatMessage.creative_bible_id == creative_bible.id
+        ).order_by(ChatMessage.created_at).all()
+        
+        # Count collected aspects
+        collected = []
+        if creative_bible.audience_description:
+            collected.append("audience")
+        if creative_bible.style_description:
+            collected.append("style")
+        if creative_bible.emotion_description:
+            collected.append("emotion")
+        if creative_bible.pacing_description:
+            collected.append("pacing")
+        if creative_bible.colors_description:
+            collected.append("colors")
+        
+        return {
+            "creative_bible_id": str(creative_bible.id),
+            "message": "Chat session created successfully",
+            "messages": [
+                {
+                    "id": str(msg.id),
+                    "role": msg.role,
+                    "content": msg.content,
+                    "created_at": msg.created_at.isoformat() if msg.created_at else None
+                }
+                for msg in messages
+            ],
+            "progress": len(collected),
+            "is_complete": len(collected) >= 5
+        }
     except Exception as e:
         logger.error(f"Error creating chat session: {e}", exc_info=True)
         db.rollback()
@@ -621,14 +667,24 @@ async def send_chat_message(
         if message_request.message.strip():
             message_history.append({"role": "user", "content": message_request.message})
         
-        # Initialize or reload agent
-        agent = ChatAgent(
-            brand_name=brand.title or "Product",
-            brand_description=brand.description or ""
-        )
-        
-        # Load conversation history
-        agent.load_conversation_history(message_history)
+        # Use cached agent or create new one
+        cache_key = str(creative_bible.id)
+        if cache_key in _agent_cache:
+            agent = _agent_cache[cache_key]
+            # Reload conversation history in case it changed
+            agent.load_conversation_history(message_history)
+            logger.debug(f"Using cached agent for creative_bible: {creative_bible.id}")
+        else:
+            # Initialize new agent
+            agent = ChatAgent(
+                brand_name=brand.title or "Product",
+                brand_description=brand.description or ""
+            )
+            # Load conversation history
+            agent.load_conversation_history(message_history)
+            # Cache the agent
+            _agent_cache[cache_key] = agent
+            logger.debug(f"Created and cached new agent for creative_bible: {creative_bible.id}")
         
         # Get current collected aspects from database
         collected = []

@@ -21,7 +21,7 @@ export default function BrandChat() {
     const initializeChat = async () => {
       try {
         setIsInitializing(true)
-        // Create chat session
+        // Create chat session - now returns messages and status in one call
         const sessionResponse = await api.createChatSession(brandId)
         if (!sessionResponse?.creative_bible_id) {
           throw new Error("Failed to create chat session")
@@ -30,17 +30,14 @@ export default function BrandChat() {
         const creativeBibleId = sessionResponse.creative_bible_id
         setCreativeBibleId(creativeBibleId)
         
-        // Load existing messages if any
-        const messagesResponse = await api.getChatMessages(brandId, creativeBibleId)
-        if (messagesResponse?.messages && messagesResponse.messages.length > 0) {
-          setMessages(messagesResponse.messages)
-          
-          // Check session status for progress
-          const sessionStatus = await api.getChatSession(brandId, creativeBibleId)
-          setProgress(sessionStatus.progress || 0)
-          setIsComplete(sessionStatus.is_complete || false)
+        // Set messages if any exist (from session response)
+        if (sessionResponse?.messages && sessionResponse.messages.length > 0) {
+          setMessages(sessionResponse.messages)
+          setProgress(sessionResponse.progress || 0)
+          setIsComplete(sessionResponse.is_complete || false)
         } else {
           // No messages exist, trigger agent greeting by sending empty message
+          // This is now much faster as it uses a pre-generated greeting
           setIsLoading(true)
           try {
             const response = await api.sendChatMessage(brandId, creativeBibleId, "")
