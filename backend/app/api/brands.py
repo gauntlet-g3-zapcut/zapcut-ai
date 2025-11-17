@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.brand import Brand
 from app.models.user import User
+from app.models.creative_bible import CreativeBible
 from app.api.auth import get_current_user
 from datetime import datetime
 
@@ -206,6 +207,16 @@ async def delete_brand(
         )
     
     try:
+        # Delete associated creative bibles first (they will cascade delete chat messages)
+        creative_bibles = db.query(CreativeBible).filter(CreativeBible.brand_id == brand_uuid).all()
+        if creative_bibles:
+            logger.info(f"Deleting {len(creative_bibles)} creative bible(s) for brand {brand_id}")
+            for creative_bible in creative_bibles:
+                db.delete(creative_bible)
+            # Flush to ensure creative bibles are deleted before brand deletion
+            db.flush()
+        
+        # Now delete the brand
         db.delete(brand)
         db.commit()
         logger.info(f"Deleted brand: {brand.id} for user: {current_user.id}")

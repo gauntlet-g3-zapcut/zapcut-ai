@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "../components/ui/button"
+import { GradientButton } from "@/components/ui/gradient-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Input } from "../components/ui/input"
 import { Textarea } from "../components/ui/textarea"
@@ -74,7 +75,7 @@ export default function CreateBrand() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-8">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 p-8">
       <div className="max-w-2xl mx-auto">
         <Button
           variant="ghost"
@@ -86,8 +87,10 @@ export default function CreateBrand() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-3xl">Create Brand</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-3xl font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
+              Create Brand
+            </CardTitle>
+            <CardDescription className="text-base">
               Add your brand information and product images to get started
             </CardDescription>
           </CardHeader>
@@ -101,7 +104,7 @@ export default function CreateBrand() {
 
               <div className="space-y-2">
                 <label htmlFor="title" className="text-sm font-medium">
-                  Brand Title *
+                  Brand name:
                 </label>
                 <Input
                   id="title"
@@ -114,7 +117,7 @@ export default function CreateBrand() {
 
               <div className="space-y-2">
                 <label htmlFor="description" className="text-sm font-medium">
-                  Description *
+                  Description:
                 </label>
                 <Textarea
                   id="description"
@@ -126,80 +129,77 @@ export default function CreateBrand() {
                 />
               </div>
 
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label htmlFor="image1" className="text-sm font-medium">
-                    Product Image 1 *
-                  </label>
-                  <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                    {preview1 ? (
-                      <img
-                        src={preview1}
-                        alt="Preview 1"
-                        className="w-full h-48 object-cover rounded-md mb-4"
+              <div className="space-y-4">
+                <label className="text-sm font-medium">Product Images</label>
+                
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                      {preview1 ? (
+                        <img
+                          src={preview1}
+                          alt="Preview 1"
+                          className="w-full h-48 object-cover rounded-md mb-4"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-8">
+                          <Upload className="h-12 w-12 text-muted-foreground mb-4" />
+                          <p className="text-sm text-muted-foreground mb-2">
+                            Click to upload
+                          </p>
+                        </div>
+                      )}
+                      <Input
+                        id="image1"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImage1Change}
+                        className="cursor-pointer"
+                        required
                       />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-8">
-                        <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-                        <p className="text-sm text-muted-foreground mb-2">
-                          Click to upload
-                        </p>
-                      </div>
-                    )}
-                    <Input
-                      id="image1"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImage1Change}
-                      className="cursor-pointer"
-                      required
-                    />
+                    </div>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <label htmlFor="image2" className="text-sm font-medium">
-                    Product Image 2 *
-                  </label>
-                  <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                    {preview2 ? (
-                      <img
-                        src={preview2}
-                        alt="Preview 2"
-                        className="w-full h-48 object-cover rounded-md mb-4"
+                  <div className="space-y-2">
+                    <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                      {preview2 ? (
+                        <img
+                          src={preview2}
+                          alt="Preview 2"
+                          className="w-full h-48 object-cover rounded-md mb-4"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-8">
+                          <Upload className="h-12 w-12 text-muted-foreground mb-4" />
+                          <p className="text-sm text-muted-foreground mb-2">
+                            Click to upload
+                          </p>
+                        </div>
+                      )}
+                      <Input
+                        id="image2"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImage2Change}
+                        className="cursor-pointer"
+                        required
                       />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-8">
-                        <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-                        <p className="text-sm text-muted-foreground mb-2">
-                          Click to upload
-                        </p>
-                      </div>
-                    )}
-                    <Input
-                      id="image2"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImage2Change}
-                      className="cursor-pointer"
-                      required
-                    />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="flex gap-4">
+              <div className="flex gap-4 justify-end">
                 <Button
                   type="button"
-                  variant="outline"
                   onClick={() => navigate("/dashboard")}
-                  className="flex-1"
+                  className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 text-sm"
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={loading} className="flex-1">
+                <GradientButton type="submit" disabled={loading} className="!px-6 !py-2 !text-sm !min-w-0">
                   {loading ? "Creating..." : "Create Brand"}
-                </Button>
+                </GradientButton>
               </div>
             </form>
           </CardContent>
