@@ -35,11 +35,16 @@ if PRODUCTION_FRONTEND not in cors_origins:
     cors_origins.append(PRODUCTION_FRONTEND)
     logger.warning(f"Production frontend was missing from CORS origins, added: {PRODUCTION_FRONTEND}")
 
+# Regex pattern to allow all subdomains of zapcut-app.pages.dev
+PAGES_DEV_SUBDOMAIN_REGEX = r"https://.*\.zapcut-app\.pages\.dev"
+
 logger.info(f"CORS allowed origins: {cors_origins}")
+logger.info(f"CORS allowed origin regex: {PAGES_DEV_SUBDOMAIN_REGEX}")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    allow_origin_regex=PAGES_DEV_SUBDOMAIN_REGEX,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
