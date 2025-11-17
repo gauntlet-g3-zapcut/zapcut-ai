@@ -103,9 +103,8 @@ INSTRUCTIONS:
       - Pacing: [use their exact description]
       - Colors: [use their exact description]
       
-      Does that capture your vision?"
-   - Wait for "yes" confirmation from user
-   - Then signal completion (user will click button to proceed)
+      Let's get started generating the script! 🎬"
+   - Signal completion (user will click button to proceed)
 
 6. HANDLING UNCLEAR RESPONSES:
    - If response is too vague ("I dunno", "something good", "I'm not sure"):

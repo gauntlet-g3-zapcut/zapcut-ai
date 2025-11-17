@@ -1,7 +1,7 @@
 import { useRef, useEffect } from "react"
 import { Button } from "../button"
 import { Textarea } from "../textarea"
-import { Send } from "lucide-react"
+import { Mic, Send } from "lucide-react"
 import { cn } from "../../../lib/utils"
 
 export function PromptInput({ children, onSubmit, className, ...props }) {
@@ -17,7 +17,7 @@ export function PromptInput({ children, onSubmit, className, ...props }) {
   return (
     <form
       onSubmit={handleSubmit}
-      className={cn("flex flex-col gap-2 border-t bg-white/80 backdrop-blur-sm p-4", className)}
+      className={cn("bg-white/80 backdrop-blur-sm p-4", className)}
       {...props}
     >
       {children}
@@ -28,7 +28,7 @@ export function PromptInput({ children, onSubmit, className, ...props }) {
 export function PromptInputTextarea({ 
   value = "", 
   onChange, 
-  placeholder = "Type your message...",
+  placeholder = "Ask anything",
   disabled = false,
   className,
   ...props 
@@ -63,7 +63,7 @@ export function PromptInputTextarea({
       disabled={disabled}
       rows={1}
       className={cn(
-        "min-h-[44px] max-h-[200px] resize-none pr-12",
+        "min-h-[44px] max-h-[200px] resize-none rounded-[9999px] px-4 py-3 pr-28 border border-gray-200 bg-white shadow-sm focus-visible:outline-none focus-visible:ring-0 focus-visible:border-gray-300 placeholder:text-gray-400 text-sm",
         className
       )}
       {...props}
@@ -83,14 +83,28 @@ export function PromptInputSubmit({ disabled = false, className, ...props }) {
   return (
     <Button
       type="submit"
-      variant="outline"
+      variant="ghost"
       disabled={disabled}
-      size="lg"
-      className={cn("h-12 px-6 shadow-sm hover:shadow-md transition-all border-purple-200 hover:border-purple-300", className)}
+      size="icon"
+      className={cn("absolute right-2 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-200", className)}
       {...props}
     >
-      <Send className="w-4 h-4 mr-2" />
-      Send
+      <Send className="w-4 h-4" />
+    </Button>
+  )
+}
+
+export function PromptInputMic({ onClick, className, ...props }) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      onClick={onClick}
+      className={cn("absolute right-14 top-1/2 -translate-y-1/2 h-10 w-10 text-gray-600 hover:text-gray-900 hover:bg-transparent", className)}
+      {...props}
+    >
+      <Mic className="w-5 h-5" />
     </Button>
   )
 }

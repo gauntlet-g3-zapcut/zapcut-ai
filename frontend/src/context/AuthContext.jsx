@@ -45,13 +45,25 @@ export function AuthProvider({ children }) {
 
     initializeSession()
 
-    // Listen for auth changes
+    // Listen for auth changes - this handles token refresh automatically
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (mounted) {
-        setUser(session?.user ?? null)
-        setLoading(false)
+        // Handle token refresh events
+        if (event === 'TOKEN_REFRESHED' && session) {
+          setUser(session.user)
+          setLoading(false)
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null)
+          setLoading(false)
+        } else if (session) {
+          setUser(session.user)
+          setLoading(false)
+        } else {
+          setUser(null)
+          setLoading(false)
+        }
       }
     })
 

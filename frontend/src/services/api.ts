@@ -17,9 +17,18 @@ const API_URL = getApiUrl()
  * Get a valid Supabase auth token
  */
 async function getAuthToken(): Promise<string> {
-  const { data: { session }, error } = await supabase.auth.getSession()
+  let { data: { session }, error } = await supabase.auth.getSession()
 
+  // If no session or error, try to refresh
   if (error || !session?.access_token) {
+    try {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+      if (!refreshError && refreshData.session?.access_token) {
+        return refreshData.session.access_token
+      }
+    } catch (refreshErr) {
+      console.error('Failed to refresh session:', refreshErr)
+    }
     throw new Error('User not authenticated')
   }
 

@@ -7,6 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Plus, Trash2 } from "lucide-react"
 import { api } from "../services/api"
 
+// Cache brands in memory to avoid unnecessary API calls
+let brandsCache = null
+let brandsCacheTimestamp = null
+const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+
 export default function Dashboard() {
   const { user, logout, loading: authLoading } = useAuth()
   const navigate = useNavigate()
@@ -29,13 +34,27 @@ export default function Dashboard() {
 
     const fetchBrands = async () => {
       try {
+        // Check cache first
+        const now = Date.now()
+        if (brandsCache && brandsCacheTimestamp && (now - brandsCacheTimestamp) < CACHE_DURATION) {
+          setBrands(brandsCache)
+          setLoading(false)
+          return
+        }
+
         setLoading(true)
         setError(null)
         const data = await api.getBrands()
         setBrands(data)
+        // Update cache
+        brandsCache = data
+        brandsCacheTimestamp = now
       } catch (error) {
         console.error("Failed to fetch brands:", error)
         setError(error.message || "Failed to load brands")
+        // Clear cache on error
+        brandsCache = null
+        brandsCacheTimestamp = null
       } finally {
         setLoading(false)
       }
@@ -44,6 +63,9 @@ export default function Dashboard() {
   }, [user, authLoading])
 
   const handleLogout = async () => {
+    // Clear cache on logout
+    brandsCache = null
+    brandsCacheTimestamp = null
     await logout()
     navigate("/")
   }
@@ -55,14 +77,22 @@ export default function Dashboard() {
 
     try {
       await api.deleteBrand(brandId)
-      // Refresh the brands list
+      // Refresh the brands list and update cache
       const data = await api.getBrands()
       setBrands(data)
+      brandsCache = data
+      brandsCacheTimestamp = Date.now()
     } catch (error) {
       console.error("Failed to delete brand:", error)
       const errorMessage = error instanceof Error ? error.message : "Failed to delete brand"
       alert(errorMessage)
     }
+  }
+
+  // Function to invalidate cache (can be called after creating/updating brands)
+  const invalidateBrandsCache = () => {
+    brandsCache = null
+    brandsCacheTimestamp = null
   }
 
   return (

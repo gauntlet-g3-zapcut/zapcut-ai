@@ -43,8 +43,8 @@ export function MessageContent({ children, from = "assistant", className, ...pro
       className={cn(
         "max-w-[75%] rounded-2xl px-4 py-3 shadow-sm",
         from === "user"
-          ? "bg-purple-100 text-purple-900 rounded-tr-sm"
-          : "bg-white/90 backdrop-blur-sm rounded-tl-sm",
+          ? "bg-black text-white rounded-tr-sm"
+          : "bg-gray-100 rounded-tl-sm",
         className
       )}
       {...props}

@@ -55,11 +55,30 @@ export default function StorylineReview() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-12 w-12 animate-spin text-primary" />
-          <div className="text-lg font-medium">Creating Script</div>
-          <div className="text-sm text-muted-foreground">Please wait...</div>
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center" style={{ fontFamily: 'Inter, sans-serif' }}>
+        <div className="flex flex-col items-center gap-6">
+          {/* Animated Sparkles Icon with pulsing effect */}
+          <div className="relative">
+            <div className="absolute inset-0 rounded-full bg-purple-200/50 animate-ping"></div>
+            <div className="relative w-20 h-20 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 border-2 border-purple-200 flex items-center justify-center shadow-lg">
+              <Sparkles className="h-10 w-10 text-purple-600 animate-spin" style={{ animationDuration: '2s' }} />
+            </div>
+          </div>
+          
+          {/* Main text with fade animation */}
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl font-semibold text-foreground animate-pulse" style={{ fontFamily: 'Inter, sans-serif' }}>
+              Generating Storyline
+            </h2>
+            <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground">
+              <span>Please wait</span>
+              <span className="flex gap-1">
+                <span className="w-1.5 h-1.5 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     )
