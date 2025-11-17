@@ -2,10 +2,10 @@ import { supabase } from "./supabase"
 
 // API Configuration - HTTPS in production, HTTP in development
 const getApiUrl = (): string => {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL as string
-  }
-  const apiUrl = import.meta.env.VITE_PROD
+  // if (import.meta.env.VITE_API_URL) {
+  //   return import.meta.env.VITE_API_URL as string
+  // }
+  const apiUrl = import.meta.env.VITE_PROD === 'true'
     ? "https://zapcut-api.fly.dev"
     : "http://localhost:8000"
   return apiUrl
@@ -42,7 +42,7 @@ interface RequestOptions extends RequestInit {
 async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions = {}, retryCount = 0): Promise<T> {
   const maxRetries = 1
   const token = await getAuthToken()
-  
+
   const url = `${API_URL}${endpoint}`
 
   // Add timeout to prevent hanging requests
@@ -59,7 +59,7 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
         ...options.headers,
       },
     })
-    
+
     clearTimeout(timeoutId)
 
     // Handle 401 Unauthorized - might be due to invalid token
@@ -120,22 +120,22 @@ async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: F
     },
   })
 
-    // Handle 401 Unauthorized - might be due to invalid token
-    if (response.status === 401 && retryCount < maxRetries) {
-      // Try refreshing the session and retrying once
-      try {
-        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
-        if (!refreshError && refreshData.session) {
-          // Retry the request with the new token
-          return apiRequestWithFormData<T>(endpoint, formData, options, retryCount + 1)
-        }
-      } catch (refreshErr) {
-        console.error("Failed to refresh session:", refreshErr)
+  // Handle 401 Unauthorized - might be due to invalid token
+  if (response.status === 401 && retryCount < maxRetries) {
+    // Try refreshing the session and retrying once
+    try {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+      if (!refreshError && refreshData.session) {
+        // Retry the request with the new token
+        return apiRequestWithFormData<T>(endpoint, formData, options, retryCount + 1)
       }
-      // If refresh fails, sign out and throw error
-      await supabase.auth.signOut()
-      throw new Error("Session expired. Please log in again.")
+    } catch (refreshErr) {
+      console.error("Failed to refresh session:", refreshErr)
     }
+    // If refresh fails, sign out and throw error
+    await supabase.auth.signOut()
+    throw new Error("Session expired. Please log in again.")
+  }
 
   if (!response.ok) {
     let errorData: { detail?: string | ValidationError[]; message?: string }
