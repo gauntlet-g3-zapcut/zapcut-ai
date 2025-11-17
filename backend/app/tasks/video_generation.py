@@ -1,9 +1,13 @@
 """Celery tasks for video generation."""
 import logging
 import uuid
+import io
 from contextlib import contextmanager
 from typing import Optional, Dict, Any
 import replicate
+import httpx
+import boto3
+from botocore.exceptions import ClientError
 from celery import group
 from app.celery_app import celery_app
 from app.database import get_session_local
@@ -76,6 +80,99 @@ def build_webhook_url(campaign_id: str, scene_num: int) -> str:
     # Remove trailing slash if present
     base_url = base_url.rstrip('/')
     return f"{base_url}/webhooks/replicate?campaign_id={campaign_id}&scene_num={scene_num}"
+
+
+def upload_video_to_supabase_s3(video_url: str, campaign_id: str, scene_number: int) -> str:
+    """Download video from URL and upload to Supabase S3 storage.
+    
+    Args:
+        video_url: The URL of the video to download (e.g., from Replicate)
+        campaign_id: Campaign ID for file naming
+        scene_number: Scene number for file naming
+        
+    Returns:
+        Public URL of the uploaded video file
+        
+    Raises:
+        Exception: If download or upload fails
+    """
+    if not all([
+        settings.SUPABASE_S3_ENDPOINT,
+        settings.SUPABASE_S3_ACCESS_KEY,
+        settings.SUPABASE_S3_SECRET_KEY
+    ]):
+        raise ValueError("Supabase S3 credentials not configured")
+    
+    try:
+        # Download video from source URL
+        logger.info(f"Downloading video | campaign={campaign_id} | scene={scene_number} | url={video_url}")
+        with httpx.Client(timeout=300.0) as client:  # 5 minute timeout for large videos
+            response = client.get(video_url)
+            response.raise_for_status()
+            video_bytes = response.content
+        
+        logger.info(f"Video downloaded | campaign={campaign_id} | scene={scene_number} | size={len(video_bytes)} bytes")
+        
+        # Initialize S3 client for Supabase
+        s3_client = boto3.client(
+            's3',
+            endpoint_url=settings.SUPABASE_S3_ENDPOINT,
+            aws_access_key_id=settings.SUPABASE_S3_ACCESS_KEY,
+            aws_secret_access_key=settings.SUPABASE_S3_SECRET_KEY,
+            region_name='us-east-1'  # Default region, adjust if needed
+        )
+        
+        # Bucket name for video files
+        bucket_name = 'video-clips'
+        file_key = f"{campaign_id}/scene_{scene_number}.mp4"
+        
+        # Upload video bytes
+        video_file = io.BytesIO(video_bytes)
+        s3_client.upload_fileobj(
+            video_file,
+            Bucket=bucket_name,
+            Key=file_key,
+            ExtraArgs={
+                'ContentType': 'video/mp4',
+                'ACL': 'public-read'  # Make file publicly accessible
+            }
+        )
+        
+        # Construct public URL
+        # Supabase Storage public URLs: https://{project_ref}.supabase.co/storage/v1/object/public/{bucket}/{key}
+        # Extract base URL from endpoint
+        endpoint = settings.SUPABASE_S3_ENDPOINT.rstrip('/')
+        
+        # If endpoint contains /storage/v1, extract the base URL
+        if '/storage/v1' in endpoint:
+            base_url = endpoint.split('/storage/v1')[0]
+        else:
+            # If endpoint is just the base URL, use it directly
+            base_url = endpoint
+        
+        # Construct public URL
+        supabase_url = f"{base_url}/storage/v1/object/public/{bucket_name}/{file_key}"
+        
+        logger.info(f"Video uploaded to Supabase S3 | campaign={campaign_id} | scene={scene_number} | bucket={bucket_name} | url={supabase_url}")
+        return supabase_url
+        
+    except httpx.HTTPError as e:
+        logger.error(
+            f"Failed to download video | campaign={campaign_id} | scene={scene_number} | error={str(e)}",
+            exc_info=True
+        )
+        raise Exception(f"Failed to download video: {str(e)}")
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+        error_msg = e.response.get('Error', {}).get('Message', str(e))
+        logger.error(
+            f"S3 upload error | campaign={campaign_id} | scene={scene_number} | code={error_code} | error={error_msg}",
+            exc_info=True
+        )
+        raise Exception(f"Failed to upload video to S3: {error_msg}")
+    except Exception as e:
+        logger.error(f"Unexpected error uploading video | campaign={campaign_id} | scene={scene_number} | error={str(e)}", exc_info=True)
+        raise
 
 
 def retry_scene_prediction(campaign_id: str, scene_number: int) -> bool:

@@ -8,7 +8,7 @@ from typing import Optional
 from app.database import get_session_local
 from app.models.campaign import Campaign
 from app.config import settings
-from app.tasks.video_generation import update_scene_status_safe, extract_video_url
+from app.tasks.video_generation import update_scene_status_safe, extract_video_url, upload_video_to_supabase_s3
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +207,36 @@ async def replicate_webhook(
                     f"prediction_id={prediction_id} | video_url={video_url}"
                 )
                 
-                # Update scene status to completed
+                # Upload video to Supabase S3 before saving
+                try:
+                    supabase_video_url = upload_video_to_supabase_s3(video_url, campaign_id, scene_num)
+                    logger.info(
+                        f"Scene {scene_num} video uploaded to Supabase S3 | campaign={campaign_id} | "
+                        f"supabase_url={supabase_video_url}"
+                    )
+                    # Use Supabase URL instead of Replicate URL
+                    video_url = supabase_video_url
+                except Exception as upload_error:
+                    error_msg = f"Failed to upload video to Supabase S3: {str(upload_error)}"
+                    logger.error(
+                        f"{error_msg} | campaign={campaign_id} | scene={scene_num} | "
+                        f"original_url={video_url}",
+                        exc_info=True
+                    )
+                    # If upload fails, mark scene as failed
+                    update_scene_status_safe(
+                        campaign_id,
+                        scene_num,
+                        "failed",
+                        error=error_msg,
+                        prediction_id=prediction_id
+                    )
+                    raise HTTPException(
+                        status_code=500,
+                        detail=error_msg
+                    )
+                
+                # Update scene status to completed with Supabase S3 URL
                 update_success = update_scene_status_safe(
                     campaign_id,
                     scene_num,
