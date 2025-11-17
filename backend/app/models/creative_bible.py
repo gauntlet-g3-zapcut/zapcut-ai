@@ -1,6 +1,6 @@
 """Creative Bible model."""
 import uuid
-from sqlalchemy import Column, String, ForeignKey
+from sqlalchemy import Column, String, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -16,7 +16,7 @@ class CreativeBible(Base):
     creative_bible = Column(JSON, nullable=False, default=dict)
     reference_image_urls = Column(JSON, nullable=False, default=dict)
     conversation_history = Column(JSON, nullable=True)
-    created_at = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=False), nullable=False)
     
     # Chat-based preference storage
     audience_description = Column(String, nullable=True)

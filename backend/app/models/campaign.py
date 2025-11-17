@@ -1,6 +1,6 @@
 """Campaign model."""
 import uuid
-from sqlalchemy import Column, String, ForeignKey
+from sqlalchemy import Column, String, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -24,7 +24,7 @@ class Campaign(Base):
     audio_url = Column(String, nullable=True)
     audio_status = Column(String, nullable=True, default="pending")  # pending/generating/completed/failed
     audio_generation_error = Column(String, nullable=True)
-    created_at = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=False), nullable=False)
     
     # Relationships
     brand = relationship("Brand", back_populates="campaigns")

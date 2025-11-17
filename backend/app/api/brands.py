@@ -68,7 +68,7 @@ async def create_brand(
         description=description,
         product_image_1_url=image_1_url,
         product_image_2_url=image_2_url,
-        created_at=datetime.utcnow().isoformat()
+        created_at=datetime.utcnow()
     )
     
     db.add(brand)

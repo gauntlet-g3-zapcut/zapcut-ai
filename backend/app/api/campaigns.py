@@ -108,7 +108,7 @@ async def create_campaign(
         final_video_url="",
         status="pending",
         audio_status="pending",  # Initialize audio status
-        created_at=datetime.utcnow().isoformat()
+        created_at=datetime.utcnow()
     )
     
     db.add(campaign)

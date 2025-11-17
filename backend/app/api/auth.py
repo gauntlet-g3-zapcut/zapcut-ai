@@ -104,7 +104,7 @@ async def get_current_user(
             user = User(
                 supabase_uid=supabase_uid,
                 email=email,
-                created_at=datetime.utcnow().isoformat()
+                created_at=datetime.utcnow()
             )
             db.add(user)
             try:

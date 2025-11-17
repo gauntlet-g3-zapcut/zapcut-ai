@@ -1,6 +1,6 @@
 """Brand model."""
 import uuid
-from sqlalchemy import Column, String, ForeignKey
+from sqlalchemy import Column, String, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -16,7 +16,7 @@ class Brand(Base):
     description = Column(String, nullable=True)
     product_image_1_url = Column(String, nullable=True)
     product_image_2_url = Column(String, nullable=True)
-    created_at = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=False), nullable=False)
     
     # Relationships
     campaigns = relationship("Campaign", back_populates="brand")

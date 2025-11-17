@@ -94,7 +94,7 @@ async def submit_campaign_answers(
             creative_bible={},
             reference_image_urls={},
             conversation_history=campaign_answers.answers,
-            created_at=datetime.utcnow().isoformat()
+            created_at=datetime.utcnow()
         )
         logger.info(f"[CAMPAIGN-ANSWERS] CreativeBible object created, adding to session")
         db.add(creative_bible)
@@ -514,7 +514,7 @@ async def create_chat_session(
             creative_bible={},
             reference_image_urls={},
             conversation_history={},
-            created_at=datetime.utcnow().isoformat()
+            created_at=datetime.utcnow()
         )
         db.add(creative_bible)
         db.commit()
