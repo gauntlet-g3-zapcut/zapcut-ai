@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     REDIS_URL: Optional[str] = None
     
     # CORS
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:3000,https://app.zapcut.video,https://*.zapcut-app.pages.dev,https://zapcut-app.pages.dev"
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:3000,https://app.zapcut.video"
     
     model_config = SettingsConfigDict(
         env_file=".env",

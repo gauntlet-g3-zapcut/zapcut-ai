@@ -27,8 +27,7 @@ celery_app = Celery(
     'zapcut',
     broker=broker_url,
     backend=backend_url,
-    # Tasks are auto-discovered via imports, no need to include here
-    # This avoids circular import issues
+    include=['app.tasks.video_generation', 'app.tasks.audio_generation']
 )
 
 # Celery configuration
@@ -52,12 +51,5 @@ celery_app.conf.update(
         'ssl_cert_reqs': ssl.CERT_NONE,
     },
 )
-
-# Auto-discover tasks - only called when worker starts, not during FastAPI import
-# This avoids circular import issues
-# Tasks will be discovered when celery worker starts with: celery -A app.celery_app worker
-# For FastAPI, tasks are imported via the API routes, so autodiscover isn't needed here
-# Uncomment the line below if you need explicit task discovery in worker mode:
-# celery_app.autodiscover_tasks(['app.tasks'])
 
 logger.info("Celery app initialized")

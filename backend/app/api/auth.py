@@ -134,7 +134,8 @@ async def verify_auth(token_data: dict = Depends(verify_token)):
 async def get_me(current_user: User = Depends(get_current_user)):
     """Get current user."""
     return {
-        "id": str(getattr(current_user, 'id', '00000000-0000-0000-0000-000000000099')),
-        "email": getattr(current_user, 'email', 'test@zapcut.video'),
-        "supabase_uid": getattr(current_user, 'supabase_uid', 'test-user-123'),
+        "id": str(current_user.id),
+        "email": current_user.email,
+        "supabase_uid": current_user.supabase_uid,
     }
+

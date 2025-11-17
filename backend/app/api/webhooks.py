@@ -8,8 +8,6 @@ from typing import Optional
 from app.database import get_session_local
 from app.models.campaign import Campaign
 from app.config import settings
-# Import celery_app before importing tasks to ensure it's available
-from app.celery_app import celery_app  # noqa: F401
 from app.tasks.video_generation import update_scene_status_safe, extract_video_url
 
 logger = logging.getLogger(__name__)

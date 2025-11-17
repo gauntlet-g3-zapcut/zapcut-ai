@@ -10,11 +10,7 @@ from app.models.user import User
 from app.models.brand import Brand
 from app.models.creative_bible import CreativeBible
 from app.models.campaign import Campaign
-from app.models.generation_job import GenerationJob
 from app.api.auth import get_current_user
-# Import celery_app before importing tasks to ensure it's available
-from app.celery_app import celery_app  # noqa: F401
-from app.tasks.video_generation import start_video_generation_task
 from app.config import settings
 from datetime import datetime
 
@@ -78,7 +74,7 @@ async def create_campaign(
         Brand.id == brand_uuid,
         Brand.user_id == current_user.id
     ).first()
-
+    
     if not brand:
         logger.warning(f"Brand not found: {brand_uuid} for user: {current_user.id}")
         raise HTTPException(status_code=404, detail="Brand not found")
@@ -114,7 +110,7 @@ async def create_campaign(
         audio_status="pending",  # Initialize audio status
         created_at=datetime.utcnow().isoformat()
     )
-
+    
     db.add(campaign)
     db.commit()
     db.refresh(campaign)
@@ -122,14 +118,12 @@ async def create_campaign(
     logger.info(f"Created campaign: {campaign.id} for brand: {request.brand_id}, status: {campaign.status}")
     
     # Start video generation using Celery (non-blocking)
-    task_id = None
     try:
         if settings.REPLICATE_API_TOKEN:
             if settings.REDIS_URL:
                 # Use Celery if Redis is configured
                 from app.tasks.video_generation import start_video_generation_task
-                task_result = start_video_generation_task.delay(str(campaign.id))
-                task_id = task_result.id if hasattr(task_result, 'id') else None
+                start_video_generation_task.delay(str(campaign.id))
                 logger.info(f"Enqueued video generation task for campaign: {campaign.id}")
                 message = "Campaign created. Video generation started."
             else:
@@ -146,9 +140,8 @@ async def create_campaign(
     
     return {
         "campaign_id": str(campaign.id),
-        "status": "generating",
-        "message": message,
-        "task_id": task_id
+        "status": "pending",
+        "message": message
     }
 
 
@@ -180,32 +173,6 @@ async def get_campaign(
         "final_video_url": campaign.final_video_url,
         "created_at": campaign.created_at,
     }
-
-
-@router.post("/{campaign_id}/generate")
-async def generate_campaign_video_endpoint(
-    campaign_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Manually trigger Epic 5 video generation for a campaign"""
-
-    print(f"🚀 MANUAL TRIGGER: Epic 5 video generation")
-    print(f"   Campaign ID: {campaign_id}")
-
-    try:
-        # Trigger video generation task
-        start_video_generation_task.delay(campaign_id)
-        print(f"✅ Video generation task queued successfully!")
-
-        return {
-            "campaign_id": campaign_id,
-            "status": "generating",
-            "message": "🎬 Video Generation Started!"
-        }
-    except Exception as e:
-        print(f"❌ Epic 5 task queue error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to start video generation: {str(e)}")
 
 
 @router.get("/{campaign_id}/status")
@@ -283,10 +250,7 @@ async def get_campaign_status(
     return {
         "campaign_id": str(campaign.id),
         "status": campaign.status,
-        "stage": campaign.generation_stage if hasattr(campaign, 'generation_stage') else None,
-        "progress": campaign.generation_progress if hasattr(campaign, 'generation_progress') else None,
         "final_video_url": campaign.final_video_url if campaign.status == "completed" else None,
-        "logs": campaign.generation_logs if hasattr(campaign, 'generation_logs') and campaign.generation_logs else [],
         "sora_prompts": sora_prompts,  # Include all sora_prompts
         "audio": {
             "status": campaign.audio_status or "pending",
@@ -301,114 +265,6 @@ async def get_campaign_status(
             "failed_scenes": failed_scenes,
             "scenes": scene_statuses  # Detailed per-scene status with video_urls and sora_prompts
         }
-    }
-
-
-@router.get("/{campaign_id}/task-status/{task_id}")
-async def get_task_status(
-    campaign_id: str,
-    task_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get Celery task status for video generation"""
-    from celery.result import AsyncResult
-    from app.celery_app import celery_app
-
-    # Verify campaign exists and user owns it
-    campaign = db.query(Campaign).filter(
-        Campaign.id == uuid.UUID(campaign_id)
-    ).first()
-
-    if not campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-
-    if campaign.brand.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-
-    # Get task status from Celery
-    task_result = AsyncResult(task_id, app=celery_app)
-
-    response = {
-        "campaign_id": campaign_id,
-        "task_id": task_id,
-        "state": task_result.state,
-        "status": task_result.status,
-    }
-
-    # Add task-specific info based on state
-    if task_result.state == "PENDING":
-        response["message"] = "Task is waiting to start..."
-        response["progress"] = 0
-        response["stage"] = "pending"
-    elif task_result.state == "PROGRESS":
-        info = task_result.info
-        response["progress"] = info.get("progress", 0)
-        response["stage"] = info.get("stage", "processing")
-        response["message"] = info.get("stage", "Processing...")
-    elif task_result.state == "SUCCESS":
-        response["progress"] = 100
-        response["stage"] = "complete"
-        response["message"] = "Video generation complete!"
-        response["result"] = task_result.result
-        if isinstance(task_result.result, dict):
-            response["final_video_url"] = task_result.result.get("final_video_url")
-    elif task_result.state == "FAILURE":
-        response["progress"] = 0
-        response["stage"] = "failed"
-        response["message"] = "Video generation failed"
-        response["error"] = str(task_result.info)
-    else:
-        response["message"] = f"Task state: {task_result.state}"
-        response["progress"] = 0
-        response["stage"] = task_result.state.lower()
-
-    return response
-
-
-@router.get("/{campaign_id}/generation-jobs")
-async def get_generation_jobs(
-    campaign_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get all generation jobs for a campaign"""
-    # Verify campaign exists and user owns it
-    campaign = db.query(Campaign).filter(
-        Campaign.id == uuid.UUID(campaign_id)
-    ).first()
-
-    if not campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-
-    if campaign.brand.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-
-    # Query all generation jobs for this campaign
-    jobs = db.query(GenerationJob).filter(
-        GenerationJob.campaign_id == uuid.UUID(campaign_id)
-    ).order_by(GenerationJob.created_at).all()
-
-    # Format results
-    return {
-        "campaign_id": campaign_id,
-        "total_jobs": len(jobs),
-        "jobs": [
-            {
-                "id": str(job.id),
-                "job_type": job.job_type,
-                "scene_number": job.scene_number,
-                "status": job.status,
-                "replicate_job_id": job.replicate_job_id,
-                "output_url": job.output_url,
-                "error_message": job.error_message,
-                "input_params": job.input_params,
-                "started_at": job.started_at.isoformat() if job.started_at else None,
-                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-                "created_at": job.created_at.isoformat() if job.created_at else None
-            }
-            for job in jobs
-        ]
     }
 
 

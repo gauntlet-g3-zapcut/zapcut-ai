@@ -1,4 +1,4 @@
-"""Celery tasks for music soundtrack generation using ElevenLabs Music Composition API."""
+"""Celery tasks for music soundtrack generation using ElevenLabs Music Soundtrack API."""
 import json
 import logging
 import uuid
@@ -88,11 +88,79 @@ def map_energy_to_moods(energy: float) -> List[str]:
         return ["intense", "powerful", "driving"]
 
 
+def split_prompt_into_lines(prompt: str, max_length: int = 200) -> List[str]:
+    """Split a prompt into multiple lines, each under max_length characters.
+    
+    Tries to split at sentence boundaries first, then falls back to word boundaries.
+    Ensures all lines are strictly under max_length.
+    """
+    if len(prompt) <= max_length:
+        return [prompt]
+    
+    lines = []
+    remaining = prompt.strip()
+    
+    while len(remaining) > max_length:
+        # Try to find a sentence boundary (period followed by space) within the limit
+        best_split = -1
+        search_start = max(0, max_length - 50)  # Look in the last 50 chars before limit
+        search_end = min(max_length, len(remaining))
+        
+        for i in range(search_end - 1, search_start - 1, -1):  # Search backwards
+            if remaining[i] == '.':
+                # Check if it's followed by a space (sentence boundary)
+                if i + 1 < len(remaining) and remaining[i + 1] == ' ':
+                    best_split = i + 1
+                    break
+        
+        # If no sentence boundary found, try word boundary
+        if best_split == -1:
+            for i in range(search_end - 1, search_start - 1, -1):  # Search backwards
+                if remaining[i] == ' ':
+                    best_split = i
+                    break
+        
+        # If still no good split point, force split at max_length (but try to avoid mid-word)
+        if best_split == -1:
+            # Try to find any space near the limit
+            for i in range(max_length - 1, max(0, max_length - 20), -1):
+                if i < len(remaining) and remaining[i] == ' ':
+                    best_split = i
+                    break
+            
+            # Last resort: split at max_length
+            if best_split == -1:
+                best_split = max_length
+        
+        # Extract the line and remaining text
+        line = remaining[:best_split].strip()
+        remaining = remaining[best_split:].strip()
+        
+        # Safety: if line is still too long (shouldn't happen), truncate
+        if len(line) > max_length:
+            line = line[:max_length]
+        
+        if line:  # Only add non-empty lines
+            lines.append(line)
+    
+    # Add remaining text if any
+    if remaining:
+        # Final safety check
+        if len(remaining) > max_length:
+            remaining = remaining[:max_length]
+        lines.append(remaining)
+    
+    return lines if lines else [prompt[:max_length]]  # Fallback if something went wrong
+
+
 def build_composition_plan_from_storyline(storyline: Dict[str, Any]) -> Dict[str, Any]:
     """Build ElevenLabs composition plan from storyline scenes.
     
     Creates a structured composition plan with sections matching each scene,
-    ensuring consistent genre/style while allowing mood and energy variations.
+    including durations, energy transitions, and musical style descriptions.
+    This plan is used with client.music.compose_detailed() to generate music.
+    
+    Validates durations (1-300 seconds) and energy values (0.0-1.0) per ElevenLabs API requirements.
     
     Returns:
         Dictionary representing the composition plan structure matching ElevenLabs API schema
@@ -100,8 +168,8 @@ def build_composition_plan_from_storyline(storyline: Dict[str, Any]) -> Dict[str
     scenes = storyline.get("scenes", [])
     if not scenes:
         return {
-            "positiveGlobalStyles": [],
-            "negativeGlobalStyles": [],
+            "positive_global_styles": [],
+            "negative_global_styles": [],
             "sections": []
         }
     
@@ -125,6 +193,13 @@ def build_composition_plan_from_storyline(storyline: Dict[str, Any]) -> Dict[str
         energy_end = scene.get("energy_end", 0.5)
         visual_notes = scene.get("visual_notes", "")
         
+        # Validate and clamp duration (ElevenLabs requires 1-300 seconds per section)
+        duration = max(1.0, min(300.0, float(duration)))
+        
+        # Validate and clamp energy values (0.0-1.0)
+        energy_start = max(0.0, min(1.0, float(energy_start)))
+        energy_end = max(0.0, min(1.0, float(energy_end)))
+        
         duration_ms = int(duration * 1000)
         
         # Get mood descriptors for this scene's energy levels
@@ -137,43 +212,191 @@ def build_composition_plan_from_storyline(storyline: Dict[str, Any]) -> Dict[str
         else:
             local_moods = start_moods[:2] if len(start_moods) >= 2 else start_moods
         
-        # Build prompt lines for this section
-        # Keep it focused on the scene's mood and energy while maintaining genre consistency
-        prompt_parts = []
+        # Build music description lines for this section
+        # These describe the musical style/mood for the section, not spoken narration
+        music_description_parts = []
+        
+        # Add scene context
         if description:
-            prompt_parts.append(description)
-        if visual_notes:
-            prompt_parts.append(visual_notes)
+            # Extract musical context from description if present
+            music_description_parts.append(f"Music for {description.lower()}")
         
-        # Add energy/mood description
+        # Add energy/mood description for music
         if energy_start < energy_end:
-            prompt_parts.append(f"Building from {start_moods[0]} to {end_moods[0]} energy")
+            music_description_parts.append(f"Building from {start_moods[0]} to {end_moods[0]} energy")
         elif energy_end < energy_start:
-            prompt_parts.append(f"Transitioning from {start_moods[0]} to {end_moods[0]} energy")
+            music_description_parts.append(f"Transitioning from {start_moods[0]} to {end_moods[0]} energy")
         else:
-            prompt_parts.append(f"Maintaining {start_moods[0]} energy")
+            music_description_parts.append(f"Maintaining {start_moods[0]} energy")
         
-        section_prompt = ". ".join(prompt_parts) if prompt_parts else f"Scene {scene_num}: {title}"
+        # Add genre/style note
+        music_description_parts.append(f"{base_genre} style")
+        
+        # Create music description line (keep it concise, under 200 chars)
+        music_description = ". ".join(music_description_parts) if music_description_parts else f"{base_genre} music for scene {scene_num}"
+        
+        # Split if needed (though music descriptions should be shorter)
+        if len(music_description) > 200:
+            music_description = music_description[:200]
         
         # Create section structure matching ElevenLabs API schema
-        # IMPORTANT: Use camelCase field names as required by the API
-        # Based on the documentation: sectionName, positiveLocalStyles, negativeLocalStyles,
-        # durationMs, lines (array of strings)
+        # IMPORTANT: Use snake_case field names as required by the API
         section = {
-            "sectionName": f"Scene {scene_num}: {title}",
-            "positiveLocalStyles": local_moods,  # Moods for this section
-            "negativeLocalStyles": [],  # No negative styles needed
-            "durationMs": duration_ms,
-            "lines": [section_prompt]  # Prompt as array of lines (required by API)
+            "section_name": f"Scene {scene_num}: {title}",
+            "positive_local_styles": local_moods,  # Moods for this section
+            "negative_local_styles": [],  # No negative styles needed
+            "duration_ms": duration_ms,
+            "lines": [music_description]  # Music style description for this section
         }
         
         sections.append(section)
     
     return {
-        "positiveGlobalStyles": positive_global_styles,
-        "negativeGlobalStyles": negative_global_styles,
+        "positive_global_styles": positive_global_styles,
+        "negative_global_styles": negative_global_styles,
         "sections": sections
     }
+
+
+def extract_audio_from_response(music_response: Any) -> bytes:
+    """Extract audio bytes from ElevenLabs compose_detailed response.
+    
+    The compose_detailed() method returns a MultipartResponse object.
+    Use .audio attribute to get the raw bytes - this is the correct method.
+    
+    Available attributes: ['audio', 'filename', 'json']
+    
+    DO NOT try to iterate over the response - that causes "not iterable" error.
+    
+    Args:
+        music_response: The response from client.music.compose_detailed()
+        
+    Returns:
+        bytes: The audio file bytes
+        
+    Raises:
+        ValueError: If response is empty or cannot be read
+    """
+    if not music_response:
+        raise ValueError("Empty response from ElevenLabs API")
+    
+    # Log response details for debugging
+    response_type = type(music_response).__name__
+    response_module = type(music_response).__module__
+    available_attrs = [attr for attr in dir(music_response) if not attr.startswith('_')]
+    
+    logger.info(
+        f"Extracting audio from response | "
+        f"type={response_type} | "
+        f"module={response_module} | "
+        f"has_audio={hasattr(music_response, 'audio')} | "
+        f"has_content={hasattr(music_response, 'content')} | "
+        f"has_read={hasattr(music_response, 'read')} | "
+        f"available_attrs={available_attrs[:10]}"  # First 10 attributes
+    )
+    
+    # Log additional httpx Response properties if available
+    if hasattr(music_response, 'status_code'):
+        logger.info(f"Response status_code={music_response.status_code}")
+    if hasattr(music_response, 'headers'):
+        content_type = music_response.headers.get('content-type', 'unknown')
+        content_length = music_response.headers.get('content-length', 'unknown')
+        logger.info(f"Response headers | content-type={content_type} | content-length={content_length}")
+    
+    try:
+        # MultipartResponse has an .audio attribute - this is the correct way to extract audio
+        # Available attributes: ['audio', 'filename', 'json']
+        if hasattr(music_response, 'audio'):
+            # MultipartResponse object - use .audio attribute
+            logger.info("Using .audio attribute to extract audio bytes")
+            audio_bytes = music_response.audio
+            logger.info(f"Extracted {len(audio_bytes)} bytes using .audio attribute")
+        elif hasattr(music_response, 'content'):
+            # httpx Response object - use .content property (fallback)
+            logger.info("Using .content property to extract audio bytes")
+            audio_bytes = music_response.content
+            logger.info(f"Extracted {len(audio_bytes)} bytes using .content property")
+        elif hasattr(music_response, 'read'):
+            # BinaryIO object - use .read() method (fallback for other response types)
+            logger.info("Using .read() method to extract audio bytes")
+            audio_bytes = music_response.read()
+            logger.info(f"Extracted {len(audio_bytes)} bytes using .read() method")
+        else:
+            # Unknown response type
+            logger.error(
+                f"Response type {response_type} has no .audio, .content, or .read() method. "
+                f"Available attributes: {available_attrs}"
+            )
+            raise ValueError(
+                f"Response type {response_type} has no .audio, .content, or .read() method. "
+                f"Available attributes: {available_attrs}"
+            )
+        
+        # Validate we got actual audio data
+        if not audio_bytes or len(audio_bytes) == 0:
+            raise ValueError("Empty audio data received from ElevenLabs API")
+        
+        logger.info(
+            f"Audio extracted successfully | "
+            f"size={len(audio_bytes)} bytes | "
+            f"response_type={response_type}"
+        )
+        return audio_bytes
+        
+    except Exception as e:
+        logger.error(
+            f"Failed to extract audio | "
+            f"error={str(e)} | "
+            f"response_type={response_type} | "
+            f"has_audio={hasattr(music_response, 'audio')} | "
+            f"has_content={hasattr(music_response, 'content')} | "
+            f"has_read={hasattr(music_response, 'read')}",
+            exc_info=True
+        )
+        raise
+
+
+def validate_composition_plan(composition_plan: Dict[str, Any]) -> None:
+    """Validate composition plan structure before sending to ElevenLabs API.
+    
+    Ensures all required fields are present and have correct types/values.
+    
+    Args:
+        composition_plan: The composition plan dictionary
+        
+    Raises:
+        ValueError: If validation fails
+    """
+    # Check required top-level fields
+    required_fields = ["positive_global_styles", "negative_global_styles", "sections"]
+    for field in required_fields:
+        if field not in composition_plan:
+            raise ValueError(f"Missing required field in composition plan: {field}")
+    
+    # Validate sections
+    sections = composition_plan.get("sections", [])
+    if not sections:
+        raise ValueError("Composition plan must have at least one section")
+    
+    # Validate each section
+    required_section_fields = ["section_name", "positive_local_styles", "negative_local_styles", "duration_ms", "lines"]
+    for i, section in enumerate(sections):
+        for field in required_section_fields:
+            if field not in section:
+                raise ValueError(f"Section {i} missing required field: {field}")
+        
+        # Validate duration_ms (1-300 seconds = 1000-300000 ms)
+        duration_ms = section.get("duration_ms", 0)
+        if not isinstance(duration_ms, int) or duration_ms < 1000 or duration_ms > 300000:
+            raise ValueError(
+                f"Section {i} has invalid duration_ms: {duration_ms}. "
+                "Must be between 1000 and 300000 milliseconds (1-300 seconds)."
+            )
+        
+        # Validate lines is a list
+        lines = section.get("lines", [])
+        if not isinstance(lines, list) or len(lines) == 0:
+            raise ValueError(f"Section {i} must have at least one line in 'lines' array")
 
 
 def upload_audio_to_supabase_s3(audio_bytes: bytes, campaign_id: str) -> str:
@@ -298,9 +521,10 @@ def update_audio_status_safe(
 def generate_audio_task(self, campaign_id: str) -> Dict[str, Any]:
     """Generate music soundtrack using ElevenLabs Music Composition API.
     
-    Builds a descriptive prompt from the campaign storyline and uses ElevenLabs'
-    composition plan API to generate a music soundtrack that matches scene
-    transitions, moods, and energy levels.
+    Builds a structured composition plan from the campaign storyline with sections
+    matching each scene, including durations, energy transitions, and musical styles.
+    Uses client.music.compose_detailed() or client.music.compose() with the
+    composition_plan to generate actual music soundtracks.
     """
     logger.info(f"Starting audio generation | campaign={campaign_id}")
     
@@ -338,7 +562,16 @@ def generate_audio_task(self, campaign_id: str) -> Dict[str, Any]:
             composition_plan = build_composition_plan_from_storyline(storyline)
             
             if not composition_plan.get("sections"):
-                error_msg = "Failed to build composition plan"
+                error_msg = "Failed to build composition plan: no sections"
+                logger.error(f"{error_msg} | campaign={campaign_id}")
+                update_audio_status_safe(campaign_id, "failed", error=error_msg)
+                return {"status": "failed", "error": error_msg}
+            
+            # Validate composition plan structure before sending to API
+            try:
+                validate_composition_plan(composition_plan)
+            except ValueError as validation_error:
+                error_msg = f"Invalid composition plan: {str(validation_error)}"
                 logger.error(f"{error_msg} | campaign={campaign_id}")
                 update_audio_status_safe(campaign_id, "failed", error=error_msg)
                 return {"status": "failed", "error": error_msg}
@@ -352,14 +585,10 @@ def generate_audio_task(self, campaign_id: str) -> Dict[str, Any]:
             )
             
             # Generate music soundtrack using ElevenLabs Music Composition API
-            # We build a structured composition plan with sections matching each scene,
-            # ensuring consistent genre while allowing mood/energy variations.
+            # We use compose_detailed() with a composition_plan for structured music generation
             try:
                 # Initialize ElevenLabs client
                 client = ElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
-                
-                # Generate the music soundtrack using the composition plan
-                logger.info(f"Composing music soundtrack | campaign={campaign_id}")
                 
                 # Check if music API is available in the SDK
                 if not hasattr(client, 'music'):
@@ -368,20 +597,46 @@ def generate_audio_task(self, campaign_id: str) -> Dict[str, Any]:
                         "Please update elevenlabs package to latest version."
                     )
                 
-                composition = client.music.compose(
+                # Use compose_detailed() with composition_plan for structured music generation
+                # compose_detailed() has been stable since SDK 2.13.0 and returns BinaryIO directly
+                logger.info(f"Composing music soundtrack with composition plan | campaign={campaign_id}")
+                
+                # Use compose_detailed() directly - it's the standard method for composition plans
+                if not hasattr(client.music, 'compose_detailed'):
+                    raise AttributeError(
+                        "ElevenLabs SDK version does not support compose_detailed() method. "
+                        "Please update elevenlabs package to version 2.13.0 or later."
+                    )
+                
+                music_response = client.music.compose_detailed(
                     composition_plan=composition_plan
                 )
                 
-                # Read audio bytes from the response iterator
-                audio_bytes = b""
-                for chunk in composition:
-                    if hasattr(chunk, 'read'):
-                        audio_bytes += chunk.read()
-                    elif isinstance(chunk, bytes):
-                        audio_bytes += chunk
-                    else:
-                        # If chunk is a file-like object, read it
-                        audio_bytes += bytes(chunk)
+                # Log response details immediately after API call
+                response_type = type(music_response).__name__
+                response_module = type(music_response).__module__
+                logger.info(
+                    f"Music response received from API | campaign={campaign_id} | "
+                    f"type={response_type} | "
+                    f"module={response_module} | "
+                    f"has_audio={hasattr(music_response, 'audio')} | "
+                    f"has_content={hasattr(music_response, 'content')} | "
+                    f"has_read={hasattr(music_response, 'read')}"
+                )
+                
+                # Log response status and headers if available (httpx Response)
+                if hasattr(music_response, 'status_code'):
+                    logger.info(f"Response status_code={music_response.status_code}")
+                if hasattr(music_response, 'headers'):
+                    headers_summary = {
+                        'content-type': music_response.headers.get('content-type', 'N/A'),
+                        'content-length': music_response.headers.get('content-length', 'N/A'),
+                    }
+                    logger.info(f"Response headers: {headers_summary}")
+                
+                # Extract audio bytes from response
+                # compose_detailed() returns a MultipartResponse (httpx Response object)
+                audio_bytes = extract_audio_from_response(music_response)
                 
                 logger.info(
                     f"Music soundtrack generated successfully | campaign={campaign_id} | "
@@ -430,15 +685,6 @@ def generate_audio_task(self, campaign_id: str) -> Dict[str, Any]:
                                 f"error_status={error_status} | error_data={json.dumps(error_data, indent=2)}",
                                 exc_info=True
                             )
-                            
-                            # Handle specific error types
-                            if error_status == 'bad_composition_plan':
-                                suggested_plan = error_data.get('composition_plan_suggestion')
-                                if suggested_plan:
-                                    logger.error(
-                                        f"ElevenLabs suggested composition plan | campaign={campaign_id} | "
-                                        f"suggestion={json.dumps(suggested_plan, indent=2)}"
-                                    )
                     except (AttributeError, KeyError, TypeError):
                         # If we can't parse the error, use the default message
                         logger.error(
