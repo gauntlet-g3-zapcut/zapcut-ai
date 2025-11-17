@@ -1,4 +1,4 @@
-import { supabase } from "./supabase"
+import { supabase, DEBUG_AUTH } from "./supabase"
 
 // API Configuration - HTTPS in production, HTTP in development
 const getApiUrl = (): string => {
@@ -13,6 +13,13 @@ const getApiUrl = (): string => {
 
 const API_URL = getApiUrl()
 
+// Helper for conditional logging
+const debugLog = (...args: unknown[]) => {
+  if (DEBUG_AUTH) {
+    console.log(...args)
+  }
+}
+
 /**
  * Get a valid Supabase auth token with retry logic
  */
@@ -20,7 +27,7 @@ async function getAuthToken(): Promise<string> {
   // Check localStorage for debugging
   if (typeof window !== 'undefined') {
     const storedSession = localStorage.getItem('supabase.auth.token')
-    console.log('[Auth] localStorage check:', {
+    debugLog('[Auth] localStorage check:', {
       hasStoredSession: !!storedSession,
       storageSize: storedSession?.length || 0
     })
@@ -30,7 +37,7 @@ async function getAuthToken(): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data: { session }, error } = await supabase.auth.getSession()
 
-    console.log('[Auth] getSession result (attempt ' + (attempt + 1) + '):', {
+    debugLog('[Auth] getSession result (attempt ' + (attempt + 1) + '):', {
       hasSession: !!session,
       hasToken: !!session?.access_token,
       tokenExpiry: session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'N/A',
@@ -39,38 +46,42 @@ async function getAuthToken(): Promise<string> {
 
     // If we have a valid session, return it
     if (!error && session?.access_token) {
-      console.log('[Auth] Valid session found')
+      debugLog('[Auth] Valid session found')
       return session.access_token
     }
 
     // If first attempt fails, try manual refresh
     if (attempt === 0) {
-      console.log('[Auth] Attempting manual session refresh...')
+      debugLog('[Auth] Attempting manual session refresh...')
       try {
         const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
-        console.log('[Auth] Manual refresh result:', {
+        debugLog('[Auth] Manual refresh result:', {
           hasSession: !!refreshData.session,
           hasToken: !!refreshData.session?.access_token,
           error: refreshError?.message
         })
 
         if (!refreshError && refreshData.session?.access_token) {
-          console.log('[Auth] Session refreshed successfully')
+          debugLog('[Auth] Session refreshed successfully')
           return refreshData.session.access_token
         }
       } catch (refreshErr) {
-        console.error('[Auth] Manual refresh failed:', refreshErr)
+        if (DEBUG_AUTH) {
+          console.error('[Auth] Manual refresh failed:', refreshErr)
+        }
       }
     }
 
     // Wait a bit before retrying (in case auto-refresh is in progress)
     if (attempt < 2) {
-      console.log('[Auth] Waiting before retry...')
+      debugLog('[Auth] Waiting before retry...')
       await new Promise(resolve => setTimeout(resolve, 500))
     }
   }
 
-  console.error('[Auth] Authentication failed after all retries - no valid token')
+  if (DEBUG_AUTH) {
+    console.error('[Auth] Authentication failed after all retries - no valid token')
+  }
   throw new Error('User not authenticated. Please log out and log back in.')
 }
 
