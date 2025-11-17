@@ -16,13 +16,13 @@ export default function Landing() {
   }, [user, navigate])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
-      <div className="container mx-auto px-4 py-16">
-        <div className="text-center mb-16">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center">
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center mb-10">
           <h1 className="text-6xl font-bold mb-4 text-black" style={{ fontFamily: "'Playfair Display', serif" }}>
             Create a winning ad in <span className="italic">minutes</span>
           </h1>
-          <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
+          <p className="text-base text-muted-foreground mb-8 max-w-2xl mx-auto">
             Create stunning 4K video ads with AI. Generate professional product videos
             with music in minutes, not hours.
           </p>
@@ -33,10 +33,10 @@ export default function Landing() {
           </GradientButton>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8 mt-16">
+        <div className="grid md:grid-cols-3 gap-8 mt-10">
           <Card>
             <CardHeader>
-              <CardTitle>AI-Powered</CardTitle>
+              <CardTitle className="text-center" style={{ fontFamily: "'Playfair Display', serif" }}>AI-Powered</CardTitle>
               <CardDescription>
                 Let our Creative Director AI guide you through the process
               </CardDescription>
@@ -51,7 +51,7 @@ export default function Landing() {
 
           <Card>
             <CardHeader>
-              <CardTitle>4K Quality</CardTitle>
+              <CardTitle className="text-center" style={{ fontFamily: "'Playfair Display', serif" }}>4K Quality</CardTitle>
               <CardDescription>
                 Professional-grade video output
               </CardDescription>
@@ -66,7 +66,7 @@ export default function Landing() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Fast & Easy</CardTitle>
+              <CardTitle className="text-center" style={{ fontFamily: "'Playfair Display', serif" }}>Fast & Easy</CardTitle>
               <CardDescription>
                 From concept to video in under 5 minutes
               </CardDescription>

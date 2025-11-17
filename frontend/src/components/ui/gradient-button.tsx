@@ -20,7 +20,7 @@ const gradientButtonVariants = cva(
 
     "text-base leading-[19px] font-[500] text-white",
 
-    "font-sans font-bold",
+    "font-sans",
 
     "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
 
