@@ -242,7 +242,7 @@ export default function Dashboard() {
                       </Button>
                       <GradientButton
                         onClick={() => navigate(`/brands/${brand.id}/chat`)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-sm px-4 py-2"
+                        className="text-sm px-4 py-2"
                       >
                         Create Campaign
                       </GradientButton>
