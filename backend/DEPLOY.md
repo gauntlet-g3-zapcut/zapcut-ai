@@ -1,156 +1,191 @@
-# Fly.io Deployment Guide
+# Railway Deployment Guide
 
 ## Prerequisites
 
-1. Install Fly CLI:
+1. Create a Railway account: https://railway.app
+2. Install Railway CLI (optional, for local management):
 ```bash
-curl -L https://fly.io/install.sh | sh
-```
-
-2. Login to Fly.io:
-```bash
-fly auth login
+npm i -g @railway/cli
 ```
 
 ## Initial Deployment
 
-### 1. Create App
+### 1. Create Railway Project
+
+1. Go to https://railway.app and create a new project
+2. Connect your GitHub repository or deploy from the Railway dashboard
+
+### 2. Create Services
+
+Railway supports multiple services from one repository. You'll need:
+
+1. **API Service** - FastAPI application
+2. **Worker Service** - Celery worker (optional, can run in same service or separate)
+
+#### Option A: Deploy via Railway Dashboard
+
+1. Click "New" → "GitHub Repo" → Select your repository
+2. Select the `backend` directory as the root directory
+3. Railway will auto-detect the Python project and use Nixpacks
+
+#### Option B: Deploy via Railway CLI
 
 ```bash
 cd backend
-fly apps create zapcut-api
+railway login
+railway init
+railway up
 ```
 
-### 2. Deploy Redis (Required for Celery)
+### 3. Add PostgreSQL Database
 
-Deploy managed Redis via Upstash:
+1. In Railway dashboard, click "New" → "Database" → "Add PostgreSQL"
+2. Railway will automatically set `DATABASE_URL` environment variable
+3. The database will be available to all services in the project
 
-```bash
-fly redis create
-```
+### 4. Add Redis (Required for Celery)
 
-This will prompt for:
-- Organization
-- Database name (e.g., `zapcut-redis`)
-- Primary region (e.g., `iad`)
-- Eviction policy (optional)
+1. In Railway dashboard, click "New" → "Database" → "Add Redis"
+2. Railway will automatically set `REDIS_URL` environment variable
+3. Share this Redis instance with both API and Worker services
 
-After creation, get the connection URL:
+### 5. Set Environment Variables
 
-```bash
-fly redis status zapcut-redis
-```
+In Railway dashboard, go to your service → Variables tab, and add:
 
-### 3. Set Environment Variables
+**Required Variables:**
+- `DATABASE_URL` - Automatically set if you added PostgreSQL
+- `REDIS_URL` - Automatically set if you added Redis
+- `API_URL` - Your Railway public domain (e.g., `https://your-api.railway.app`) or custom domain
+- `SUPABASE_URL` - Your Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key
+- `SUPABASE_JWT_SECRET` - Supabase JWT secret (optional, for HS256)
+- `OPENAI_API_KEY` - OpenAI API key
+- `REPLICATE_API_TOKEN` - Replicate API token
+- `ELEVENLABS_API_KEY` - ElevenLabs API key
+- `CORS_ORIGINS` - Comma-separated list of allowed origins (e.g., `http://localhost:5173,https://app.zapcut.video`)
 
-Set all required secrets:
+**Optional Variables:**
+- `REPLICATE_WEBHOOK_SECRET` - For webhook verification
+- `SUPABASE_DB_PASSWORD` - If not using DATABASE_URL directly
+- `SUPABASE_S3_ENDPOINT`, `SUPABASE_S3_ACCESS_KEY`, `SUPABASE_S3_SECRET_KEY` - For S3 storage
 
-```bash
-fly secrets set DATABASE_URL="postgresql://user:pass@host:5432/db"
-fly secrets set SUPABASE_URL="https://your-project.supabase.co"
-fly secrets set SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
-fly secrets set SUPABASE_JWT_SECRET="your-jwt-secret"  # Optional, for HS256
-fly secrets set OPENAI_API_KEY="your-openai-key"
-fly secrets set REPLICATE_API_TOKEN="your-replicate-token"
-fly secrets set REDIS_URL="redis://default:password@host:port"  # From fly redis status
-fly secrets set CORS_ORIGINS="http://localhost:5173,https://app.zapcut.video"
-```
+**Note:** Railway automatically provides `PORT` environment variable - no need to set it manually.
 
-### 4. Create PostgreSQL Database
+### 6. Configure Service Settings
 
-```bash
-# Create database
-fly postgres create --name zapcut-db --region iad
+For the API service:
+- **Root Directory:** `backend`
+- **Start Command:** Railway will use `railway.toml` or auto-detect from `start.sh`
+- **Health Check Path:** `/health` (Railway will automatically monitor this)
 
-# Attach to app
-fly postgres attach zapcut-db --app zapcut-api
-```
+For the Worker service (if separate):
+- **Root Directory:** `backend`
+- **Start Command:** `./start-worker.sh`
+- **No public endpoint needed** - Worker runs as background service
 
-This will automatically set `DATABASE_URL` secret.
+### 7. Deploy
 
-### 5. Deploy
+Railway will automatically deploy on:
+- Push to connected branch (if GitHub integration is enabled)
+- Manual deploy from dashboard
+- Using CLI: `railway up`
 
-```bash
-fly deploy
-```
-
-### 6. Initialize Database
+### 8. Initialize Database
 
 After deployment, initialize the database tables:
 
 ```bash
-curl -X POST https://zapcut-api.fly.dev/init-db
+# Get your Railway service URL from the dashboard
+curl -X POST https://your-api.railway.app/init-db
 ```
 
-Or use Fly CLI:
-
+Or use Railway CLI:
 ```bash
-fly ssh console -C "curl -X POST http://localhost:8000/init-db"
+railway run curl -X POST http://localhost:$PORT/init-db
 ```
 
-## Updating Secrets
+## Updating Environment Variables
 
-```bash
-fly secrets set KEY="value"
-```
-
-View current secrets:
-
-```bash
-fly secrets list
-```
+1. Go to Railway dashboard → Your service → Variables
+2. Add or update variables as needed
+3. Railway will automatically redeploy if "Redeploy on Variable Change" is enabled
 
 ## Viewing Logs
 
+### Via Dashboard
+1. Go to Railway dashboard → Your service → Deployments → Click on a deployment
+2. View real-time logs in the Logs tab
+
+### Via CLI
 ```bash
-fly logs
+railway logs
 ```
 
 ## Scaling
 
-```bash
-# Scale to 2 instances
-fly scale count 2
+Railway automatically scales based on traffic. You can also:
 
-# Scale memory
-fly scale memory 512
-```
+1. Go to service settings → Resources
+2. Adjust CPU and Memory limits
+3. Railway will handle horizontal scaling automatically
 
 ## Health Checks
 
-Fly.io automatically checks `/health` endpoint every 30 seconds (configured in `fly.toml`).
+Railway automatically monitors the `/health` endpoint. If it fails:
+- Railway will restart the service
+- You'll see alerts in the dashboard
+- Check logs for errors
 
 ## Troubleshooting
 
-### Check app status:
+### Check service status:
 ```bash
-fly status
+railway status
 ```
 
-### SSH into app:
+### View service info:
 ```bash
-fly ssh console
+railway info
 ```
 
-### View app info:
-```bash
-fly info
-```
+### Restart service:
+Via dashboard: Service → Settings → Restart
+Via CLI: Service will auto-restart on deploy
 
-### Restart app:
+### Run commands in service:
 ```bash
-fly apps restart zapcut-api
+railway run <command>
 ```
 
 ## Custom Domain
 
-1. Add domain in Fly.io dashboard
-2. Update DNS records as instructed
-3. Fly.io will automatically provision SSL certificate
+1. Go to Railway dashboard → Your service → Settings → Domains
+2. Click "Generate Domain" or "Add Custom Domain"
+3. For custom domains, update DNS records as instructed
+4. Railway will automatically provision SSL certificate
 
 ## Monitoring
 
-- View metrics in Fly.io dashboard
-- Set up alerts for health check failures
-- Monitor logs with `fly logs`
+- View metrics in Railway dashboard (CPU, Memory, Network)
+- Set up alerts for service failures
+- Monitor logs in real-time
+- View deployment history and rollback if needed
 
+## Worker Service Setup
+
+If running Celery worker as a separate service:
+
+1. Create a new service in the same Railway project
+2. Set root directory to `backend`
+3. Set start command to `./start-worker.sh`
+4. Share the same environment variables (especially `REDIS_URL` and `DATABASE_URL`)
+5. No public domain needed - worker runs as background service
+
+## Notes
+
+- Railway automatically provides `$PORT` environment variable
+- Railway supports both Dockerfile and Nixpacks builds
+- Services in the same project can share databases and environment variables
+- Railway handles SSL certificates automatically
+- Health check endpoint at `/health` is monitored automatically

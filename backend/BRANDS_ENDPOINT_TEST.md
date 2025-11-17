@@ -8,7 +8,8 @@
 ### Test 1: GET without authentication
 **Request:**
 ```bash
-curl -X GET https://zapcut-api.fly.dev/api/brands/
+# Replace with your Railway domain
+curl -X GET https://your-api.railway.app/api/brands/
 ```
 
 **Response:**
@@ -26,7 +27,8 @@ curl -X GET https://zapcut-api.fly.dev/api/brands/
 ### Test 2: GET with invalid token
 **Request:**
 ```bash
-curl -X GET https://zapcut-api.fly.dev/api/brands/ \
+# Replace with your Railway domain
+curl -X GET https://your-api.railway.app/api/brands/ \
   -H "Authorization: Bearer invalid-token"
 ```
 
@@ -45,7 +47,8 @@ curl -X GET https://zapcut-api.fly.dev/api/brands/ \
 ### Test 3: POST without authentication
 **Request:**
 ```bash
-curl -X POST https://zapcut-api.fly.dev/api/brands/
+# Replace with your Railway domain
+curl -X POST https://your-api.railway.app/api/brands/
 ```
 
 **Response:**
@@ -89,7 +92,8 @@ You need a valid Supabase JWT token. The frontend handles this automatically whe
 
 **Example with valid token:**
 ```bash
-curl -X GET https://zapcut-api.fly.dev/api/brands/ \
+# Replace with your Railway domain
+curl -X GET https://your-api.railway.app/api/brands/ \
   -H "Authorization: Bearer <valid-supabase-jwt-token>"
 ```
 

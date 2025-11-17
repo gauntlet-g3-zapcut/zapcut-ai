@@ -65,10 +65,10 @@ async def root():
 
 @app.get("/health")
 async def health():
-    """Health check endpoint for Fly.io load balancer.
+    """Health check endpoint for deployment platform monitoring.
     
-    This endpoint MUST respond quickly (< 3s) and return 200 OK
-    for Fly.io to route traffic to this machine.
+    This endpoint should respond quickly (< 3s) and return 200 OK
+    to indicate the service is healthy and ready to receive traffic.
     """
     return {"status": "ok", "service": "fastapi"}
 

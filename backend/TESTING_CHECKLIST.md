@@ -3,9 +3,9 @@
 ## Pre-Testing Setup
 
 1. **Backend is deployed and running**
-   - API: `zapcut-api` on Fly.io
-   - Worker: `zapcut-worker` on Fly.io
-   - Both apps have correct secrets (especially REDIS_URL with `rediss://`)
+   - API: Deployed on Railway
+   - Worker: Deployed on Railway (separate service)
+   - Both services have correct environment variables (especially REDIS_URL)
 
 2. **Frontend is running**
    - Local dev server or production build
@@ -80,9 +80,9 @@ fly logs -a zapcut-worker | grep -i "prompt\|scene"
 
 **Verification:**
 ```bash
-# Poll campaign status endpoint
+# Poll campaign status endpoint (replace with your Railway domain)
 curl -H "Authorization: Bearer <token>" \
-  https://zapcut-api.fly.dev/api/campaigns/<campaign_id>/status
+  https://your-api.railway.app/api/campaigns/<campaign_id>/status
 
 # Check video_urls array - should grow as scenes complete
 ```
@@ -143,7 +143,7 @@ curl -H "Authorization: Bearer <token>" \
 **Verification:**
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  https://zapcut-api.fly.dev/api/campaigns/<campaign_id>/status | jq
+  https://your-api.railway.app/api/campaigns/<campaign_id>/status | jq
 
 # Should see:
 # - sora_prompts: [...]
@@ -154,24 +154,33 @@ curl -H "Authorization: Bearer <token>" \
 
 ### Check API Health
 ```bash
-curl https://zapcut-api.fly.dev/health
+# Replace with your Railway domain
+curl https://your-api.railway.app/health
 ```
 
 ### Check Worker Status
 ```bash
-fly status -a zapcut-worker
-fly logs -a zapcut-worker --recent
+# Via Railway CLI
+railway service use worker
+railway status
+railway logs
+
+# Or via Railway dashboard: Worker service → Logs
 ```
 
 ### Check API Logs
 ```bash
-fly logs -a zapcut-api --recent
+# Via Railway CLI
+railway service use api
+railway logs
+
+# Or via Railway dashboard: API service → Logs
 ```
 
 ### Test Campaign Status (replace with actual campaign_id and token)
 ```bash
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  https://zapcut-api.fly.dev/api/campaigns/CAMPAIGN_ID/status
+  https://your-api.railway.app/api/campaigns/CAMPAIGN_ID/status
 ```
 
 ## Common Issues to Watch For

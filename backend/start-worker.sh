@@ -1,6 +1,6 @@
 #!/bin/bash
-# Start script for Celery worker service on Fly.io
-# This script runs ONLY the Celery worker - FastAPI runs on separate machine
+# Start script for Celery worker service
+# This script runs ONLY the Celery worker - FastAPI runs on separate service
 
 set -e
 
@@ -12,7 +12,7 @@ if [ -z "$REDIS_URL" ]; then
 fi
 
 # Start Celery worker with solo pool (single-threaded)
-# Solo pool is recommended for Fly.io small machines to reduce memory usage
+# Solo pool is recommended to reduce memory usage
 echo "Starting Celery worker..."
 echo "Redis URL: ${REDIS_URL:0:20}..." # Show first 20 chars for logging
 echo "Using solo pool (single-threaded)"

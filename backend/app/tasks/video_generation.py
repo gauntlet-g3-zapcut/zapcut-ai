@@ -72,9 +72,12 @@ def extract_video_url(output: Any) -> Optional[str]:
 
 def build_webhook_url(campaign_id: str, scene_num: int) -> str:
     """Build webhook URL for Replicate callback."""
-    base_url = settings.API_URL or "https://zapcut-api.fly.dev"
-    # Remove trailing slash if present
-    base_url = base_url.rstrip('/')
+    if not settings.API_URL:
+        raise ValueError(
+            "API_URL environment variable is required for webhook callbacks. "
+            "Set API_URL to your public API domain (e.g., https://your-api.railway.app)"
+        )
+    base_url = settings.API_URL.rstrip('/')
     return f"{base_url}/webhooks/replicate?campaign_id={campaign_id}&scene_num={scene_num}"
 
 

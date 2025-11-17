@@ -22,8 +22,8 @@ backend/
 │       ├── campaigns.py     # Campaign management
 │       └── chat.py          # Chat/storyline routes
 ├── requirements.txt         # Python dependencies
-├── Dockerfile              # Docker image for Fly.io
-├── fly.toml                # Fly.io configuration
+├── Dockerfile              # Docker image for Railway
+├── railway.toml            # Railway configuration
 ├── .dockerignore
 ├── .gitignore
 ├── README.md
@@ -36,7 +36,7 @@ backend/
 - ✅ No duplicate code
 - ✅ Single source of truth
 - ✅ Structured logging
-- ✅ Fly.io ready
+- ✅ Railway ready
 - ✅ Docker containerized
 - ✅ Health checks configured
 

@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     ELEVENLABS_API_KEY: Optional[str] = None
     
     # API Configuration
-    API_URL: Optional[str] = None  # Base URL for webhook callbacks (e.g., https://zapcut-api.fly.dev)
+    API_URL: Optional[str] = None  # Base URL for webhook callbacks (e.g., https://your-api.railway.app or custom domain)
     
     # Celery/Redis
     REDIS_URL: Optional[str] = None

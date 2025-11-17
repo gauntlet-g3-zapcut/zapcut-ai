@@ -24,55 +24,52 @@ export OPENAI_API_KEY="your-key"
 uvicorn app.main:app --reload
 ```
 
-## Deployment to Fly.io
+## Deployment to Railway
 
 ### Initial Setup
 
-1. Install Fly CLI:
-```bash
-curl -L https://fly.io/install.sh | sh
-```
+1. Create Railway account: https://railway.app
 
-2. Login to Fly.io:
-```bash
-fly auth login
-```
+2. Create project and connect repository:
+   - Go to Railway dashboard → New Project
+   - Connect your GitHub repository or deploy from dashboard
 
-3. Create app (if not exists):
-```bash
-fly apps create zapcut-api
-```
+3. Add databases:
+   - Click "New" → "Database" → "Add PostgreSQL"
+   - Click "New" → "Database" → "Add Redis"
+   - Railway automatically sets `DATABASE_URL` and `REDIS_URL`
 
-4. Set secrets (environment variables):
-```bash
-fly secrets set DATABASE_URL="postgresql://..."
-fly secrets set SUPABASE_URL="https://..."
-fly secrets set SUPABASE_SERVICE_ROLE_KEY="..."
-fly secrets set OPENAI_API_KEY="..."
-```
+4. Create API service:
+   - Click "New" → "GitHub Repo" or "Empty Service"
+   - Set root directory to `backend`
+   - Railway auto-detects Python and uses `railway.toml` or `start.sh`
 
-5. Deploy:
-```bash
-fly deploy
-```
+5. Set environment variables in Railway dashboard:
+   - `API_URL` - Your Railway API domain
+   - `SUPABASE_URL` - Supabase project URL
+   - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key
+   - `SUPABASE_JWT_SECRET` - JWT secret (optional)
+   - `OPENAI_API_KEY` - OpenAI API key
+   - `REPLICATE_API_TOKEN` - Replicate API token
+   - `ELEVENLABS_API_KEY` - ElevenLabs API key
+   - `CORS_ORIGINS` - Comma-separated allowed origins
+
+6. Deploy:
+   - Railway automatically deploys on push (if GitHub connected)
+   - Or click "Deploy" in dashboard
+   - Or use CLI: `railway up`
 
 ### Database Setup
 
-1. Create PostgreSQL database:
+1. PostgreSQL is automatically created when you add it in Railway
+2. `DATABASE_URL` is automatically set for all services in the project
+3. Initialize database tables after deployment:
 ```bash
-fly postgres create --name zapcut-db
+# Replace with your Railway domain
+curl -X POST https://your-api.railway.app/init-db
 ```
 
-2. Attach database to app:
-```bash
-fly postgres attach zapcut-db --app zapcut-api
-```
-
-3. Initialize database tables:
-```bash
-# After deployment, call the init endpoint
-curl https://zapcut-api.fly.dev/init-db
-```
+For detailed deployment instructions, see [DEPLOY.md](./DEPLOY.md) and [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## API Endpoints
 
@@ -111,5 +108,5 @@ curl https://zapcut-api.fly.dev/init-db
 
 ## Health Checks
 
-Fly.io will automatically check `/health` endpoint every 30 seconds.
+Railway automatically monitors the `/health` endpoint. The endpoint should respond quickly (< 3s) and return 200 OK to indicate the service is healthy.
 

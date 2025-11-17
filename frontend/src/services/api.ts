@@ -5,10 +5,15 @@ const getApiUrl = (): string => {
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL as string
   }
-  const apiUrl = import.meta.env.VITE_PROD
-    ? "https://zapcut-api.fly.dev"
-    : "http://localhost:8000"
-  return apiUrl
+  // In production, VITE_API_URL must be set
+  if (import.meta.env.VITE_PROD) {
+    throw new Error(
+      "VITE_API_URL environment variable is required in production. " +
+      "Set VITE_API_URL to your API domain (e.g., https://your-api.railway.app)"
+    )
+  }
+  // Default to localhost for development
+  return "http://localhost:8000"
 }
 
 const API_URL = getApiUrl()
