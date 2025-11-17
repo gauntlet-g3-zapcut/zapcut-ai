@@ -1,7 +1,23 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
+import { 
+  Conversation, 
+  ConversationContent,
+} from "./ui/ai/conversation"
+import { 
+  Message, 
+  MessageAvatar, 
+  MessageContent 
+} from "./ui/ai/message"
+import {
+  PromptInput,
+  PromptInputTextarea,
+  PromptInputSubmit,
+} from "./ui/ai/prompt-input"
+import { Loader } from "./ui/ai/loader"
 import { Button } from "./ui/button"
-import { Input } from "./ui/input"
-import { Card, CardContent } from "./ui/card"
+import { GradientButton } from "./ui/gradient-button"
+import { CheckCircle2, Sparkles } from "lucide-react"
+import { cn } from "../lib/utils"
 
 export default function ChatInterface({
   messages = [],
@@ -12,128 +28,125 @@ export default function ChatInterface({
   onComplete
 }) {
   const [inputValue, setInputValue] = useState("")
-  const messagesEndRef = useRef(null)
-  const inputRef = useRef(null)
 
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+  const progressPercentage = (progress / 5) * 100
 
-  // Focus input when not loading
-  useEffect(() => {
-    if (!isLoading && inputRef.current) {
-      inputRef.current.focus()
-    }
-  }, [isLoading])
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    if (inputValue.trim() && !isLoading) {
-      onSendMessage(inputValue.trim())
+  const handleSubmit = (message) => {
+    if (message && message.trim() && !isLoading) {
+      onSendMessage(message.trim())
       setInputValue("")
-    }
-  }
-
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit(e)
     }
   }
 
   return (
     <div className="flex flex-col h-full">
-      {/* Progress indicator */}
-      <div className="mb-4 p-4 bg-muted rounded-lg">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium">Progress</span>
-          <span className="text-sm text-muted-foreground">{progress}/5 aspects collected</span>
+      {/* Enhanced Progress indicator */}
+      <div className="mb-4 p-4 bg-white/80 backdrop-blur-sm rounded-lg border border-purple-100 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-purple-600" />
+            <span className="text-sm font-semibold">Progress</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-foreground">{progress}/5</span>
+            <span className="text-xs text-muted-foreground">aspects collected</span>
+          </div>
         </div>
-        <div className="w-full bg-secondary rounded-full h-2">
+        <div className="relative w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
           <div
-            className="bg-primary h-2 rounded-full transition-all duration-300"
-            style={{ width: `${(progress / 5) * 100}%` }}
+            className="absolute top-0 left-0 h-full bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 rounded-full transition-all duration-500 ease-out"
+            style={{ width: `${progressPercentage}%` }}
           />
         </div>
+        {progress > 0 && (
+          <div className="mt-2 flex gap-1">
+            {[...Array(5)].map((_, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "h-1 flex-1 rounded-full transition-all duration-300",
+                  i < progress ? "bg-purple-400" : "bg-gray-200"
+                )}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Messages */}
-      <Card className="flex-1 overflow-hidden mb-4">
-        <CardContent className="p-4 h-full overflow-y-auto">
-          <div className="space-y-4">
-            {messages.length === 0 && (
-              <div className="text-center text-muted-foreground py-8">
-                Starting conversation...
+      {/* Messages Container */}
+      <div className="flex-1 overflow-hidden mb-4 rounded-lg shadow-sm bg-white/80 backdrop-blur-sm">
+        <Conversation>
+          <ConversationContent>
+            {messages.length === 0 && !isLoading && (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-16 h-16 rounded-full bg-purple-50 border border-purple-100 flex items-center justify-center mb-4 animate-pulse">
+                  <Sparkles className="w-8 h-8 text-purple-600" />
+                </div>
+                <p className="text-muted-foreground text-sm font-medium">Starting conversation...</p>
+                <p className="text-muted-foreground/70 text-xs mt-1">The AI consultant will greet you shortly</p>
               </div>
             )}
+            
             {messages.map((message, index) => (
-              <div
-                key={index}
-                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+              <Message 
+                key={index} 
+                from={message.role}
+                className="animate-in fade-in slide-in-from-bottom-2 duration-300"
+                style={{ animationDelay: `${index * 50}ms` }}
               >
-                <div
-                  className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  }`}
-                >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                <MessageAvatar from={message.role} />
+                <MessageContent from={message.role}>
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
                   {message.created_at && (
-                    <p className={`text-xs mt-1 ${
-                      message.role === "user" ? "text-primary-foreground/70" : "text-muted-foreground"
-                    }`}>
-                      {new Date(message.created_at).toLocaleTimeString()}
+                    <p className={cn(
+                      "text-xs mt-2",
+                      message.role === "user" 
+                        ? "text-purple-700/70" 
+                        : "text-muted-foreground"
+                    )}>
+                      {new Date(message.created_at).toLocaleTimeString([], { 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                      })}
                     </p>
                   )}
-                </div>
-              </div>
+                </MessageContent>
+              </Message>
             ))}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-lg px-4 py-2">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                  </div>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        </CardContent>
-      </Card>
+            
+            {isLoading && <Loader />}
+          </ConversationContent>
+        </Conversation>
+      </div>
 
       {/* Input area */}
       {isComplete ? (
-        <div className="space-y-2">
-          <Button
+        <div className="space-y-2 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-center gap-2 p-4 bg-green-50 border border-green-200 rounded-lg mb-2">
+            <CheckCircle2 className="w-5 h-5 text-green-600" />
+            <p className="text-sm font-medium text-green-800">All aspects collected! Ready to generate your campaign.</p>
+          </div>
+          <GradientButton
             onClick={onComplete}
             className="w-full"
-            size="lg"
           >
-            Continue to Storyline →
-          </Button>
+            Continue to Storyline
+            <Sparkles className="w-4 h-4 ml-2" />
+          </GradientButton>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <Input
-            ref={inputRef}
+        <PromptInput onSubmit={handleSubmit}>
+          <PromptInputTextarea
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={handleKeyPress}
             placeholder="Type your message..."
             disabled={isLoading}
-            className="flex-1"
           />
-          <Button type="submit" disabled={!inputValue.trim() || isLoading}>
-            Send
-          </Button>
-        </form>
+          <div className="flex justify-end">
+            <PromptInputSubmit disabled={!inputValue.trim() || isLoading} />
+          </div>
+        </PromptInput>
       )}
     </div>
   )
 }
-

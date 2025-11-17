@@ -4,6 +4,7 @@ import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import ChatInterface from "../components/ChatInterface"
 import { api } from "../services/api"
+import { Sparkles } from "lucide-react"
 
 export default function BrandChat() {
   const { brandId } = useParams()
@@ -26,26 +27,44 @@ export default function BrandChat() {
           throw new Error("Failed to create chat session")
         }
         
-        setCreativeBibleId(sessionResponse.creative_bible_id)
+        const creativeBibleId = sessionResponse.creative_bible_id
+        setCreativeBibleId(creativeBibleId)
         
         // Load existing messages if any
-        const messagesResponse = await api.getChatMessages(brandId, sessionResponse.creative_bible_id)
-        if (messagesResponse?.messages) {
+        const messagesResponse = await api.getChatMessages(brandId, creativeBibleId)
+        if (messagesResponse?.messages && messagesResponse.messages.length > 0) {
           setMessages(messagesResponse.messages)
           
           // Check session status for progress
-          const sessionStatus = await api.getChatSession(brandId, sessionResponse.creative_bible_id)
+          const sessionStatus = await api.getChatSession(brandId, creativeBibleId)
           setProgress(sessionStatus.progress || 0)
           setIsComplete(sessionStatus.is_complete || false)
-          
-          // If no messages, send initial greeting (agent will send it)
-          if (messagesResponse.messages.length === 0) {
-            // Send empty message to trigger agent greeting
-            await handleSendMessage("")
-          }
         } else {
-          // Send empty message to trigger agent greeting
-          await handleSendMessage("")
+          // No messages exist, trigger agent greeting by sending empty message
+          setIsLoading(true)
+          try {
+            const response = await api.sendChatMessage(brandId, creativeBibleId, "")
+            
+            if (response?.message) {
+              // Add agent response
+              setMessages([{
+                role: "assistant",
+                content: response.message,
+                created_at: new Date().toISOString()
+              }])
+            }
+
+            // Update progress
+            if (response?.metadata) {
+              setProgress(response.metadata.progress || 0)
+              setIsComplete(response.metadata.is_complete || false)
+            }
+          } catch (error) {
+            console.error("Failed to get initial message:", error)
+            alert(`Failed to start conversation: ${error.message}`)
+          } finally {
+            setIsLoading(false)
+          }
         }
       } catch (error) {
         console.error("Failed to initialize chat:", error)
@@ -123,32 +142,40 @@ export default function BrandChat() {
 
   if (isInitializing) {
     return (
-      <div className="min-h-screen bg-background p-8 flex items-center justify-center">
-        <div className="text-muted-foreground">Initializing chat...</div>
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 p-8 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-white/80 backdrop-blur-sm border border-purple-100 flex items-center justify-center animate-pulse shadow-sm">
+            <Sparkles className="w-6 h-6 text-purple-600 animate-spin" />
+          </div>
+          <div className="text-muted-foreground font-medium">Initializing chat...</div>
+          <p className="text-muted-foreground/70 text-sm">Setting up your AI consultant</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background p-8">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-5xl mx-auto">
         <Button
           variant="ghost"
           onClick={() => navigate("/dashboard")}
-          className="mb-6"
+          className="mb-6 hover:bg-white/50 transition-colors"
         >
           ← Back to Dashboard
         </Button>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-3xl">Create New Campaign</CardTitle>
-            <CardDescription>
+        <Card className="shadow-lg">
+          <CardHeader className="pb-4 border-b">
+            <CardTitle className="text-3xl font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
+              Create New Campaign
+            </CardTitle>
+            <CardDescription className="text-base mt-2">
               Chat with our AI consultant to describe your ideal video ad
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="h-[600px]">
+          <CardContent className="p-6">
+            <div className="h-[650px] sm:h-[700px]">
               <ChatInterface
                 messages={messages}
                 onSendMessage={handleSendMessage}
