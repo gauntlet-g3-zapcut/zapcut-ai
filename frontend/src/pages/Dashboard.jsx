@@ -171,9 +171,9 @@ export default function Dashboard() {
                         className="w-full h-48 object-cover rounded-md mb-4"
                       />
                       <Button
-                        variant="destructive"
+                        variant="ghost"
                         size="sm"
-                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-transparent hover:bg-red-50 text-red-600 hover:text-red-700"
                         onClick={(e) => {
                           e.stopPropagation()
                           handleDeleteBrand(brand.id, brand.title)
