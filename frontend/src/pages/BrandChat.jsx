@@ -1,72 +1,132 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
+import ChatInterface from "../components/ChatInterface"
 import { api } from "../services/api"
-
-const QUESTIONS = [
-  {
-    id: "style",
-    question: "How do you want this ad to look and feel?",
-    options: ["Modern & Sleek", "Energetic & Fun", "Luxurious & Sophisticated", "Minimal & Clean", "Bold & Dramatic"]
-  },
-  {
-    id: "audience",
-    question: "Who is your target audience?",
-    options: ["Young Adults (18-25)", "Professionals (25-40)", "Families", "Seniors (50+)", "Everyone"]
-  },
-  {
-    id: "emotion",
-    question: "What's the key message or emotion you want viewers to feel?",
-    options: ["Excitement", "Trust & Reliability", "Joy & Happiness", "Luxury & Prestige", "Innovation"]
-  },
-  {
-    id: "pacing",
-    question: "What should be the pacing and energy?",
-    options: ["Fast-paced & Exciting", "Slow & Elegant", "Dynamic Build-up", "Steady & Calm"]
-  },
-  {
-    id: "colors",
-    question: "What colors or visual style do you prefer?",
-    options: ["Bold & Vibrant", "Dark & Moody", "Light & Airy", "Natural & Earthy", "Match Product Colors"]
-  }
-]
 
 export default function BrandChat() {
   const { brandId } = useParams()
   const navigate = useNavigate()
-  const [answers, setAnswers] = useState({})
-  const [loading, setLoading] = useState(false)
+  const [messages, setMessages] = useState([])
+  const [creativeBibleId, setCreativeBibleId] = useState(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [isComplete, setIsComplete] = useState(false)
+  const [isInitializing, setIsInitializing] = useState(true)
 
-  const handleOptionSelect = (questionId, option) => {
-    setAnswers(prev => ({
-      ...prev,
-      [questionId]: option
-    }))
+  // Initialize chat session
+  useEffect(() => {
+    const initializeChat = async () => {
+      try {
+        setIsInitializing(true)
+        // Create chat session
+        const sessionResponse = await api.createChatSession(brandId)
+        if (!sessionResponse?.creative_bible_id) {
+          throw new Error("Failed to create chat session")
+        }
+        
+        setCreativeBibleId(sessionResponse.creative_bible_id)
+        
+        // Load existing messages if any
+        const messagesResponse = await api.getChatMessages(brandId, sessionResponse.creative_bible_id)
+        if (messagesResponse?.messages) {
+          setMessages(messagesResponse.messages)
+          
+          // Check session status for progress
+          const sessionStatus = await api.getChatSession(brandId, sessionResponse.creative_bible_id)
+          setProgress(sessionStatus.progress || 0)
+          setIsComplete(sessionStatus.is_complete || false)
+          
+          // If no messages, send initial greeting (agent will send it)
+          if (messagesResponse.messages.length === 0) {
+            // Send empty message to trigger agent greeting
+            await handleSendMessage("")
+          }
+        } else {
+          // Send empty message to trigger agent greeting
+          await handleSendMessage("")
+        }
+      } catch (error) {
+        console.error("Failed to initialize chat:", error)
+        alert(`Failed to start chat: ${error.message}`)
+      } finally {
+        setIsInitializing(false)
+      }
+    }
+
+    if (brandId) {
+      initializeChat()
+    }
+  }, [brandId])
+
+  const handleSendMessage = async (message) => {
+    if (!creativeBibleId) return
+
+    try {
+      setIsLoading(true)
+      
+      // Add user message to UI immediately
+      if (message) {
+        setMessages(prev => [...prev, {
+          role: "user",
+          content: message,
+          created_at: new Date().toISOString()
+        }])
+      }
+
+      // Send message to backend
+      const response = await api.sendChatMessage(brandId, creativeBibleId, message)
+      
+      if (response?.message) {
+        // Add agent response
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: response.message,
+          created_at: new Date().toISOString()
+        }])
+      }
+
+      // Update progress
+      if (response?.metadata) {
+        setProgress(response.metadata.progress || 0)
+        setIsComplete(response.metadata.is_complete || false)
+      }
+
+      // If complete, we can show the completion button
+      if (response?.metadata?.is_complete) {
+        setIsComplete(true)
+      }
+    } catch (error) {
+      console.error("Failed to send message:", error)
+      alert(`Failed to send message: ${error.message}`)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const handleSubmit = async () => {
-    // Check if all questions are answered
-    const allAnswered = QUESTIONS.every(q => answers[q.id])
-    if (!allAnswered) {
-      alert("Please answer all questions before continuing.")
-      return
-    }
+  const handleComplete = async () => {
+    if (!creativeBibleId) return
 
-    setLoading(true)
     try {
-      const response = await api.submitCampaignAnswers(brandId, answers)
-      if (!response?.creative_bible_id) {
-        throw new Error("Invalid response: missing creative_bible_id")
-      }
-      navigate(`/brands/${brandId}/storyline/${response.creative_bible_id}`)
+      setIsLoading(true)
+      await api.completeChat(brandId, creativeBibleId)
+      // Navigate to storyline review
+      navigate(`/brands/${brandId}/storyline/${creativeBibleId}`)
     } catch (error) {
-      console.error("Failed to submit answers:", error)
-      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
-      alert(`Failed to submit answers: ${errorMessage}. Please check the console for details.`)
+      console.error("Failed to complete chat:", error)
+      alert(`Failed to complete chat: ${error.message}`)
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
+  }
+
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-background p-8 flex items-center justify-center">
+        <div className="text-muted-foreground">Initializing chat...</div>
+      </div>
+    )
   }
 
   return (
@@ -84,39 +144,19 @@ export default function BrandChat() {
           <CardHeader>
             <CardTitle className="text-3xl">Create New Campaign</CardTitle>
             <CardDescription>
-              Select your preferences for your video ad campaign
+              Chat with our AI consultant to describe your ideal video ad
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-8">
-            {QUESTIONS.map((question, qIndex) => (
-              <div key={question.id} className="space-y-3">
-                <h3 className="text-lg font-medium">
-                  {qIndex + 1}. {question.question}
-                </h3>
-                <div className="grid grid-cols-1 gap-2">
-                  {question.options.map((option) => (
-                    <Button
-                      key={option}
-                      onClick={() => handleOptionSelect(question.id, option)}
-                      variant={answers[question.id] === option ? "default" : "outline"}
-                      className="w-full justify-start text-left h-auto py-3"
-                    >
-                      {option}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            <div className="pt-6">
-              <Button
-                onClick={handleSubmit}
-                disabled={loading || Object.keys(answers).length < QUESTIONS.length}
-                className="w-full"
-                size="lg"
-              >
-                {loading ? "Processing..." : "Continue to Storyline →"}
-              </Button>
+          <CardContent>
+            <div className="h-[600px]">
+              <ChatInterface
+                messages={messages}
+                onSendMessage={handleSendMessage}
+                isLoading={isLoading}
+                progress={progress}
+                isComplete={isComplete}
+                onComplete={handleComplete}
+              />
             </div>
           </CardContent>
         </Card>
@@ -124,4 +164,3 @@ export default function BrandChat() {
     </div>
   )
 }
-

@@ -18,6 +18,19 @@ class CreativeBible(Base):
     conversation_history = Column(JSON, nullable=True)
     created_at = Column(String, nullable=False)
     
+    # Chat-based preference storage
+    audience_description = Column(String, nullable=True)
+    audience_keywords = Column(JSON, nullable=True)
+    style_description = Column(String, nullable=True)
+    style_keywords = Column(JSON, nullable=True)
+    emotion_description = Column(String, nullable=True)
+    emotion_keywords = Column(JSON, nullable=True)
+    pacing_description = Column(String, nullable=True)
+    pacing_keywords = Column(JSON, nullable=True)
+    colors_description = Column(String, nullable=True)
+    colors_keywords = Column(JSON, nullable=True)
+    
     # Relationships
     campaigns = relationship("Campaign", back_populates="creative_bible")
+    chat_messages = relationship("ChatMessage", back_populates="creative_bible", cascade="all, delete-orphan")
 

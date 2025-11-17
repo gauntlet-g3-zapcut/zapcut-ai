@@ -162,3 +162,139 @@ async def migrate_audio_columns():
         logger.error(f"Migration error: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
+
+@app.post("/migrate-chat-columns")
+async def migrate_chat_columns():
+    """Add chat-related columns to creative_bibles table and create chat_messages table (migration)."""
+    try:
+        from app.database import get_engine
+        from sqlalchemy import text
+        
+        engine = get_engine()
+        
+        with engine.begin() as conn:
+            migration_sql = """
+            DO $$ 
+            BEGIN
+                -- Add preference description columns to creative_bibles if they don't exist
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'creative_bibles' AND column_name = 'audience_description'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN audience_description VARCHAR;
+                    RAISE NOTICE 'Added audience_description column';
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'creative_bibles' AND column_name = 'audience_keywords'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN audience_keywords JSONB;
+                    RAISE NOTICE 'Added audience_keywords column';
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'creative_bibles' AND column_name = 'style_description'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN style_description VARCHAR;
+                    RAISE NOTICE 'Added style_description column';
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'creative_bibles' AND column_name = 'style_keywords'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN style_keywords JSONB;
+                    RAISE NOTICE 'Added style_keywords column';
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'creative_bibles' AND column_name = 'emotion_description'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN emotion_description VARCHAR;
+                    RAISE NOTICE 'Added emotion_description column';
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'creative_bibles' AND column_name = 'emotion_keywords'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN emotion_keywords JSONB;
+                    RAISE NOTICE 'Added emotion_keywords column';
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'creative_bibles' AND column_name = 'pacing_description'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN pacing_description VARCHAR;
+                    RAISE NOTICE 'Added pacing_description column';
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'creative_bibles' AND column_name = 'pacing_keywords'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN pacing_keywords JSONB;
+                    RAISE NOTICE 'Added pacing_keywords column';
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'creative_bibles' AND column_name = 'colors_description'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN colors_description VARCHAR;
+                    RAISE NOTICE 'Added colors_description column';
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'creative_bibles' AND column_name = 'colors_keywords'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN colors_keywords JSONB;
+                    RAISE NOTICE 'Added colors_keywords column';
+                END IF;
+            END $$;
+            """
+            
+            conn.execute(text(migration_sql))
+            
+            # Create chat_messages table if it doesn't exist
+            create_chat_messages_table = """
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                creative_bible_id UUID NOT NULL REFERENCES creative_bibles(id) ON DELETE CASCADE,
+                role VARCHAR(20) NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_creative_bible_id 
+            ON chat_messages(creative_bible_id);
+            
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at 
+            ON chat_messages(created_at);
+            """
+            
+            conn.execute(text(create_chat_messages_table))
+            
+        logger.info("Chat columns migration completed successfully")
+        
+        return {
+            "status": "success",
+            "message": "Chat columns added to creative_bibles table and chat_messages table created",
+            "columns_added": [
+                "audience_description", "audience_keywords",
+                "style_description", "style_keywords",
+                "emotion_description", "emotion_keywords",
+                "pacing_description", "pacing_keywords",
+                "colors_description", "colors_keywords"
+            ],
+            "tables_created": ["chat_messages"]
+        }
+    except Exception as e:
+        logger.error(f"Migration error: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+

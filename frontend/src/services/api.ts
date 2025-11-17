@@ -173,5 +173,19 @@ export const api = {
     body: JSON.stringify({ answers }),
   }),
   getStoryline: <T = unknown>(brandId: string, creativeBibleId: string) => apiRequest<T>(`/api/brands/${brandId}/storyline/${creativeBibleId}`),
+
+  // Chat
+  createChatSession: <T = unknown>(brandId: string) => apiRequest<T>(`/api/brands/${brandId}/chat-session`, {
+    method: "POST",
+  }),
+  getChatSession: <T = unknown>(brandId: string, creativeBibleId: string) => apiRequest<T>(`/api/brands/${brandId}/chat-session/${creativeBibleId}`),
+  sendChatMessage: <T = unknown>(brandId: string, creativeBibleId: string, message: string) => apiRequest<T>(`/api/brands/${brandId}/chat/${creativeBibleId}`, {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  }),
+  getChatMessages: <T = unknown>(brandId: string, creativeBibleId: string) => apiRequest<T>(`/api/brands/${brandId}/chat/${creativeBibleId}/messages`),
+  completeChat: <T = unknown>(brandId: string, creativeBibleId: string) => apiRequest<T>(`/api/brands/${brandId}/chat/${creativeBibleId}/complete`, {
+    method: "POST",
+  }),
 }
 
