@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
-import { Plus } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import { api } from "../services/api"
 
 export default function Dashboard() {
@@ -45,6 +45,23 @@ export default function Dashboard() {
   const handleLogout = async () => {
     await logout()
     navigate("/")
+  }
+
+  const handleDeleteBrand = async (brandId, brandTitle) => {
+    if (!window.confirm(`Are you sure you want to delete "${brandTitle}"? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      await api.deleteBrand(brandId)
+      // Refresh the brands list
+      const data = await api.getBrands()
+      setBrands(data)
+    } catch (error) {
+      console.error("Failed to delete brand:", error)
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete brand"
+      alert(errorMessage)
+    }
   }
 
   return (
@@ -140,11 +157,24 @@ export default function Dashboard() {
                   className="group relative hover:shadow-lg transition-all"
                 >
                   <CardHeader>
-                    <img
-                      src={brand.product_image_1_url}
-                      alt={brand.title}
-                      className="w-full h-48 object-cover rounded-md mb-4"
-                    />
+                    <div className="relative">
+                      <img
+                        src={brand.product_image_1_url}
+                        alt={brand.title}
+                        className="w-full h-48 object-cover rounded-md mb-4"
+                      />
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteBrand(brand.id, brand.title)
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                     <CardTitle>{brand.title}</CardTitle>
                     <CardDescription>{brand.description}</CardDescription>
                   </CardHeader>

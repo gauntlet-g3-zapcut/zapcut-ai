@@ -123,3 +123,41 @@ async def get_brand(
         ],
     }
 
+
+@router.delete("/{brand_id}")
+async def delete_brand(
+    brand_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a brand."""
+    try:
+        brand_uuid = uuid.UUID(brand_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid brand ID")
+    
+    brand = db.query(Brand).filter(
+        Brand.id == brand_uuid,
+        Brand.user_id == current_user.id
+    ).first()
+    
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    
+    # Check if brand has campaigns
+    if len(brand.campaigns) > 0:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot delete brand with {len(brand.campaigns)} campaign(s). Please delete campaigns first."
+        )
+    
+    try:
+        db.delete(brand)
+        db.commit()
+        logger.info(f"Deleted brand: {brand.id} for user: {current_user.id}")
+        return {"message": "Brand deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting brand {brand_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete brand: {str(e)}")
+

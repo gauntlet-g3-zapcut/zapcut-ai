@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
-import { Button } from "../components/ui/button"
+import { GradientButton } from "@/components/ui/gradient-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 
 export default function Landing() {
@@ -19,20 +19,18 @@ export default function Landing() {
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
       <div className="container mx-auto px-4 py-16">
         <div className="text-center mb-16">
-          <h1 className="text-6xl font-bold mb-4 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            AdCraft AI
+          <h1 className="text-6xl font-bold mb-4 text-black" style={{ fontFamily: "'Playfair Display', serif" }}>
+            Create a winning ad in <span className="italic">minutes</span>
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
             Create stunning 4K video ads with AI. Generate professional product videos
             with music in minutes, not hours.
           </p>
-          <Button
-            size="lg"
+          <GradientButton
             onClick={() => navigate("/login")}
-            className="text-lg px-8 py-6"
           >
             Get Started
-          </Button>
+          </GradientButton>
         </div>
 
         <div className="grid md:grid-cols-3 gap-8 mt-16">

@@ -153,6 +153,9 @@ export const api = {
   getBrands: <T = unknown>() => apiRequest<T>("/api/brands/"),
   getBrand: <T = unknown>(brandId: string) => apiRequest<T>(`/api/brands/${brandId}`),
   createBrand: <T = unknown>(formData: FormData) => apiRequestWithFormData<T>("/api/brands/", formData),
+  deleteBrand: <T = unknown>(brandId: string) => apiRequest<T>(`/api/brands/${brandId}`, {
+    method: "DELETE",
+  }),
 
   // Campaigns
   getAllCampaigns: <T = unknown>() => apiRequest<T>("/api/campaigns/"),
