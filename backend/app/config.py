@@ -50,13 +50,16 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         """Get database URL, constructing from Supabase if needed."""
-        if self.DATABASE_URL and self.DATABASE_URL.startswith(('postgresql://', 'postgres://')):
+        if self.DATABASE_URL:
+            # Convert postgresql:// to postgresql+psycopg:// for psycopg3
+            if self.DATABASE_URL.startswith(('postgresql://', 'postgres://')):
+                return self.DATABASE_URL.replace('postgresql://', 'postgresql+psycopg://').replace('postgres://', 'postgresql+psycopg://')
             return self.DATABASE_URL
         
         if self.SUPABASE_URL and self.SUPABASE_DB_PASSWORD:
             project_ref = self.SUPABASE_URL.replace('https://', '').replace('http://', '').split('.')[0]
             encoded_password = quote_plus(self.SUPABASE_DB_PASSWORD)
-            return f"postgresql://postgres:{encoded_password}@db.{project_ref}.supabase.co:5432/postgres"
+            return f"postgresql+psycopg://postgres:{encoded_password}@db.{project_ref}.supabase.co:5432/postgres"
         
         raise ValueError(
             "DATABASE_URL is required. Set DATABASE_URL or provide SUPABASE_URL and SUPABASE_DB_PASSWORD."
