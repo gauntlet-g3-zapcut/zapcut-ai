@@ -14,38 +14,64 @@ const getApiUrl = (): string => {
 const API_URL = getApiUrl()
 
 /**
- * Get a valid Supabase auth token
+ * Get a valid Supabase auth token with retry logic
  */
 async function getAuthToken(): Promise<string> {
-  let { data: { session }, error } = await supabase.auth.getSession()
-
-  console.log('[Auth] getSession result:', {
-    hasSession: !!session,
-    hasToken: !!session?.access_token,
-    error: error?.message
-  })
-
-  // If no session or error, try to refresh
-  if (error || !session?.access_token) {
-    console.log('[Auth] Attempting to refresh session...')
-    try {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
-      console.log('[Auth] Refresh result:', {
-        hasSession: !!refreshData.session,
-        hasToken: !!refreshData.session?.access_token,
-        error: refreshError?.message
-      })
-      if (!refreshError && refreshData.session?.access_token) {
-        return refreshData.session.access_token
-      }
-    } catch (refreshErr) {
-      console.error('[Auth] Failed to refresh session:', refreshErr)
-    }
-    console.error('[Auth] Authentication failed - no valid token')
-    throw new Error('User not authenticated')
+  // Check localStorage for debugging
+  if (typeof window !== 'undefined') {
+    const storedSession = localStorage.getItem('supabase.auth.token')
+    console.log('[Auth] localStorage check:', {
+      hasStoredSession: !!storedSession,
+      storageSize: storedSession?.length || 0
+    })
   }
 
-  return session.access_token
+  // Try to get session with a small retry in case auto-refresh is in progress
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data: { session }, error } = await supabase.auth.getSession()
+
+    console.log('[Auth] getSession result (attempt ' + (attempt + 1) + '):', {
+      hasSession: !!session,
+      hasToken: !!session?.access_token,
+      tokenExpiry: session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'N/A',
+      error: error?.message
+    })
+
+    // If we have a valid session, return it
+    if (!error && session?.access_token) {
+      console.log('[Auth] Valid session found')
+      return session.access_token
+    }
+
+    // If first attempt fails, try manual refresh
+    if (attempt === 0) {
+      console.log('[Auth] Attempting manual session refresh...')
+      try {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+        console.log('[Auth] Manual refresh result:', {
+          hasSession: !!refreshData.session,
+          hasToken: !!refreshData.session?.access_token,
+          error: refreshError?.message
+        })
+
+        if (!refreshError && refreshData.session?.access_token) {
+          console.log('[Auth] Session refreshed successfully')
+          return refreshData.session.access_token
+        }
+      } catch (refreshErr) {
+        console.error('[Auth] Manual refresh failed:', refreshErr)
+      }
+    }
+
+    // Wait a bit before retrying (in case auto-refresh is in progress)
+    if (attempt < 2) {
+      console.log('[Auth] Waiting before retry...')
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+  }
+
+  console.error('[Auth] Authentication failed after all retries - no valid token')
+  throw new Error('User not authenticated. Please log out and log back in.')
 }
 
 interface RequestOptions extends RequestInit {
