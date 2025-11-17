@@ -19,16 +19,29 @@ const API_URL = getApiUrl()
 async function getAuthToken(): Promise<string> {
   let { data: { session }, error } = await supabase.auth.getSession()
 
+  console.log('[Auth] getSession result:', {
+    hasSession: !!session,
+    hasToken: !!session?.access_token,
+    error: error?.message
+  })
+
   // If no session or error, try to refresh
   if (error || !session?.access_token) {
+    console.log('[Auth] Attempting to refresh session...')
     try {
       const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+      console.log('[Auth] Refresh result:', {
+        hasSession: !!refreshData.session,
+        hasToken: !!refreshData.session?.access_token,
+        error: refreshError?.message
+      })
       if (!refreshError && refreshData.session?.access_token) {
         return refreshData.session.access_token
       }
     } catch (refreshErr) {
-      console.error('Failed to refresh session:', refreshErr)
+      console.error('[Auth] Failed to refresh session:', refreshErr)
     }
+    console.error('[Auth] Authentication failed - no valid token')
     throw new Error('User not authenticated')
   }
 

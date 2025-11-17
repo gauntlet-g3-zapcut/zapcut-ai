@@ -102,6 +102,7 @@ export default function EditBrand() {
       navigate("/dashboard")
     } catch (err) {
       // Extract error message from error object
+      console.error('[EditBrand] Update failed:', err)
       let errorMessage = "Failed to update brand"
       if (err.message) {
         errorMessage = err.message
@@ -113,6 +114,11 @@ export default function EditBrand() {
         errorMessage = err.response.data.detail
       }
       setError(errorMessage)
+
+      // If authentication error, suggest re-login
+      if (errorMessage.toLowerCase().includes('authenticated') || errorMessage.toLowerCase().includes('session')) {
+        setError(errorMessage + ' - Please try logging out and logging back in.')
+      }
     } finally {
       setLoading(false)
     }
