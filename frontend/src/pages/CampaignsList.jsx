@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
 import { Button } from "../components/ui/button"
+import { GradientButton } from "@/components/ui/gradient-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { api } from "../services/api"
 import { Play, Clock, CheckCircle2, XCircle, Loader2, Trash2 } from "lucide-react"
@@ -90,12 +91,12 @@ export default function CampaignsList() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 bg-card border-r min-h-screen p-6 flex flex-col">
+        <aside className="w-64 bg-white/80 backdrop-blur-sm border-r border-purple-100 min-h-screen p-6 flex flex-col">
           <div className="mb-8">
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+            <h2 className="text-2xl font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
               AdCraft AI
             </h2>
           </div>
@@ -109,8 +110,8 @@ export default function CampaignsList() {
               Brands
             </Button>
             <Button 
-              variant="default" 
-              className="w-full justify-start"
+              variant="ghost" 
+              className="w-full justify-start font-medium"
             >
               Campaigns
             </Button>
@@ -129,8 +130,10 @@ export default function CampaignsList() {
         {/* Main Content */}
         <main className="flex-1 p-8">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Campaigns</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-3xl font-bold mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>
+              Campaigns
+            </h1>
+            <p className="text-base text-muted-foreground">
               View all your video ad campaigns across all brands
             </p>
           </div>
@@ -142,15 +145,17 @@ export default function CampaignsList() {
           ) : campaigns.length === 0 ? (
             <Card className="p-12 text-center">
               <CardHeader>
-                <CardTitle className="text-2xl mb-2">No campaigns yet</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-2xl mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>
+                  No campaigns yet
+                </CardTitle>
+                <CardDescription className="text-base">
                   Create your first campaign to start generating video ads
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Button onClick={() => navigate("/dashboard")}>
+                <GradientButton onClick={() => navigate("/dashboard")}>
                   Go to Brands
-                </Button>
+                </GradientButton>
               </CardContent>
             </Card>
           ) : (
@@ -183,8 +188,10 @@ export default function CampaignsList() {
                         )}
                       </Button>
                     </div>
-                    <CardTitle className="text-lg">{campaign.brand_title}</CardTitle>
-                    <CardDescription>
+                    <CardTitle className="text-lg" style={{ fontFamily: "'Playfair Display', serif" }}>
+                      {campaign.brand_title}
+                    </CardTitle>
+                    <CardDescription className="text-base">
                       {campaign.video_urls_count} scenes generated
                     </CardDescription>
                   </CardHeader>
@@ -195,9 +202,8 @@ export default function CampaignsList() {
                       </div>
                       <div className="flex gap-2 mt-4">
                         {campaign.status === "completed" && campaign.final_video_url && (
-                          <Button
+                          <GradientButton
                             className="flex-1"
-                            size="sm"
                             onClick={(e) => {
                               e.stopPropagation()
                               navigate(`/campaigns/${campaign.id}/video`)
@@ -205,7 +211,7 @@ export default function CampaignsList() {
                           >
                             <Play className="mr-2 h-4 w-4" />
                             View Video
-                          </Button>
+                          </GradientButton>
                         )}
                         {(campaign.status === "processing" || campaign.status === "pending") && (
                           <Button

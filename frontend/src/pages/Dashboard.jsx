@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
 import { Button } from "../components/ui/button"
+import { GradientButton } from "@/components/ui/gradient-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Plus, Trash2 } from "lucide-react"
 import { api } from "../services/api"
@@ -65,20 +66,20 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 bg-card border-r min-h-screen p-6">
+        <aside className="w-64 bg-white/80 backdrop-blur-sm border-r border-purple-100 min-h-screen p-6">
           <div className="mb-8">
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+            <h2 className="text-2xl font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
               AdCraft AI
             </h2>
           </div>
 
           <nav className="space-y-2">
             <Button 
-              variant="default" 
-              className="w-full justify-start"
+              variant="ghost" 
+              className="w-full justify-start font-medium"
             >
               Brands
             </Button>
@@ -105,15 +106,17 @@ export default function Dashboard() {
         <main className="flex-1 p-8">
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h1 className="text-3xl font-bold mb-2">Brands</h1>
-              <p className="text-muted-foreground">
+              <h1 className="text-3xl font-bold mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>
+                Brands
+              </h1>
+              <p className="text-base text-muted-foreground">
                 See your projects and create new ones under the selected brand.
               </p>
             </div>
-            <Button onClick={() => navigate("/brands/create")}>
+            <GradientButton onClick={() => navigate("/brands/create")}>
               <Plus className="mr-2 h-4 w-4" />
               Create Brand
-            </Button>
+            </GradientButton>
           </div>
 
           {loading ? (
@@ -123,30 +126,34 @@ export default function Dashboard() {
           ) : error ? (
             <Card className="p-12 text-center">
               <CardHeader>
-                <CardTitle className="text-2xl mb-2 text-destructive">Error</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-2xl mb-2 text-destructive" style={{ fontFamily: "'Playfair Display', serif" }}>
+                  Error
+                </CardTitle>
+                <CardDescription className="text-base">
                   {error}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Button onClick={() => window.location.reload()}>
+                <GradientButton onClick={() => window.location.reload()}>
                   Retry
-                </Button>
+                </GradientButton>
               </CardContent>
             </Card>
           ) : brands.length === 0 ? (
             <Card className="p-12 text-center">
               <CardHeader>
-                <CardTitle className="text-2xl mb-2">No brands yet</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-2xl mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>
+                  No brands yet
+                </CardTitle>
+                <CardDescription className="text-base">
                   Create your first brand to start generating video ads
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Button onClick={() => navigate("/brands/create")}>
+                <GradientButton onClick={() => navigate("/brands/create")}>
                   <Plus className="mr-2 h-4 w-4" />
                   Create Your First Brand
-                </Button>
+                </GradientButton>
               </CardContent>
             </Card>
           ) : (
@@ -175,20 +182,24 @@ export default function Dashboard() {
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
-                    <CardTitle>{brand.title}</CardTitle>
-                    <CardDescription>{brand.description}</CardDescription>
+                    <CardTitle style={{ fontFamily: "'Playfair Display', serif" }}>
+                      {brand.title}
+                    </CardTitle>
+                    <CardDescription className="text-base">
+                      {brand.description}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground mb-4">
                       {brand.campaign_count || 0} campaigns
                     </p>
-                    <Button
+                    <GradientButton
                       onClick={() => navigate(`/brands/${brand.id}/chat`)}
                       className="w-full opacity-0 group-hover:opacity-100 transition-opacity"
                       size="sm"
                     >
                       Create Campaign
-                    </Button>
+                    </GradientButton>
                   </CardContent>
                 </Card>
               ))}
