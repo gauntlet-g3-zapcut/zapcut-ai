@@ -65,6 +65,11 @@ def upload_image_to_supabase_s3(
     for attempt in range(MAX_RETRIES):
         try:
             # Initialize S3 client for Supabase
+            logger.info(
+                f"Initializing S3 client | endpoint={settings.SUPABASE_S3_ENDPOINT} | "
+                f"access_key_prefix={settings.SUPABASE_S3_ACCESS_KEY[:8]}... | "
+                f"region=us-east-1"
+            )
             s3_client = boto3.client(
                 's3',
                 endpoint_url=settings.SUPABASE_S3_ENDPOINT,
@@ -72,6 +77,14 @@ def upload_image_to_supabase_s3(
                 aws_secret_access_key=settings.SUPABASE_S3_SECRET_KEY,
                 region_name='us-east-1'
             )
+
+            # Test: Try to list buckets to see what's available
+            try:
+                buckets_response = s3_client.list_buckets()
+                available_buckets = [b['Name'] for b in buckets_response.get('Buckets', [])]
+                logger.info(f"Available S3 buckets: {available_buckets}")
+            except Exception as list_error:
+                logger.warning(f"Could not list buckets: {str(list_error)}")
 
             # Bucket and file configuration
             bucket_name = 'brand-images'
@@ -81,6 +94,7 @@ def upload_image_to_supabase_s3(
             logger.info(
                 f"Uploading image to S3 | brand={brand_id} | "
                 f"image_number={image_number} | size={len(image_bytes)} bytes | "
+                f"bucket={bucket_name} | file_key={file_key} | content_type={content_type} | "
                 f"attempt={attempt + 1}/{MAX_RETRIES}"
             )
 
@@ -195,6 +209,7 @@ def delete_image_from_supabase_s3(image_url: str) -> bool:
             return False
 
         # Initialize S3 client
+        logger.debug(f"Initializing S3 client for deletion | endpoint={settings.SUPABASE_S3_ENDPOINT}")
         s3_client = boto3.client(
             's3',
             endpoint_url=settings.SUPABASE_S3_ENDPOINT,
@@ -203,10 +218,11 @@ def delete_image_from_supabase_s3(image_url: str) -> bool:
             region_name='us-east-1'
         )
 
+        logger.info(f"Deleting image from S3 | bucket={bucket_name} | key={file_key}")
         # Delete the object
         s3_client.delete_object(Bucket=bucket_name, Key=file_key)
 
-        logger.info(f"Image deleted from S3 | bucket={bucket_name} | key={file_key}")
+        logger.info(f"Image deleted successfully from S3 | bucket={bucket_name} | key={file_key}")
         return True
 
     except ClientError as e:

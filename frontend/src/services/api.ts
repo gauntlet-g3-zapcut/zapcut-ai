@@ -95,6 +95,12 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
 
   const url = `${API_URL}${endpoint}`
 
+  console.log('[API] Request starting:', {
+    endpoint,
+    method: options.method || 'GET',
+    hasBody: !!options.body,
+  })
+
   // Add timeout to prevent hanging requests
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
@@ -131,11 +137,23 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: "An error occurred" })) as { detail?: string; message?: string }
-      console.error(`[API] Request failed: ${response.status}`, error)
+      console.error('[API] Request failed:', {
+        endpoint,
+        status: response.status,
+        statusText: response.statusText,
+        error,
+      })
       throw new Error(error.detail || error.message || "Request failed")
     }
 
     const data = await response.json()
+    console.log('[API] Request successful:', {
+      endpoint,
+      status: response.status,
+      dataKeys: typeof data === 'object' && data !== null ? Object.keys(data) : 'non-object',
+      isArray: Array.isArray(data),
+      arrayLength: Array.isArray(data) ? data.length : undefined,
+    })
     return data as T
   } catch (error: unknown) {
     clearTimeout(timeoutId)
@@ -159,6 +177,26 @@ interface ValidationError {
 async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: FormData, options: FormDataRequestOptions = {}, retryCount = 0): Promise<T> {
   const maxRetries = 1
   const token = await getAuthToken()
+
+  // Log FormData contents for debugging
+  console.log('[API] FormData request starting:', {
+    endpoint,
+    method: options.method || "POST",
+    formDataKeys: Array.from(formData.keys()),
+  })
+
+  // Log file details
+  formData.forEach((value, key) => {
+    if (value instanceof File) {
+      console.log(`[API] FormData file: ${key}`, {
+        name: value.name,
+        size: value.size,
+        type: value.type,
+      })
+    } else {
+      console.log(`[API] FormData field: ${key} =`, value)
+    }
+  })
 
   const response = await fetch(`${API_URL}${endpoint}`, {
     method: options.method || "POST",
@@ -195,6 +233,13 @@ async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: F
       errorData = { detail: `Request failed with status ${response.status}` }
     }
 
+    console.error('[API] FormData request failed:', {
+      endpoint,
+      status: response.status,
+      statusText: response.statusText,
+      error: errorData,
+    })
+
     // Handle FastAPI validation errors
     if (errorData.detail && Array.isArray(errorData.detail)) {
       const errors = errorData.detail.map((e: ValidationError) => `${e.loc.join('.')}: ${e.msg}`).join(', ')
@@ -204,7 +249,14 @@ async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: F
     throw new Error(errorData.detail as string || errorData.message || `Request failed with status ${response.status}`)
   }
 
-  return response.json() as Promise<T>
+  const responseData = await response.json() as Promise<T>
+  console.log('[API] FormData request successful:', {
+    endpoint,
+    status: response.status,
+    data: responseData,
+  })
+
+  return responseData
 }
 
 export const api = {

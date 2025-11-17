@@ -175,20 +175,31 @@ async def get_brand(
     db: Session = Depends(get_db)
 ):
     """Get brand details."""
+    logger.info(f"Fetching brand details | brand_id={brand_id} | user_id={current_user.id}")
+
     try:
         brand_uuid = uuid.UUID(brand_id)
     except ValueError:
+        logger.warning(f"Invalid brand ID format | brand_id={brand_id}")
         raise HTTPException(status_code=400, detail="Invalid brand ID")
-    
+
     brand = db.query(Brand).filter(
         Brand.id == brand_uuid,
         Brand.user_id == current_user.id
     ).first()
-    
+
     if not brand:
+        logger.warning(f"Brand not found | brand_id={brand_id} | user_id={current_user.id}")
         raise HTTPException(status_code=404, detail="Brand not found")
-    
-    return {
+
+    logger.info(
+        f"Brand retrieved successfully | brand_id={brand_id} | "
+        f"title={brand.title} | campaigns={len(brand.campaigns)} | "
+        f"has_image_1={bool(brand.product_image_1_url)} | "
+        f"has_image_2={bool(brand.product_image_2_url)}"
+    )
+
+    response = {
         "id": str(brand.id),
         "title": brand.title,
         "description": brand.description,
@@ -204,6 +215,13 @@ async def get_brand(
             for campaign in brand.campaigns
         ],
     }
+
+    if brand.product_image_1_url:
+        logger.debug(f"Brand image 1 URL | url={brand.product_image_1_url}")
+    if brand.product_image_2_url:
+        logger.debug(f"Brand image 2 URL | url={brand.product_image_2_url}")
+
+    return response
 
 
 @router.put("/{brand_id}")
