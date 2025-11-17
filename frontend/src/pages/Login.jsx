@@ -18,6 +18,7 @@ export default function Login() {
   // Redirect if already logged in
   useEffect(() => {
     if (user) {
+      console.log('Current user in Login page:', user ? { id: user.id, email: user.email } : null)
       navigate("/dashboard")
     }
   }, [user, navigate])
@@ -37,6 +38,7 @@ export default function Login() {
         setIsSignup(false)
       } else {
         await loginWithEmail(email, password)
+        console.log('✅ Login successful in Login component!')
         // Wait a moment for auth state to update
         setTimeout(() => {
           navigate("/dashboard")

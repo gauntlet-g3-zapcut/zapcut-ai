@@ -21,7 +21,9 @@ export function AuthProvider({ children }) {
           try {
             const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
             if (!refreshError && refreshData.session && mounted) {
-              setUser(refreshData.session.user)
+              const refreshedUser = refreshData.session.user
+              setUser(refreshedUser)
+              console.log('Current user (refreshed):', refreshedUser ? { id: refreshedUser.id, email: refreshedUser.email } : null)
               setLoading(false)
               return
             }
@@ -31,7 +33,9 @@ export function AuthProvider({ children }) {
         }
         
         if (mounted) {
-          setUser(session?.user ?? null)
+          const currentUser = session?.user ?? null
+          setUser(currentUser)
+          console.log('Current user:', currentUser ? { id: currentUser.id, email: currentUser.email } : null)
           setLoading(false)
         }
       } catch (err) {
@@ -48,9 +52,11 @@ export function AuthProvider({ children }) {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (mounted) {
-        setUser(session?.user ?? null)
+        const currentUser = session?.user ?? null
+        setUser(currentUser)
+        console.log('Auth state changed:', event, currentUser ? { id: currentUser.id, email: currentUser.email } : null)
         setLoading(false)
       }
     })
@@ -71,6 +77,7 @@ export function AuthProvider({ children }) {
         console.error('Login error:', error)
         throw new Error(error.message || 'Failed to sign in')
       }
+      console.log('✅ Login successful!', { user: data.user ? { id: data.user.id, email: data.user.email } : null })
       return data
     } catch (err) {
       console.error('Login exception:', err)
@@ -103,6 +110,7 @@ export function AuthProvider({ children }) {
       },
     })
     if (error) throw error
+    console.log('✅ Google login initiated successfully')
     // OAuth redirects automatically, so we don't need to return data here
     return data
   }
