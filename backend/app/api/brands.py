@@ -124,6 +124,60 @@ async def get_brand(
     }
 
 
+@router.put("/{brand_id}")
+async def update_brand(
+    brand_id: str,
+    title: str = Form(...),
+    description: str = Form(...),
+    product_image_1: UploadFile = File(None),
+    product_image_2: UploadFile = File(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update a brand."""
+    try:
+        brand_uuid = uuid.UUID(brand_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid brand ID")
+    
+    brand = db.query(Brand).filter(
+        Brand.id == brand_uuid,
+        Brand.user_id == current_user.id
+    ).first()
+    
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    
+    # Update title and description
+    brand.title = title
+    brand.description = description
+    
+    # Update images only if new ones are provided
+    if product_image_1:
+        # TODO: Upload images to storage
+        # For now, use placeholder URLs
+        brand.product_image_1_url = f"https://placehold.co/400x400?text={title}+Image+1"
+    
+    if product_image_2:
+        # TODO: Upload images to storage
+        # For now, use placeholder URLs
+        brand.product_image_2_url = f"https://placehold.co/400x400?text={title}+Image+2"
+    
+    db.commit()
+    db.refresh(brand)
+    
+    logger.info(f"Updated brand: {brand.id} for user: {current_user.id}")
+    
+    return {
+        "id": str(brand.id),
+        "title": brand.title,
+        "description": brand.description,
+        "product_image_1_url": brand.product_image_1_url,
+        "product_image_2_url": brand.product_image_2_url,
+        "created_at": brand.created_at,
+    }
+
+
 @router.delete("/{brand_id}")
 async def delete_brand(
     brand_id: str,

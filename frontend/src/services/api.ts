@@ -102,7 +102,7 @@ async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: F
   const token = await getAuthToken()
 
   const response = await fetch(`${API_URL}${endpoint}`, {
-    method: "POST",
+    method: options.method || "POST",
     body: formData,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -153,6 +153,9 @@ export const api = {
   getBrands: <T = unknown>() => apiRequest<T>("/api/brands/"),
   getBrand: <T = unknown>(brandId: string) => apiRequest<T>(`/api/brands/${brandId}`),
   createBrand: <T = unknown>(formData: FormData) => apiRequestWithFormData<T>("/api/brands/", formData),
+  updateBrand: <T = unknown>(brandId: string, formData: FormData) => apiRequestWithFormData<T>(`/api/brands/${brandId}`, formData, {
+    method: "PUT",
+  }),
   deleteBrand: <T = unknown>(brandId: string) => apiRequest<T>(`/api/brands/${brandId}`, {
     method: "DELETE",
   }),

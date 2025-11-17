@@ -69,7 +69,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 bg-white/80 backdrop-blur-sm border-r border-purple-100 min-h-screen p-6">
+        <aside className="w-64 bg-white/80 backdrop-blur-sm border-r border-purple-100 h-screen p-6 flex flex-col fixed left-0 top-0 overflow-y-auto">
           <div className="mb-8">
             <h2 className="text-2xl font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
               AdCraft AI
@@ -96,14 +96,19 @@ export default function Dashboard() {
             <div className="text-sm text-muted-foreground mb-2">
               {user?.email}
             </div>
-            <Button variant="outline" size="sm" onClick={handleLogout} className="w-full">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleLogout} 
+              className="w-full bg-transparent hover:bg-red-50 text-red-600 hover:text-red-700 border-red-300 hover:border-red-400"
+            >
               Logout
             </Button>
           </div>
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-8 ml-64">
           <div className="flex justify-between items-center mb-8">
             <div>
               <h1 className="text-3xl font-bold mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>
@@ -113,8 +118,8 @@ export default function Dashboard() {
                 See your projects and create new ones under the selected brand.
               </p>
             </div>
-            <GradientButton onClick={() => navigate("/brands/create")}>
-              <Plus className="mr-2 h-4 w-4" />
+            <GradientButton onClick={() => navigate("/brands/create")} className="text-sm px-4 py-2">
+              <Plus className="mr-2 h-3 w-3" />
               Create Brand
             </GradientButton>
           </div>
@@ -166,9 +171,13 @@ export default function Dashboard() {
                   <CardHeader>
                     <div className="relative">
                       <img
-                        src={brand.product_image_1_url}
+                        src={brand.product_image_1_url || `https://placehold.co/400x300?text=${encodeURIComponent(brand.title)}`}
                         alt={brand.title}
-                        className="w-full h-48 object-cover rounded-md mb-4"
+                        className="w-full h-48 object-cover rounded-md mb-4 bg-gray-100"
+                        onError={(e) => {
+                          // Fallback to placeholder if image fails to load
+                          e.target.src = `https://placehold.co/400x300?text=${encodeURIComponent(brand.title)}`
+                        }}
                       />
                       <Button
                         variant="ghost"
@@ -185,7 +194,7 @@ export default function Dashboard() {
                     <CardTitle style={{ fontFamily: "'Playfair Display', serif" }}>
                       {brand.title}
                     </CardTitle>
-                    <CardDescription className="text-base">
+                    <CardDescription className="text-base line-clamp-1">
                       {brand.description}
                     </CardDescription>
                   </CardHeader>
@@ -193,13 +202,21 @@ export default function Dashboard() {
                     <p className="text-sm text-muted-foreground mb-4">
                       {brand.campaign_count || 0} campaigns
                     </p>
-                    <GradientButton
-                      onClick={() => navigate(`/brands/${brand.id}/chat`)}
-                      className="w-full opacity-0 group-hover:opacity-100 transition-opacity"
-                      size="sm"
-                    >
-                      Create Campaign
-                    </GradientButton>
+                    <div className="flex justify-between gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => navigate(`/brands/${brand.id}/edit`)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-sm px-4 py-2"
+                      >
+                        Edit Brand
+                      </Button>
+                      <GradientButton
+                        onClick={() => navigate(`/brands/${brand.id}/chat`)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-sm px-4 py-2"
+                      >
+                        Create Campaign
+                      </GradientButton>
+                    </div>
                   </CardContent>
                 </Card>
               ))}

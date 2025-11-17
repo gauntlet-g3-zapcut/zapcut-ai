@@ -4,6 +4,7 @@ import Landing from "./pages/Landing"
 import Login from "./pages/Login"
 import Dashboard from "./pages/Dashboard"
 import CreateBrand from "./pages/CreateBrand"
+import EditBrand from "./pages/EditBrand"
 import BrandChat from "./pages/BrandChat"
 import StorylineReview from "./pages/StorylineReview"
 import VideoProgress from "./pages/VideoProgress"
@@ -50,6 +51,14 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <CreateBrand />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/brands/:brandId/edit"
+        element={
+          <PrivateRoute>
+            <EditBrand />
           </PrivateRoute>
         }
       />
