@@ -334,6 +334,10 @@ Assistant:"""
     
     def load_conversation_history(self, messages: List[Dict[str, str]]):
         """Load conversation history into memory."""
+        # Skip if no messages to load - avoids unnecessary reinitialization
+        if not messages:
+            return
+            
         self.memory.clear()
         for msg in messages:
             if msg.get("role") == "user":
@@ -343,4 +347,18 @@ Assistant:"""
         
         # Reinitialize conversation with loaded history
         self._initialize_conversation()
+    
+    def get_initial_greeting(self) -> str:
+        """Get a template-based initial greeting without making an API call."""
+        next_aspect = self._get_next_aspect()
+        aspect_name = ASPECT_NAMES.get(next_aspect, next_aspect) if next_aspect else "preferences"
+        aspect_name_lower = aspect_name.lower()
+        
+        greeting = f"""Hey there! 👋 
+
+I'm excited to help you create an amazing video ad for {self.brand_name}!
+No fancy vocabulary needed—just describe what you're picturing in your own words, and we'll build something great together. Let's start with your {aspect_name_lower}. {ASPECT_EXAMPLES.get(next_aspect, "Tell me what you're thinking!")}
+What comes to mind?"""
+        
+        return greeting.strip()
 

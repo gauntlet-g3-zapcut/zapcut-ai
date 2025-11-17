@@ -14,7 +14,7 @@ from app.models.creative_bible import CreativeBible
 from app.models.chat_message import ChatMessage
 from app.api.auth import get_current_user
 from app.config import settings
-from app.services.chat_agent import ChatAgent
+from app.services.chat_agent import ChatAgent, ASPECT_NAMES
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -671,8 +671,9 @@ async def send_chat_message(
         cache_key = str(creative_bible.id)
         if cache_key in _agent_cache:
             agent = _agent_cache[cache_key]
-            # Reload conversation history in case it changed
-            agent.load_conversation_history(message_history)
+            # Only reload conversation history if there are messages
+            if message_history:
+                agent.load_conversation_history(message_history)
             logger.debug(f"Using cached agent for creative_bible: {creative_bible.id}")
         else:
             # Initialize new agent
@@ -680,8 +681,9 @@ async def send_chat_message(
                 brand_name=brand.title or "Product",
                 brand_description=brand.description or ""
             )
-            # Load conversation history
-            agent.load_conversation_history(message_history)
+            # Only load conversation history if there are messages
+            if message_history:
+                agent.load_conversation_history(message_history)
             # Cache the agent
             _agent_cache[cache_key] = agent
             logger.debug(f"Created and cached new agent for creative_bible: {creative_bible.id}")
@@ -711,8 +713,16 @@ async def send_chat_message(
         
         # Process message - if no messages exist and message is empty, trigger initial greeting
         if len(message_history) == 0 and not message_request.message.strip():
-            # Trigger initial greeting
-            agent_response, metadata = agent.process_message("Hello, I'm ready to start creating my campaign.")
+            # Use template-based greeting for faster initialization (no API call)
+            agent_response = agent.get_initial_greeting()
+            next_aspect = agent._get_next_aspect()
+            metadata = {
+                "progress": len(collected),
+                "collected_aspects": [ASPECT_NAMES.get(a, a) for a in collected],
+                "next_aspect": ASPECT_NAMES.get(next_aspect, next_aspect) if next_aspect else None,
+                "is_complete": len(collected) >= 5,
+                "extracted_preferences": {}
+            }
         else:
             # Process normal message
             agent_response, metadata = agent.process_message(message_request.message if message_request.message.strip() else "Continue")
