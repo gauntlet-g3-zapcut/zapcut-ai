@@ -26,8 +26,6 @@ dist-ssr
 build/
 out/
 
-package-lock.json
-
 # Environment variables
 .env
 .env.local
