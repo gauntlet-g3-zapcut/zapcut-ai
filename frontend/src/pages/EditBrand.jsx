@@ -98,8 +98,8 @@ export default function EditBrand() {
       })
 
       await api.updateBrand(brandId, formData)
-      // Navigate back to dashboard to show the updated brand
-      navigate("/dashboard")
+      // Navigate back to dashboard with state to force refresh
+      navigate("/dashboard", { state: { refetch: true } })
     } catch (err) {
       // Extract error message from error object
       console.error('[EditBrand] Update failed:', err)
