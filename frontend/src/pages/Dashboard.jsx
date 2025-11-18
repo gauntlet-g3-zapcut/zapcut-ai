@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
 import { Button } from "../components/ui/button"
 import { GradientButton } from "@/components/ui/gradient-button"
+import HomeSidebar from "../components/layout/HomeSidebar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Plus, Trash2 } from "lucide-react"
 import { api } from "../services/api"
@@ -126,44 +127,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
       <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-64 bg-white/80 backdrop-blur-sm border-r border-purple-100 h-screen p-6 flex flex-col fixed left-0 top-0 overflow-y-auto">
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
-              AdCraft AI
-            </h2>
-          </div>
-
-          <nav className="space-y-2">
-            <Button 
-              variant="ghost" 
-              className="w-full justify-start font-medium"
-            >
-              Brands
-            </Button>
-            <Button 
-              variant="ghost" 
-              className="w-full justify-start"
-              onClick={() => navigate("/campaigns")}
-            >
-              Campaigns
-            </Button>
-          </nav>
-
-          <div className="mt-auto pt-8">
-            <div className="text-sm text-muted-foreground mb-2">
-              {user?.email}
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleLogout} 
-              className="w-full bg-transparent hover:bg-red-50 text-red-600 hover:text-red-700 border-red-300 hover:border-red-400"
-            >
-              Logout
-            </Button>
-          </div>
-        </aside>
+        <HomeSidebar active="brands" userEmail={user?.email} onLogout={handleLogout} />
 
         {/* Main Content */}
         <main className="flex-1 p-8 ml-64">

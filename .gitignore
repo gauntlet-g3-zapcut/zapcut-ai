@@ -4,3 +4,6 @@
 
 # macOS
 .DS_Store
+
+# Generated editor assets
+frontend/public/editor-app/

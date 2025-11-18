@@ -4,9 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "prepare:editor": "node ./scripts/sync-editor-assets.mjs",
+    "predev": "npm run prepare:editor",
     "dev": "vite",
+    "prebuild": "npm run prepare:editor",
     "build": "vite build",
     "lint": "eslint .",
+    "prepreview": "npm run prepare:editor",
     "preview": "vite preview",
     "deploy": "npm run build && npx wrangler pages deploy ./dist --project-name=zapcut-app"
   },
