@@ -7,6 +7,26 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables')
 }
 
+// Debug flag - controls GoTrueClient and custom auth logging
+//
+// To enable debug mode:
+// 1. In browser console: localStorage.setItem('DEBUG_AUTH', 'true')
+// 2. Refresh the page
+// 3. Auth logs will now appear in console
+//
+// To disable:
+// localStorage.removeItem('DEBUG_AUTH') and refresh
+//
+// Or set VITE_DEBUG_AUTH=true in .env file
+export const DEBUG_AUTH =
+  (typeof window !== 'undefined' && localStorage.getItem('DEBUG_AUTH') === 'true') ||
+  import.meta.env.VITE_DEBUG_AUTH === 'true'
+
+// Log debug status on load
+if (typeof window !== 'undefined' && DEBUG_AUTH) {
+  console.log('[Auth] Debug mode enabled. Auth logs will be visible.')
+}
+
 // Storage migration - MUST run BEFORE creating client to clear stale tokens
 if (typeof window !== 'undefined') {
   const STORAGE_VERSION = 'v2' // bump this when changing storage logic
@@ -69,7 +89,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     flowType: 'pkce',
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     storageKey: 'supabase.auth.token',
-    debug: import.meta.env.DEV
+    debug: DEBUG_AUTH  // Only log GoTrueClient messages when DEBUG_AUTH is enabled
   }
 })
 

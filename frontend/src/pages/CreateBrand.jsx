@@ -22,6 +22,12 @@ export default function CreateBrand() {
   const handleImage1Change = (e) => {
     const file = e.target.files[0]
     if (file) {
+      console.log('[CreateBrand] Image 1 selected:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        sizeInMB: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
+      })
       setImage1(file)
       setPreview1(URL.createObjectURL(file))
     }
@@ -30,6 +36,12 @@ export default function CreateBrand() {
   const handleImage2Change = (e) => {
     const file = e.target.files[0]
     if (file) {
+      console.log('[CreateBrand] Image 2 selected:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        sizeInMB: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
+      })
       setImage2(file)
       setPreview2(URL.createObjectURL(file))
     }
@@ -38,11 +50,26 @@ export default function CreateBrand() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError("")
-    
+
     if (!title || !description || !image1 || !image2) {
       setError("Please fill in all fields and upload both images")
       return
     }
+
+    console.log('[CreateBrand] Submitting brand:', {
+      title,
+      descriptionLength: description.length,
+      image1: {
+        name: image1.name,
+        size: image1.size,
+        type: image1.type,
+      },
+      image2: {
+        name: image2.name,
+        size: image2.size,
+        type: image2.type,
+      },
+    })
 
     setLoading(true)
 
@@ -53,7 +80,10 @@ export default function CreateBrand() {
       formData.append("product_image_1", image1)
       formData.append("product_image_2", image2)
 
-      await api.createBrand(formData)
+      console.log('[CreateBrand] Calling API to create brand...')
+      const result = await api.createBrand(formData)
+      console.log('[CreateBrand] Brand created successfully:', result)
+
       // Navigate back to dashboard to show the new brand
       navigate("/dashboard")
     } catch (err) {
@@ -68,6 +98,11 @@ export default function CreateBrand() {
       } else if (err.response?.data?.detail) {
         errorMessage = err.response.data.detail
       }
+
+      console.error('[CreateBrand] Failed to create brand:', {
+        error: err,
+        message: errorMessage,
+      })
       setError(errorMessage)
     } finally {
       setLoading(false)

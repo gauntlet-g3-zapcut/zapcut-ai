@@ -1,4 +1,4 @@
-import { supabase } from "./supabase"
+import { supabase, DEBUG_AUTH } from "./supabase"
 
 // API Configuration - HTTPS in production, HTTP in development
 const getApiUrl = (): string => {
@@ -13,26 +13,76 @@ const getApiUrl = (): string => {
 
 const API_URL = getApiUrl()
 
+// Helper for conditional logging
+const debugLog = (...args: unknown[]) => {
+  if (DEBUG_AUTH) {
+    console.log(...args)
+  }
+}
+
 /**
- * Get a valid Supabase auth token
+ * Get a valid Supabase auth token with retry logic
  */
 async function getAuthToken(): Promise<string> {
-  let { data: { session }, error } = await supabase.auth.getSession()
-
-  // If no session or error, try to refresh
-  if (error || !session?.access_token) {
-    try {
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
-      if (!refreshError && refreshData.session?.access_token) {
-        return refreshData.session.access_token
-      }
-    } catch (refreshErr) {
-      console.error('Failed to refresh session:', refreshErr)
-    }
-    throw new Error('User not authenticated')
+  // Check localStorage for debugging
+  if (typeof window !== 'undefined') {
+    const storedSession = localStorage.getItem('supabase.auth.token')
+    debugLog('[Auth] localStorage check:', {
+      hasStoredSession: !!storedSession,
+      storageSize: storedSession?.length || 0
+    })
   }
 
-  return session.access_token
+  // Try to get session with a small retry in case auto-refresh is in progress
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data: { session }, error } = await supabase.auth.getSession()
+
+    debugLog('[Auth] getSession result (attempt ' + (attempt + 1) + '):', {
+      hasSession: !!session,
+      hasToken: !!session?.access_token,
+      tokenExpiry: session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'N/A',
+      error: error?.message
+    })
+
+    // If we have a valid session, return it
+    if (!error && session?.access_token) {
+      debugLog('[Auth] Valid session found')
+      return session.access_token
+    }
+
+    // If first attempt fails, try manual refresh
+    if (attempt === 0) {
+      debugLog('[Auth] Attempting manual session refresh...')
+      try {
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+        debugLog('[Auth] Manual refresh result:', {
+          hasSession: !!refreshData.session,
+          hasToken: !!refreshData.session?.access_token,
+          error: refreshError?.message
+        })
+
+        if (!refreshError && refreshData.session?.access_token) {
+          debugLog('[Auth] Session refreshed successfully')
+          return refreshData.session.access_token
+        }
+      } catch (refreshErr) {
+        if (DEBUG_AUTH) {
+          console.error('[Auth] Manual refresh failed:', refreshErr)
+        }
+      }
+    }
+
+    // Wait a bit before retrying (in case auto-refresh is in progress)
+    if (attempt < 2) {
+      debugLog('[Auth] Waiting before retry...')
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+  }
+
+  if (DEBUG_AUTH) {
+    console.error('[Auth] Authentication failed after all retries - no valid token')
+  }
+  throw new Error('User not authenticated. Please log out and log back in.')
 }
 
 interface RequestOptions extends RequestInit {
@@ -44,6 +94,12 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
   const token = await getAuthToken()
 
   const url = `${API_URL}${endpoint}`
+
+  console.log('[API] Request starting:', {
+    endpoint,
+    method: options.method || 'GET',
+    hasBody: !!options.body,
+  })
 
   // Add timeout to prevent hanging requests
   const controller = new AbortController()
@@ -81,11 +137,23 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: "An error occurred" })) as { detail?: string; message?: string }
-      console.error(`[API] Request failed: ${response.status}`, error)
+      console.error('[API] Request failed:', {
+        endpoint,
+        status: response.status,
+        statusText: response.statusText,
+        error,
+      })
       throw new Error(error.detail || error.message || "Request failed")
     }
 
     const data = await response.json()
+    console.log('[API] Request successful:', {
+      endpoint,
+      status: response.status,
+      dataKeys: typeof data === 'object' && data !== null ? Object.keys(data) : 'non-object',
+      isArray: Array.isArray(data),
+      arrayLength: Array.isArray(data) ? data.length : undefined,
+    })
     return data as T
   } catch (error: unknown) {
     clearTimeout(timeoutId)
@@ -109,6 +177,26 @@ interface ValidationError {
 async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: FormData, options: FormDataRequestOptions = {}, retryCount = 0): Promise<T> {
   const maxRetries = 1
   const token = await getAuthToken()
+
+  // Log FormData contents for debugging
+  console.log('[API] FormData request starting:', {
+    endpoint,
+    method: options.method || "POST",
+    formDataKeys: Array.from(formData.keys()),
+  })
+
+  // Log file details
+  formData.forEach((value, key) => {
+    if (value instanceof File) {
+      console.log(`[API] FormData file: ${key}`, {
+        name: value.name,
+        size: value.size,
+        type: value.type,
+      })
+    } else {
+      console.log(`[API] FormData field: ${key} =`, value)
+    }
+  })
 
   const response = await fetch(`${API_URL}${endpoint}`, {
     method: options.method || "POST",
@@ -145,6 +233,13 @@ async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: F
       errorData = { detail: `Request failed with status ${response.status}` }
     }
 
+    console.error('[API] FormData request failed:', {
+      endpoint,
+      status: response.status,
+      statusText: response.statusText,
+      error: errorData,
+    })
+
     // Handle FastAPI validation errors
     if (errorData.detail && Array.isArray(errorData.detail)) {
       const errors = errorData.detail.map((e: ValidationError) => `${e.loc.join('.')}: ${e.msg}`).join(', ')
@@ -154,7 +249,14 @@ async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: F
     throw new Error(errorData.detail as string || errorData.message || `Request failed with status ${response.status}`)
   }
 
-  return response.json() as Promise<T>
+  const responseData = await response.json() as Promise<T>
+  console.log('[API] FormData request successful:', {
+    endpoint,
+    status: response.status,
+    data: responseData,
+  })
+
+  return responseData
 }
 
 export const api = {

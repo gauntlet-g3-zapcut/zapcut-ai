@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Input } from "../components/ui/input"
 import { Textarea } from "../components/ui/textarea"
 import { api } from "../services/api"
-import { Upload, Plus, X } from "lucide-react"
+import { Upload } from "lucide-react"
 
 export default function EditBrand() {
   const navigate = useNavigate()
@@ -73,19 +73,6 @@ export default function EditBrand() {
     }
   }
 
-  const addImageField = () => {
-    setImages([...images, { file: null, preview: null, existingUrl: null }])
-  }
-
-  const removeImageField = (index) => {
-    const newImages = images.filter((_, i) => i !== index)
-    // Ensure at least one image field remains
-    if (newImages.length === 0) {
-      setImages([{ file: null, preview: null, existingUrl: null }])
-    } else {
-      setImages(newImages)
-    }
-  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -115,6 +102,7 @@ export default function EditBrand() {
       navigate("/dashboard")
     } catch (err) {
       // Extract error message from error object
+      console.error('[EditBrand] Update failed:', err)
       let errorMessage = "Failed to update brand"
       if (err.message) {
         errorMessage = err.message
@@ -126,6 +114,11 @@ export default function EditBrand() {
         errorMessage = err.response.data.detail
       }
       setError(errorMessage)
+
+      // If authentication error, suggest re-login
+      if (errorMessage.toLowerCase().includes('authenticated') || errorMessage.toLowerCase().includes('session')) {
+        setError(errorMessage + ' - Please try logging out and logging back in.')
+      }
     } finally {
       setLoading(false)
     }
@@ -195,39 +188,14 @@ export default function EditBrand() {
               </div>
 
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">Product Images</label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addImageField}
-                    className="flex items-center gap-2"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add Image
-                  </Button>
-                </div>
-                
-                <div className="grid md:grid-cols-2 gap-6">
-                  {images.map((image, index) => (
+                <label className="text-sm font-medium">Product Images</label>
+
+                <div className="grid grid-cols-2 gap-6">
+                  {images.slice(0, 2).map((image, index) => (
                     <div key={index} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label htmlFor={`image${index}`} className="text-sm font-medium">
-                          Product Image {index + 1} {image.file ? "(New)" : image.existingUrl ? "(Current)" : ""}
-                        </label>
-                        {images.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeImageField(index)}
-                            className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
+                      <label htmlFor={`image${index}`} className="text-sm font-medium">
+                        Product Image {index + 1} {image.file ? "(New)" : image.existingUrl ? "(Current)" : ""}
+                      </label>
                       <div className="border-2 border-dashed rounded-lg p-6 text-center">
                         {image.preview ? (
                           <img

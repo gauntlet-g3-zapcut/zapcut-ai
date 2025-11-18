@@ -37,20 +37,38 @@ export default function Dashboard() {
         // Check cache first
         const now = Date.now()
         if (brandsCache && brandsCacheTimestamp && (now - brandsCacheTimestamp) < CACHE_DURATION) {
+          console.log('[Dashboard] Using cached brands:', {
+            count: brandsCache.length,
+            cacheAge: ((now - brandsCacheTimestamp) / 1000).toFixed(1) + 's',
+          })
           setBrands(brandsCache)
           setLoading(false)
           return
         }
 
+        console.log('[Dashboard] Fetching brands from API...')
         setLoading(true)
         setError(null)
         const data = await api.getBrands()
+
+        console.log('[Dashboard] Brands fetched successfully:', {
+          count: data.length,
+          brands: data.map(b => ({
+            id: b.id,
+            title: b.title,
+            hasImage1: !!b.product_image_1_url,
+            hasImage2: !!b.product_image_2_url,
+            image1Url: b.product_image_1_url,
+            image2Url: b.product_image_2_url,
+          })),
+        })
+
         setBrands(data)
         // Update cache
         brandsCache = data
         brandsCacheTimestamp = now
       } catch (error) {
-        console.error("Failed to fetch brands:", error)
+        console.error("[Dashboard] Failed to fetch brands:", error)
         setError(error.message || "Failed to load brands")
         // Clear cache on error
         brandsCache = null
@@ -204,7 +222,20 @@ export default function Dashboard() {
                         src={brand.product_image_1_url || `https://placehold.co/400x300?text=${encodeURIComponent(brand.title)}`}
                         alt={brand.title}
                         className="w-full h-48 object-cover rounded-md mb-4 bg-gray-100"
+                        onLoad={(e) => {
+                          console.log('[Dashboard] Brand image loaded successfully:', {
+                            brandId: brand.id,
+                            brandTitle: brand.title,
+                            imageUrl: e.target.src,
+                          })
+                        }}
                         onError={(e) => {
+                          console.error('[Dashboard] Brand image failed to load:', {
+                            brandId: brand.id,
+                            brandTitle: brand.title,
+                            imageUrl: brand.product_image_1_url,
+                            fallbackUrl: `https://placehold.co/400x300?text=${encodeURIComponent(brand.title)}`,
+                          })
                           // Fallback to placeholder if image fails to load
                           e.target.src = `https://placehold.co/400x300?text=${encodeURIComponent(brand.title)}`
                         }}
