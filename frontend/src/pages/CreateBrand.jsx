@@ -84,8 +84,8 @@ export default function CreateBrand() {
       const result = await api.createBrand(formData)
       console.log('[CreateBrand] Brand created successfully:', result)
 
-      // Navigate back to dashboard to show the new brand
-      navigate("/dashboard")
+      // Navigate back to dashboard with state to force refresh
+      navigate("/dashboard", { state: { refetch: true } })
     } catch (err) {
       // Extract error message from error object
       let errorMessage = "Failed to create brand"

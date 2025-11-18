@@ -61,7 +61,11 @@ async def create_brand(
     """Create a new brand with image uploads to Supabase S3."""
     logger.info(f"Creating brand for user: {current_user.id} | title={title}")
 
-    # Step 1: Validate both image files
+    # Step 1: Generate UUID upfront (industry standard approach)
+    brand_id = uuid.uuid4()
+    logger.info(f"Generated brand UUID: {brand_id}")
+
+    # Step 2: Validate both image files
     try:
         image_1_bytes, image_1_ext = await validate_image_file(product_image_1)
         image_2_bytes, image_2_ext = await validate_image_file(product_image_2)
@@ -73,13 +77,46 @@ async def create_brand(
         logger.error(f"Unexpected validation error: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Image validation failed: {str(e)}")
 
-    # Step 2: Create brand in database (without image URLs yet)
+    # Step 3: Upload image 1 to S3
+    try:
+        image_1_url = upload_image_to_supabase_s3(
+            image_bytes=image_1_bytes,
+            brand_id=str(brand_id),
+            image_number=1,
+            file_extension=image_1_ext
+        )
+        logger.info(f"Image 1 uploaded | brand_id={brand_id} | url={image_1_url}")
+    except Exception as e:
+        logger.error(f"Image 1 upload failed | brand_id={brand_id} | error={str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to upload image 1: {str(e)}"
+        )
+
+    # Step 4: Upload image 2 to S3
+    try:
+        image_2_url = upload_image_to_supabase_s3(
+            image_bytes=image_2_bytes,
+            brand_id=str(brand_id),
+            image_number=2,
+            file_extension=image_2_ext
+        )
+        logger.info(f"Image 2 uploaded | brand_id={brand_id} | url={image_2_url}")
+    except Exception as e:
+        logger.error(f"Image 2 upload failed | brand_id={brand_id} | error={str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to upload image 2: {str(e)}"
+        )
+
+    # Step 5: Create brand in database with all data (including S3 URLs)
     brand = Brand(
+        id=brand_id,
         user_id=current_user.id,
         title=title,
         description=description,
-        product_image_1_url=None,
-        product_image_2_url=None,
+        product_image_1_url=image_1_url,
+        product_image_2_url=image_2_url,
         created_at=datetime.utcnow().isoformat()
     )
 
@@ -93,66 +130,8 @@ async def create_brand(
         logger.error(f"Database error creating brand: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create brand in database")
 
-    # Step 3: Upload image 1
-    image_1_url = None
-    try:
-        image_1_url = upload_image_to_supabase_s3(
-            image_bytes=image_1_bytes,
-            brand_id=str(brand.id),
-            image_number=1,
-            file_extension=image_1_ext
-        )
-        logger.info(f"Image 1 uploaded | brand_id={brand.id} | url={image_1_url}")
-    except Exception as e:
-        # If image 1 upload fails, delete the brand and fail
-        logger.error(f"Image 1 upload failed | brand_id={brand.id} | error={str(e)}")
-        try:
-            db.delete(brand)
-            db.commit()
-            logger.info(f"Brand deleted due to image 1 upload failure | brand_id={brand.id}")
-        except Exception as cleanup_error:
-            logger.error(f"Failed to cleanup brand after image 1 upload failure: {str(cleanup_error)}")
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to upload image 1 after multiple attempts: {str(e)}"
-        )
-
-    # Step 4: Upload image 2 with partial save fallback
-    image_2_url = None
-    warning_message = None
-    try:
-        image_2_url = upload_image_to_supabase_s3(
-            image_bytes=image_2_bytes,
-            brand_id=str(brand.id),
-            image_number=2,
-            file_extension=image_2_ext
-        )
-        logger.info(f"Image 2 uploaded | brand_id={brand.id} | url={image_2_url}")
-    except Exception as e:
-        # If image 2 fails, save brand with only image 1
-        logger.warning(
-            f"Image 2 upload failed, saving brand with only image 1 | "
-            f"brand_id={brand.id} | error={str(e)}"
-        )
-        warning_message = "Image 2 upload failed. Only image 1 was saved. Please try updating the brand to add image 2."
-
-    # Step 5: Update brand with image URLs
-    try:
-        brand.product_image_1_url = image_1_url
-        brand.product_image_2_url = image_2_url
-        db.commit()
-        db.refresh(brand)
-        logger.info(
-            f"Brand updated with image URLs | brand_id={brand.id} | "
-            f"has_image_1={bool(image_1_url)} | has_image_2={bool(image_2_url)}"
-        )
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Failed to update brand with image URLs: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to save image URLs to database")
-
-    response = {
+    logger.info(f"Brand creation completed | brand_id={brand.id}")
+    return {
         "id": str(brand.id),
         "title": brand.title,
         "description": brand.description,
@@ -160,12 +139,6 @@ async def create_brand(
         "product_image_2_url": brand.product_image_2_url,
         "created_at": brand.created_at,
     }
-
-    if warning_message:
-        response["warning"] = warning_message
-
-    logger.info(f"Brand creation completed | brand_id={brand.id}")
-    return response
 
 
 @router.get("/{brand_id}")

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
 import { Button } from "../components/ui/button"
 import { GradientButton } from "@/components/ui/gradient-button"
@@ -15,6 +15,7 @@ const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
 export default function Dashboard() {
   const { user, logout, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [brands, setBrands] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -34,9 +35,12 @@ export default function Dashboard() {
 
     const fetchBrands = async () => {
       try {
-        // Check cache first
+        // Check if we should force refetch (e.g., after creating a brand)
+        const shouldRefetch = location.state?.refetch
+
+        // Check cache first (unless forced refetch)
         const now = Date.now()
-        if (brandsCache && brandsCacheTimestamp && (now - brandsCacheTimestamp) < CACHE_DURATION) {
+        if (!shouldRefetch && brandsCache && brandsCacheTimestamp && (now - brandsCacheTimestamp) < CACHE_DURATION) {
           console.log('[Dashboard] Using cached brands:', {
             count: brandsCache.length,
             cacheAge: ((now - brandsCacheTimestamp) / 1000).toFixed(1) + 's',
@@ -44,6 +48,12 @@ export default function Dashboard() {
           setBrands(brandsCache)
           setLoading(false)
           return
+        }
+
+        if (shouldRefetch) {
+          console.log('[Dashboard] Force refetching brands (cache invalidated)')
+          // Clear the state so we don't refetch on every render
+          navigate(location.pathname, { replace: true, state: {} })
         }
 
         console.log('[Dashboard] Fetching brands from API...')
