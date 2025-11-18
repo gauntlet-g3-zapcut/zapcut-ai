@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     SUPABASE_S3_ENDPOINT: Optional[str] = None
     SUPABASE_S3_ACCESS_KEY: Optional[str] = None
     SUPABASE_S3_SECRET_KEY: Optional[str] = None
+    SUPABASE_S3_VIDEO_BUCKET: str = "videos"  # Bucket name for storing generated videos
     
     # External APIs
     OPENAI_API_KEY: Optional[str] = None
