@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button"
 import { GradientButton } from "@/components/ui/gradient-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { api } from "../services/api"
+import HomeSidebar from "../components/layout/HomeSidebar"
 import { Play, Clock, CheckCircle2, XCircle, Loader2, Trash2 } from "lucide-react"
 
 export default function CampaignsList() {
@@ -93,42 +94,10 @@ export default function CampaignsList() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
       <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-64 bg-white/80 backdrop-blur-sm border-r border-purple-100 min-h-screen p-6 flex flex-col">
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
-              AdCraft AI
-            </h2>
-          </div>
-
-          <nav className="space-y-2">
-            <Button 
-              variant="ghost" 
-              className="w-full justify-start"
-              onClick={() => navigate("/dashboard")}
-            >
-              Brands
-            </Button>
-            <Button 
-              variant="ghost" 
-              className="w-full justify-start font-medium"
-            >
-              Campaigns
-            </Button>
-          </nav>
-
-          <div className="mt-auto pt-8">
-            <div className="text-sm text-muted-foreground mb-2">
-              {user?.email}
-            </div>
-            <Button variant="outline" size="sm" onClick={handleLogout} className="w-full">
-              Logout
-            </Button>
-          </div>
-        </aside>
+        <HomeSidebar active="campaigns" userEmail={user?.email} onLogout={handleLogout} />
 
         {/* Main Content */}
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-8 ml-64">
           <div className="mb-8">
             <h1 className="text-3xl font-bold mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>
               Campaigns

@@ -10,6 +10,7 @@ import StorylineReview from "./pages/StorylineReview"
 import VideoProgress from "./pages/VideoProgress"
 import VideoPlayer from "./pages/VideoPlayer"
 import CampaignsList from "./pages/CampaignsList"
+import Editor from "./pages/Editor"
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -43,6 +44,14 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <CampaignsList />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/editor"
+        element={
+          <PrivateRoute>
+            <Editor />
           </PrivateRoute>
         }
       />
