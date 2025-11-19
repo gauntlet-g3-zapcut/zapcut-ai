@@ -712,6 +712,10 @@ async def send_chat_message(
         agent.collected_aspects = collected
         agent.aspect_descriptions = aspect_map
         
+        # Get the aspect we're currently asking about BEFORE processing
+        # This is what the user is answering about
+        current_aspect_being_answered = agent._get_next_aspect()
+
         # Process message - if no messages exist and message is empty, trigger initial greeting
         if len(message_history) == 0 and not message_request.message.strip():
             # Use template-based greeting for faster initialization (no API call)
@@ -727,31 +731,30 @@ async def send_chat_message(
         else:
             # Process normal message
             agent_response, metadata = agent.process_message(message_request.message if message_request.message.strip() else "Continue")
-        
-        # Try to extract preference if we're collecting a new aspect
-        # This is a heuristic - we check if the response acknowledges and moves forward
-        next_aspect = agent._get_next_aspect()
-        if next_aspect and next_aspect not in collected:
+
+        # Try to extract preference if user provided a meaningful response to the current aspect
+        # Use the aspect we captured BEFORE processing (what the user was answering about)
+        if current_aspect_being_answered and current_aspect_being_answered not in collected:
             # Check if user provided a meaningful response (not just "yes" or "ok")
             user_msg_lower = message_request.message.lower().strip()
             if len(user_msg_lower) > 10 and user_msg_lower not in ["yes", "ok", "sure", "yeah", "yep"]:
-                # Extract and store preference
-                preference = agent.extract_and_store_preference(next_aspect, message_request.message)
+                # Extract and store preference for the aspect the user was answering about
+                preference = agent.extract_and_store_preference(current_aspect_being_answered, message_request.message)
                 if preference:
                     # Update creative bible
-                    if next_aspect == "audience":
+                    if current_aspect_being_answered == "audience":
                         creative_bible.audience_description = preference["description"]
                         creative_bible.audience_keywords = preference["keywords"]
-                    elif next_aspect == "style":
+                    elif current_aspect_being_answered == "style":
                         creative_bible.style_description = preference["description"]
                         creative_bible.style_keywords = preference["keywords"]
-                    elif next_aspect == "emotion":
+                    elif current_aspect_being_answered == "emotion":
                         creative_bible.emotion_description = preference["description"]
                         creative_bible.emotion_keywords = preference["keywords"]
-                    elif next_aspect == "pacing":
+                    elif current_aspect_being_answered == "pacing":
                         creative_bible.pacing_description = preference["description"]
                         creative_bible.pacing_keywords = preference["keywords"]
-                    elif next_aspect == "colors":
+                    elif current_aspect_being_answered == "colors":
                         creative_bible.colors_description = preference["description"]
                         creative_bible.colors_keywords = preference["keywords"]
         
