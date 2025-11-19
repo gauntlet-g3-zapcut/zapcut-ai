@@ -117,35 +117,35 @@ async def migrate_audio_columns():
     try:
         from app.database import get_engine
         from sqlalchemy import text
-        
+
         engine = get_engine()
-        
+
         with engine.begin() as conn:
             # Check if columns exist and add them if they don't
             migration_sql = """
-            DO $$ 
+            DO $$
             BEGIN
                 -- Add audio_url column if it doesn't exist
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'campaigns' AND column_name = 'audio_url'
                 ) THEN
                     ALTER TABLE campaigns ADD COLUMN audio_url VARCHAR;
                     RAISE NOTICE 'Added audio_url column';
                 END IF;
-                
+
                 -- Add audio_status column if it doesn't exist
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'campaigns' AND column_name = 'audio_status'
                 ) THEN
                     ALTER TABLE campaigns ADD COLUMN audio_status VARCHAR DEFAULT 'pending';
                     RAISE NOTICE 'Added audio_status column';
                 END IF;
-                
+
                 -- Add audio_generation_error column if it doesn't exist
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'campaigns' AND column_name = 'audio_generation_error'
                 ) THEN
                     ALTER TABLE campaigns ADD COLUMN audio_generation_error VARCHAR;
@@ -153,15 +153,55 @@ async def migrate_audio_columns():
                 END IF;
             END $$;
             """
-            
+
             conn.execute(text(migration_sql))
-            
+
         logger.info("Audio columns migration completed successfully")
-        
+
         return {
             "status": "success",
             "message": "Audio columns added to campaigns table",
             "columns_added": ["audio_url", "audio_status", "audio_generation_error"]
+        }
+    except Exception as e:
+        logger.error(f"Migration error: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/migrate-original-creative-bible")
+async def migrate_original_creative_bible():
+    """Add original_creative_bible column to creative_bibles table (migration)."""
+    try:
+        from app.database import get_engine
+        from sqlalchemy import text
+
+        engine = get_engine()
+
+        with engine.begin() as conn:
+            migration_sql = """
+            DO $$
+            BEGIN
+                -- Add original_creative_bible column if it doesn't exist
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'original_creative_bible'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN original_creative_bible JSONB;
+                    RAISE NOTICE 'Added original_creative_bible column';
+                ELSE
+                    RAISE NOTICE 'original_creative_bible column already exists';
+                END IF;
+            END $$;
+            """
+
+            conn.execute(text(migration_sql))
+
+        logger.info("Original creative bible column migration completed successfully")
+
+        return {
+            "status": "success",
+            "message": "original_creative_bible column added to creative_bibles table",
+            "columns_added": ["original_creative_bible"]
         }
     except Exception as e:
         logger.error(f"Migration error: {e}", exc_info=True)

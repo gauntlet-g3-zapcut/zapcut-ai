@@ -14,6 +14,7 @@ class CreativeBible(Base):
     brand_id = Column(UUID(as_uuid=True), ForeignKey("brands.id"), nullable=False)
     name = Column(String, nullable=False)
     creative_bible = Column(JSON, nullable=False, default=dict)
+    original_creative_bible = Column(JSON, nullable=True)  # For revert functionality
     reference_image_urls = Column(JSON, nullable=False, default=dict)
     conversation_history = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=False), nullable=False)

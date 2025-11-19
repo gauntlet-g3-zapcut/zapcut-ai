@@ -211,6 +211,7 @@ async def get_storyline(
             logger.warning(f"sora_prompts NOT FOUND in creative_bible_data!")
         
         creative_bible.creative_bible = creative_bible_data
+        creative_bible.original_creative_bible = creative_bible_data  # Store original for revert
         db.commit()
         db.refresh(creative_bible)
         
@@ -851,23 +852,23 @@ async def complete_chat(
         creative_bible_uuid = uuid.UUID(creative_bible_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ID format")
-    
+
     brand = db.query(Brand).filter(
         Brand.id == brand_uuid,
         Brand.user_id == current_user.id
     ).first()
-    
+
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
-    
+
     creative_bible = db.query(CreativeBible).filter(
         CreativeBible.id == creative_bible_uuid,
         CreativeBible.brand_id == brand.id
     ).first()
-    
+
     if not creative_bible:
         raise HTTPException(status_code=404, detail="Creative Bible not found")
-    
+
     # Verify all 5 aspects are collected
     collected = []
     if creative_bible.audience_description:
@@ -880,13 +881,13 @@ async def complete_chat(
         collected.append("pacing")
     if creative_bible.colors_description:
         collected.append("colors")
-    
+
     if len(collected) < 5:
         raise HTTPException(
             status_code=400,
             detail=f"Not all preferences collected. Missing: {set(['audience', 'style', 'emotion', 'pacing', 'colors']) - set(collected)}"
         )
-    
+
     # Chat is complete - preferences are already stored
     return {
         "creative_bible_id": str(creative_bible.id),
@@ -913,5 +914,144 @@ async def complete_chat(
                 "keywords": creative_bible.colors_keywords or []
             }
         }
+    }
+
+
+class UpdateStorylineRequest(BaseModel):
+    scene_number: int
+    description: str
+
+
+@router.put("/{brand_id}/storyline/{creative_bible_id}")
+async def update_storyline(
+    brand_id: str,
+    creative_bible_id: str,
+    update_request: UpdateStorylineRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update a scene description in the creative bible storyline."""
+    logger.info(f"Updating storyline scene {update_request.scene_number} for creative_bible: {creative_bible_id}")
+
+    try:
+        brand_uuid = uuid.UUID(brand_id)
+        creative_bible_uuid = uuid.UUID(creative_bible_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    brand = db.query(Brand).filter(
+        Brand.id == brand_uuid,
+        Brand.user_id == current_user.id
+    ).first()
+
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    creative_bible = db.query(CreativeBible).filter(
+        CreativeBible.id == creative_bible_uuid,
+        CreativeBible.brand_id == brand.id
+    ).first()
+
+    if not creative_bible:
+        raise HTTPException(status_code=404, detail="Creative Bible not found")
+
+    if not creative_bible.creative_bible or "storyline" not in creative_bible.creative_bible:
+        raise HTTPException(status_code=400, detail="No storyline found in creative bible")
+
+    # Get current creative bible data
+    creative_bible_data = creative_bible.creative_bible.copy()
+    storyline = creative_bible_data.get("storyline", {})
+    scenes = storyline.get("scenes", [])
+
+    # Find and update the scene
+    scene_found = False
+    for scene in scenes:
+        if scene.get("scene_number") == update_request.scene_number:
+            scene["description"] = update_request.description
+            scene_found = True
+            break
+
+    if not scene_found:
+        raise HTTPException(status_code=404, detail=f"Scene {update_request.scene_number} not found")
+
+    # Regenerate sora_prompts with updated description
+    sora_prompts = []
+    for scene in scenes:
+        scene_num = scene.get("scene_number", 0)
+        scene_title = scene.get("title", f"Scene {scene_num}")
+        scene_description = scene.get("description", "")
+        visual_notes = scene.get("visual_notes", "")
+
+        # Create comprehensive prompt for Sora
+        sora_prompt = f"{scene_title}. {scene_description}. {visual_notes}".strip()
+
+        sora_prompts.append({
+            "scene_number": scene_num,
+            "prompt": sora_prompt
+        })
+
+    # Update creative bible data
+    creative_bible_data["storyline"]["scenes"] = scenes
+    creative_bible_data["sora_prompts"] = sora_prompts
+
+    # Save to database
+    creative_bible.creative_bible = creative_bible_data
+    db.commit()
+    db.refresh(creative_bible)
+
+    logger.info(f"Updated scene {update_request.scene_number} in creative_bible: {creative_bible_id}")
+
+    return {
+        "storyline": creative_bible_data.get("storyline", {}),
+        "sora_prompts": sora_prompts
+    }
+
+
+@router.post("/{brand_id}/storyline/{creative_bible_id}/revert")
+async def revert_storyline(
+    brand_id: str,
+    creative_bible_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Revert storyline to original AI-generated version."""
+    logger.info(f"Reverting storyline for creative_bible: {creative_bible_id}")
+
+    try:
+        brand_uuid = uuid.UUID(brand_id)
+        creative_bible_uuid = uuid.UUID(creative_bible_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    brand = db.query(Brand).filter(
+        Brand.id == brand_uuid,
+        Brand.user_id == current_user.id
+    ).first()
+
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    creative_bible = db.query(CreativeBible).filter(
+        CreativeBible.id == creative_bible_uuid,
+        CreativeBible.brand_id == brand.id
+    ).first()
+
+    if not creative_bible:
+        raise HTTPException(status_code=404, detail="Creative Bible not found")
+
+    if not creative_bible.original_creative_bible:
+        raise HTTPException(status_code=400, detail="No original storyline found to revert to")
+
+    # Revert to original
+    creative_bible.creative_bible = creative_bible.original_creative_bible.copy()
+    db.commit()
+    db.refresh(creative_bible)
+
+    logger.info(f"Reverted storyline to original for creative_bible: {creative_bible_id}")
+
+    return {
+        "message": "Storyline reverted to original",
+        "storyline": creative_bible.creative_bible.get("storyline", {}),
+        "sora_prompts": creative_bible.creative_bible.get("sora_prompts", [])
     }
 

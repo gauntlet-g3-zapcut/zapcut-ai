@@ -1,10 +1,80 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { Button } from "../components/ui/button"
 import { GradientButton } from "../components/ui/gradient-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { api } from "../services/api"
-import { Play, Sparkles, Loader2, Palette, Zap, Heart, Edit2, Pencil } from "lucide-react"
+import { Play, Sparkles, Loader2, Palette, Zap, Heart, Edit2, Pencil, RotateCcw } from "lucide-react"
+
+// Inline editable description component
+function EditableDescription({ value, sceneNumber, onSave }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(value)
+  const textareaRef = useRef(null)
+
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus()
+      // Auto-resize textarea to fit content
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
+    }
+  }, [isEditing])
+
+  useEffect(() => {
+    setEditValue(value)
+  }, [value])
+
+  const handleBlur = () => {
+    setIsEditing(false)
+    if (editValue !== value) {
+      onSave(sceneNumber, editValue)
+    }
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      setEditValue(value)
+      setIsEditing(false)
+    }
+    // Allow Shift+Enter for new lines, but blur on Enter alone
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleBlur()
+    }
+  }
+
+  const handleChange = (e) => {
+    setEditValue(e.target.value)
+    // Auto-resize textarea
+    e.target.style.height = 'auto'
+    e.target.style.height = e.target.scrollHeight + 'px'
+  }
+
+  if (isEditing) {
+    return (
+      <textarea
+        ref={textareaRef}
+        value={editValue}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className="w-full p-2 border border-purple-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none overflow-hidden leading-relaxed"
+        style={{ minHeight: '60px' }}
+      />
+    )
+  }
+
+  return (
+    <p
+      onClick={() => setIsEditing(true)}
+      className="text-foreground leading-relaxed cursor-text hover:bg-purple-50 p-2 rounded-md transition-colors"
+      title="Click to edit"
+    >
+      {value}
+    </p>
+  )
+}
 
 export default function StorylineReview() {
   const { brandId, creativeBibleId } = useParams()
@@ -13,6 +83,9 @@ export default function StorylineReview() {
   const [creativeBible, setCreativeBible] = useState(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [editingScene, setEditingScene] = useState(null) // Track which scene is being edited
+  const [saving, setSaving] = useState(false)
+  const [reverting, setReverting] = useState(false)
 
   useEffect(() => {
     const fetchStoryline = async () => {
@@ -37,20 +110,77 @@ export default function StorylineReview() {
         brand_id: brandId,
         creative_bible_id: creativeBibleId
       })
-      
+
       if (!response?.campaign_id) {
         throw new Error("No campaign_id in response")
       }
-      
+
       // Navigate to video generation progress page immediately
       navigate(`/campaigns/${response.campaign_id}/progress`)
-      
+
       // Don't set generating to false - let navigation happen
       // The component will unmount anyway
     } catch (error) {
       console.error("Failed to start generation:", error)
       setGenerating(false) // Only reset if there's an error
       alert(`Failed to start video generation: ${error.message || "Please try again."}`)
+    }
+  }
+
+  const handleEditDescription = async (sceneNumber, newDescription) => {
+    // Optimistic update - update UI immediately
+    setStoryline(prevStoryline => ({
+      ...prevStoryline,
+      scenes: prevStoryline.scenes.map(scene =>
+        scene.scene_number === sceneNumber
+          ? { ...scene, description: newDescription }
+          : scene
+      )
+    }))
+
+    // Save to backend
+    try {
+      setSaving(true)
+      const response = await api.updateStoryline(brandId, creativeBibleId, sceneNumber, newDescription)
+
+      // Update with server response (in case backend modified anything)
+      if (response?.storyline) {
+        setStoryline(response.storyline)
+      }
+    } catch (error) {
+      console.error("Failed to save description:", error)
+      alert(`Failed to save changes: ${error.message || "Please try again."}`)
+
+      // Revert optimistic update on error - refetch from server
+      try {
+        const response = await api.getStoryline(brandId, creativeBibleId)
+        setStoryline(response.storyline)
+      } catch (refetchError) {
+        console.error("Failed to refetch storyline:", refetchError)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleRevertToOriginal = async () => {
+    if (!confirm("Are you sure you want to revert to the original AI-generated storyline? All your edits will be lost.")) {
+      return
+    }
+
+    try {
+      setReverting(true)
+      const response = await api.revertStoryline(brandId, creativeBibleId)
+
+      if (response?.storyline) {
+        setStoryline(response.storyline)
+        alert("Storyline reverted to original!")
+      }
+    } catch (error) {
+      console.error("Failed to revert storyline:", error)
+      alert(`Failed to revert: ${error.message || "Please try again."}`)
+    } finally {
+      setReverting(false)
     }
   }
 
@@ -177,9 +307,30 @@ export default function StorylineReview() {
               <h2 className="text-2xl font-semibold" style={{ fontFamily: "'Playfair Display', serif" }}>
                 Video Scenes
               </h2>
-              <span className="text-sm text-muted-foreground bg-white/60 px-3 py-1 rounded-full">
-                30 seconds
-              </span>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRevertToOriginal}
+                  disabled={reverting}
+                  className="border-purple-200 hover:bg-purple-50 hover:border-purple-300"
+                >
+                  {reverting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Reverting...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-4 h-4 mr-2" />
+                      Revert to Original
+                    </>
+                  )}
+                </Button>
+                <span className="text-sm text-muted-foreground bg-white/60 px-3 py-1 rounded-full">
+                  30 seconds
+                </span>
+              </div>
             </div>
             
             {storyline.scenes?.map((scene, idx) => (
@@ -225,7 +376,11 @@ export default function StorylineReview() {
                 <CardContent className="pt-6">
                   <div className="space-y-4">
                     <div>
-                      <p className="text-foreground leading-relaxed">{scene.description}</p>
+                      <EditableDescription
+                        value={scene.description}
+                        sceneNumber={scene.scene_number || idx + 1}
+                        onSave={handleEditDescription}
+                      />
                     </div>
                     <div className="pt-4 border-t border-purple-50">
                       <p className="text-sm font-semibold mb-2 text-foreground flex items-center gap-2">

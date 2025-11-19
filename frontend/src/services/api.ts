@@ -330,5 +330,14 @@ export const api = {
   completeChat: <T = unknown>(brandId: string, creativeBibleId: string) => apiRequest<T>(`/api/brands/${brandId}/chat/${creativeBibleId}/complete`, {
     method: "POST",
   }),
+
+  // Storyline editing
+  updateStoryline: <T = unknown>(brandId: string, creativeBibleId: string, sceneNumber: number, description: string) => apiRequest<T>(`/api/brands/${brandId}/storyline/${creativeBibleId}`, {
+    method: "PUT",
+    body: JSON.stringify({ scene_number: sceneNumber, description }),
+  }),
+  revertStoryline: <T = unknown>(brandId: string, creativeBibleId: string) => apiRequest<T>(`/api/brands/${brandId}/storyline/${creativeBibleId}/revert`, {
+    method: "POST",
+  }),
 }
 
