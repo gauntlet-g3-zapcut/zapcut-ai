@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, SyntheticEvent } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
 import { Button } from "../components/ui/button"
@@ -7,99 +7,196 @@ import HomeSidebar from "../components/layout/HomeSidebar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Plus, Trash2 } from "lucide-react"
 import { api } from "../services/api"
+import { DEBUG_AUTH } from "../services/supabase"
 
-// Cache brands in memory to avoid unnecessary API calls
-let brandsCache = null
-let brandsCacheTimestamp = null
+interface Brand {
+  id: string
+  title: string
+  description: string
+  product_image_1_url?: string
+  product_image_2_url?: string
+  created_at: string
+}
+
+// Cache brands using sessionStorage to persist across HMR and component remounts
 const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+const BRANDS_CACHE_KEY = 'zapcut_brands_cache'
+const BRANDS_CACHE_TIMESTAMP_KEY = 'zapcut_brands_cache_timestamp'
+
+// Helper functions to manage cache in sessionStorage
+const getBrandsCache = (): Brand[] | null => {
+  try {
+    const cached = sessionStorage.getItem(BRANDS_CACHE_KEY)
+    return cached ? JSON.parse(cached) : null
+  } catch {
+    return null
+  }
+}
+
+const setBrandsCache = (brands: Brand[]): void => {
+  try {
+    sessionStorage.setItem(BRANDS_CACHE_KEY, JSON.stringify(brands))
+    sessionStorage.setItem(BRANDS_CACHE_TIMESTAMP_KEY, Date.now().toString())
+  } catch (error) {
+    console.warn('[Dashboard] Failed to cache brands:', error)
+  }
+}
+
+const getCacheTimestamp = (): number | null => {
+  try {
+    const timestamp = sessionStorage.getItem(BRANDS_CACHE_TIMESTAMP_KEY)
+    return timestamp ? parseInt(timestamp, 10) : null
+  } catch {
+    return null
+  }
+}
+
+const clearBrandsCache = (): void => {
+  try {
+    sessionStorage.removeItem(BRANDS_CACHE_KEY)
+    sessionStorage.removeItem(BRANDS_CACHE_TIMESTAMP_KEY)
+  } catch (error) {
+    console.warn('[Dashboard] Failed to clear cache:', error)
+  }
+}
 
 export default function Dashboard() {
   const { user, logout, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [brands, setBrands] = useState([])
+  const [brands, setBrands] = useState<Brand[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<string | null>(null)
+  const isFetchingRef = useRef(false)
 
   useEffect(() => {
+    const cachedBrands = getBrandsCache()
+    const cachedTimestamp = getCacheTimestamp()
+
+    if (DEBUG_AUTH) {
+      console.log('[Dashboard] useEffect triggered with dependencies:', {
+        user: !!user,
+        authLoading,
+        'location.state?.refetch': location.state?.refetch,
+        'location.pathname': location.pathname,
+        isFetchingRef: isFetchingRef.current,
+        hasCache: !!cachedBrands,
+        cacheTimestamp: cachedTimestamp,
+      })
+    }
+
     // Wait for auth to finish loading and user to be available
     if (authLoading) {
+      if (DEBUG_AUTH) console.log('[Dashboard] Auth still loading, waiting...')
       setLoading(true)
       return
     }
 
     if (!user) {
+      if (DEBUG_AUTH) console.log('[Dashboard] No user found, skipping fetch')
       // User not authenticated, redirect will happen via PrivateRoute
       setLoading(false)
       return
     }
 
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) {
+      if (DEBUG_AUTH) console.log('[Dashboard] Already fetching, skipping...')
+      return
+    }
+
     const fetchBrands = async () => {
+      if (DEBUG_AUTH) console.log('[Dashboard] Starting fetchBrands function')
+      isFetchingRef.current = true
+
       try {
         // Check if we should force refetch (e.g., after creating a brand)
         const shouldRefetch = location.state?.refetch
+        if (DEBUG_AUTH) console.log('[Dashboard] shouldRefetch:', shouldRefetch)
 
         // Check cache first (unless forced refetch)
         const now = Date.now()
-        if (!shouldRefetch && brandsCache && brandsCacheTimestamp && (now - brandsCacheTimestamp) < CACHE_DURATION) {
-          console.log('[Dashboard] Using cached brands:', {
-            count: brandsCache.length,
-            cacheAge: ((now - brandsCacheTimestamp) / 1000).toFixed(1) + 's',
+        const cachedBrands = getBrandsCache()
+        const cachedTimestamp = getCacheTimestamp()
+        const cacheAge = cachedTimestamp ? now - cachedTimestamp : null
+        const cacheValid = !shouldRefetch && cachedBrands && cachedTimestamp && cacheAge < CACHE_DURATION
+
+        if (DEBUG_AUTH) {
+          console.log('[Dashboard] Cache check:', {
+            shouldRefetch,
+            hasCache: !!cachedBrands,
+            cacheAge: cacheAge ? `${(cacheAge / 1000).toFixed(1)}s` : 'none',
+            cacheValid,
+            CACHE_DURATION: `${CACHE_DURATION / 1000}s`,
           })
-          setBrands(brandsCache)
+        }
+
+        if (cacheValid) {
+          if (DEBUG_AUTH) {
+            console.log('[Dashboard] Using cached brands:', {
+              count: cachedBrands.length,
+              cacheAge: ((now - cachedTimestamp) / 1000).toFixed(1) + 's',
+            })
+          }
+          setBrands(cachedBrands)
           setLoading(false)
           return
         }
 
         if (shouldRefetch) {
-          console.log('[Dashboard] Force refetching brands (cache invalidated)')
-          // Clear the state so we don't refetch on every render
+          if (DEBUG_AUTH) console.log('[Dashboard] Force refetching brands (cache invalidated)')
+          // Clear the state immediately to prevent re-triggering
           navigate(location.pathname, { replace: true, state: {} })
         }
 
-        console.log('[Dashboard] Fetching brands from API...')
+        if (DEBUG_AUTH) console.log('[Dashboard] Fetching brands from API...')
         setLoading(true)
         setError(null)
         const data = await api.getBrands()
 
-        console.log('[Dashboard] Brands fetched successfully:', {
-          count: data.length,
-          brands: data.map(b => ({
-            id: b.id,
-            title: b.title,
-            hasImage1: !!b.product_image_1_url,
-            hasImage2: !!b.product_image_2_url,
-            image1Url: b.product_image_1_url,
-            image2Url: b.product_image_2_url,
-          })),
-        })
+        if (DEBUG_AUTH) {
+          console.log('[Dashboard] Brands fetched successfully:', {
+            count: data.length,
+            brands: data.map(b => ({
+              id: b.id,
+              title: b.title,
+              hasImage1: !!b.product_image_1_url,
+              hasImage2: !!b.product_image_2_url,
+              image1Url: b.product_image_1_url,
+              image2Url: b.product_image_2_url,
+            })),
+          })
+        }
 
         setBrands(data)
         // Update cache
-        brandsCache = data
-        brandsCacheTimestamp = now
+        setBrandsCache(data)
+        if (DEBUG_AUTH) console.log('[Dashboard] Cache updated, timestamp:', getCacheTimestamp())
       } catch (error) {
         console.error("[Dashboard] Failed to fetch brands:", error)
         setError(error.message || "Failed to load brands")
         // Clear cache on error
-        brandsCache = null
-        brandsCacheTimestamp = null
+        clearBrandsCache()
+        if (DEBUG_AUTH) console.log('[Dashboard] Cache cleared due to error')
       } finally {
+        if (DEBUG_AUTH) console.log('[Dashboard] Fetch complete, resetting isFetchingRef')
         setLoading(false)
+        isFetchingRef.current = false
       }
     }
+
     fetchBrands()
-  }, [user, authLoading])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading, location.state?.refetch])
 
   const handleLogout = async () => {
     // Clear cache on logout
-    brandsCache = null
-    brandsCacheTimestamp = null
+    clearBrandsCache()
     await logout()
     navigate("/")
   }
 
-  const handleDeleteBrand = async (brandId, brandTitle) => {
+  const handleDeleteBrand = async (brandId: string, brandTitle: string) => {
     if (!window.confirm(`Are you sure you want to delete "${brandTitle}"? This action cannot be undone.`)) {
       return
     }
@@ -109,19 +206,12 @@ export default function Dashboard() {
       // Refresh the brands list and update cache
       const data = await api.getBrands()
       setBrands(data)
-      brandsCache = data
-      brandsCacheTimestamp = Date.now()
+      setBrandsCache(data)
     } catch (error) {
       console.error("Failed to delete brand:", error)
       const errorMessage = error instanceof Error ? error.message : "Failed to delete brand"
       alert(errorMessage)
     }
-  }
-
-  // Function to invalidate cache (can be called after creating/updating brands)
-  const invalidateBrandsCache = () => {
-    brandsCache = null
-    brandsCacheTimestamp = null
   }
 
   return (
@@ -196,14 +286,16 @@ export default function Dashboard() {
                         src={brand.product_image_1_url || `https://placehold.co/400x300?text=${encodeURIComponent(brand.title)}`}
                         alt={brand.title}
                         className="w-full h-48 object-cover rounded-md mb-4 bg-gray-100"
-                        onLoad={(e) => {
-                          console.log('[Dashboard] Brand image loaded successfully:', {
-                            brandId: brand.id,
-                            brandTitle: brand.title,
-                            imageUrl: e.target.src,
-                          })
+                        onLoad={(e: SyntheticEvent<HTMLImageElement>) => {
+                          if (DEBUG_AUTH) {
+                            console.log('[Dashboard] Brand image loaded successfully:', {
+                              brandId: brand.id,
+                              brandTitle: brand.title,
+                              imageUrl: e.currentTarget.src,
+                            })
+                          }
                         }}
-                        onError={(e) => {
+                        onError={(e: SyntheticEvent<HTMLImageElement>) => {
                           console.error('[Dashboard] Brand image failed to load:', {
                             brandId: brand.id,
                             brandTitle: brand.title,
@@ -211,7 +303,7 @@ export default function Dashboard() {
                             fallbackUrl: `https://placehold.co/400x300?text=${encodeURIComponent(brand.title)}`,
                           })
                           // Fallback to placeholder if image fails to load
-                          e.target.src = `https://placehold.co/400x300?text=${encodeURIComponent(brand.title)}`
+                          e.currentTarget.src = `https://placehold.co/400x300?text=${encodeURIComponent(brand.title)}`
                         }}
                       />
                       <Button

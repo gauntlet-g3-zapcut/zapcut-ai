@@ -3,20 +3,23 @@ import uuid
 from sqlalchemy import Column, String, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from app.database import Base
 
 
 class CreativeBible(Base):
     """Creative Bible model."""
     __tablename__ = "creative_bibles"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     brand_id = Column(UUID(as_uuid=True), ForeignKey("brands.id"), nullable=False)
     name = Column(String, nullable=False)
     creative_bible = Column(JSON, nullable=False, default=dict)
+    original_creative_bible = Column(JSON, nullable=True)  # For revert functionality
     reference_image_urls = Column(JSON, nullable=False, default=dict)
-    conversation_history = Column(JSON, nullable=True)
+    campaign_preferences = Column(JSON, nullable=True)  # Form answers: style, audience, emotion, pacing, colors, ideas
     created_at = Column(DateTime(timezone=False), nullable=False)
+    updated_at = Column(DateTime(timezone=False), nullable=True, onupdate=func.now())  # For optimistic locking
     
     # Chat-based preference storage
     audience_description = Column(String, nullable=True)

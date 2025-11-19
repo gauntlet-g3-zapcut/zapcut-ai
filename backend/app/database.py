@@ -21,7 +21,16 @@ def get_engine():
             db_url = settings.database_url
             masked_url = db_url.split('@')[-1] if '@' in db_url else db_url
             logger.info(f"Creating database engine: postgresql://***@{masked_url}")
-            _engine = create_engine(db_url)
+
+            # Configure engine with proper connection pooling and prepared statement handling
+            _engine = create_engine(
+                db_url,
+                pool_pre_ping=True,  # Verify connections before using them
+                pool_recycle=3600,   # Recycle connections after 1 hour
+                connect_args={
+                    "prepare_threshold": None  # Disable prepared statements to avoid naming conflicts
+                }
+            )
             logger.info("Database engine created")
         except ValueError as e:
             logger.error(f"Database configuration error: {e}")

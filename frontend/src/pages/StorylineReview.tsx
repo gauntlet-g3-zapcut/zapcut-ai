@@ -1,23 +1,133 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { Button } from "../components/ui/button"
 import { GradientButton } from "../components/ui/gradient-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { api } from "../services/api"
-import { Play, Sparkles, Loader2, Palette, Zap, Heart, Edit2, Pencil } from "lucide-react"
+import { Play, Sparkles, Loader2, Palette, Zap, Heart, Pencil, RotateCcw } from "lucide-react"
+
+interface Scene {
+  scene_number: number
+  title: string
+  description: string
+  visual_notes: string
+  start_time: number
+  end_time: number
+  duration: number
+  energy_start: number
+  energy_end: number
+}
+
+interface Storyline {
+  scenes: Scene[]
+}
+
+interface CreativeBible {
+  brand_style?: string
+  vibe?: string
+  colors?: string[]
+  energy_level?: string
+  campaign_preferences?: Record<string, unknown>
+}
+
+interface StorylineResponse {
+  storyline: Storyline
+  creative_bible: CreativeBible
+}
+
+interface EditableDescriptionProps {
+  value: string
+  sceneNumber: number
+  onSave: (sceneNumber: number, newDescription: string) => void
+}
+
+// Inline editable description component
+function EditableDescription({ value, sceneNumber, onSave }: EditableDescriptionProps) {
+  const [isEditing, setIsEditing] = useState<boolean>(false)
+  const [editValue, setEditValue] = useState<string>(value)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus()
+      // Auto-resize textarea to fit content
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
+    }
+  }, [isEditing])
+
+  useEffect(() => {
+    setEditValue(value)
+  }, [value])
+
+  const handleBlur = () => {
+    setIsEditing(false)
+    if (editValue !== value) {
+      onSave(sceneNumber, editValue)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      setEditValue(value)
+      setIsEditing(false)
+    }
+    // Allow Shift+Enter for new lines, but blur on Enter alone
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleBlur()
+    }
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setEditValue(e.target.value)
+    // Auto-resize textarea
+    e.target.style.height = 'auto'
+    e.target.style.height = e.target.scrollHeight + 'px'
+  }
+
+  if (isEditing) {
+    return (
+      <textarea
+        ref={textareaRef}
+        value={editValue}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className="w-full p-2 border border-purple-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none overflow-hidden leading-relaxed bg-white text-gray-900"
+        style={{ minHeight: '60px' }}
+      />
+    )
+  }
+
+  return (
+    <p
+      onClick={() => setIsEditing(true)}
+      className="text-foreground leading-relaxed cursor-text hover:bg-purple-50 p-2 rounded-md transition-colors"
+      title="Click to edit"
+    >
+      {value}
+    </p>
+  )
+}
 
 export default function StorylineReview() {
-  const { brandId, creativeBibleId } = useParams()
+  const { brandId, creativeBibleId } = useParams<{ brandId: string; creativeBibleId: string }>()
   const navigate = useNavigate()
-  const [storyline, setStoryline] = useState(null)
-  const [creativeBible, setCreativeBible] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [generating, setGenerating] = useState(false)
+  const [storyline, setStoryline] = useState<Storyline | null>(null)
+  const [creativeBible, setCreativeBible] = useState<CreativeBible | null>(null)
+  const [loading, setLoading] = useState<boolean>(true)
+  const [generating, setGenerating] = useState<boolean>(false)
+  const [editingScene, setEditingScene] = useState<number | null>(null)
+  const [saving, setSaving] = useState<boolean>(false)
+  const [reverting, setReverting] = useState<boolean>(false)
 
   useEffect(() => {
     const fetchStoryline = async () => {
+      if (!brandId || !creativeBibleId) return
+
       try {
-        const response = await api.getStoryline(brandId, creativeBibleId)
+        const response = await api.getStoryline<StorylineResponse>(brandId, creativeBibleId)
         setStoryline(response.storyline)
         setCreativeBible(response.creative_bible)
       } catch (error) {
@@ -31,26 +141,95 @@ export default function StorylineReview() {
   }, [brandId, creativeBibleId])
 
   const handleApprove = async () => {
+    if (!brandId || !creativeBibleId) return
+
     setGenerating(true)
     try {
-      const response = await api.createCampaign({
+      const response = await api.createCampaign<{ campaign_id: string }>({
         brand_id: brandId,
         creative_bible_id: creativeBibleId
       })
-      
+
       if (!response?.campaign_id) {
         throw new Error("No campaign_id in response")
       }
-      
+
       // Navigate to video generation progress page immediately
       navigate(`/campaigns/${response.campaign_id}/progress`)
-      
+
       // Don't set generating to false - let navigation happen
       // The component will unmount anyway
     } catch (error) {
       console.error("Failed to start generation:", error)
       setGenerating(false) // Only reset if there's an error
-      alert(`Failed to start video generation: ${error.message || "Please try again."}`)
+      const errorMessage = error instanceof Error ? error.message : "Please try again."
+      alert(`Failed to start video generation: ${errorMessage}`)
+    }
+  }
+
+  const handleEditDescription = async (sceneNumber: number, newDescription: string) => {
+    if (!brandId || !creativeBibleId) return
+
+    // Optimistic update - update UI immediately
+    setStoryline(prevStoryline => {
+      if (!prevStoryline) return null
+      return {
+        ...prevStoryline,
+        scenes: prevStoryline.scenes.map(scene =>
+          scene.scene_number === sceneNumber
+            ? { ...scene, description: newDescription }
+            : scene
+        )
+      }
+    })
+
+    // Save to backend
+    try {
+      setSaving(true)
+      const response = await api.updateStoryline<{ storyline: Storyline }>(brandId, creativeBibleId, sceneNumber, newDescription)
+
+      // Update with server response (in case backend modified anything)
+      if (response?.storyline) {
+        setStoryline(response.storyline)
+      }
+    } catch (error) {
+      console.error("Failed to save description:", error)
+      const errorMessage = error instanceof Error ? error.message : "Please try again."
+      alert(`Failed to save changes: ${errorMessage}`)
+
+      // Revert optimistic update on error - refetch from server
+      try {
+        const response = await api.getStoryline<StorylineResponse>(brandId, creativeBibleId)
+        setStoryline(response.storyline)
+      } catch (refetchError) {
+        console.error("Failed to refetch storyline:", refetchError)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleRevertToOriginal = async () => {
+    if (!brandId || !creativeBibleId) return
+
+    if (!confirm("Are you sure you want to revert to the original AI-generated storyline? All your edits will be lost.")) {
+      return
+    }
+
+    try {
+      setReverting(true)
+      const response = await api.revertStoryline<{ storyline: Storyline }>(brandId, creativeBibleId)
+
+      if (response?.storyline) {
+        setStoryline(response.storyline)
+        alert("Storyline reverted to original!")
+      }
+    } catch (error) {
+      console.error("Failed to revert storyline:", error)
+      const errorMessage = error instanceof Error ? error.message : "Please try again."
+      alert(`Failed to revert: ${errorMessage}`)
+    } finally {
+      setReverting(false)
     }
   }
 
@@ -65,7 +244,7 @@ export default function StorylineReview() {
               <Sparkles className="h-10 w-10 text-purple-600 animate-spin" style={{ animationDuration: '2s' }} />
             </div>
           </div>
-          
+
           {/* Main text with fade animation */}
           <div className="text-center space-y-2">
             <h2 className="text-2xl font-semibold text-foreground animate-pulse" style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -177,13 +356,34 @@ export default function StorylineReview() {
               <h2 className="text-2xl font-semibold" style={{ fontFamily: "'Playfair Display', serif" }}>
                 Video Scenes
               </h2>
-              <span className="text-sm text-muted-foreground bg-white/60 px-3 py-1 rounded-full">
-                30 seconds
-              </span>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRevertToOriginal}
+                  disabled={reverting}
+                  className="border-purple-200 hover:bg-purple-50 hover:border-purple-300"
+                >
+                  {reverting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Reverting...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-4 h-4 mr-2" />
+                      Revert to Original
+                    </>
+                  )}
+                </Button>
+                <span className="text-sm text-muted-foreground bg-white/60 px-3 py-1 rounded-full">
+                  30 seconds
+                </span>
+              </div>
             </div>
-            
+
             {storyline.scenes?.map((scene, idx) => (
-              <Card 
+              <Card
                 key={`scene-${scene.scene_number || idx}-${scene.title || idx}`}
                 className="shadow-lg bg-white/80 backdrop-blur-sm border-purple-100 hover:shadow-xl transition-shadow group"
               >
@@ -202,30 +402,22 @@ export default function StorylineReview() {
                         {scene.start_time}s - {scene.end_time}s ({scene.duration}s)
                       </CardDescription>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 rounded-lg border border-purple-100">
-                        <Zap className="w-4 h-4 text-purple-600" />
-                        <span className="text-sm font-medium text-purple-700">
-                          {scene.energy_start} → {scene.energy_end}
-                        </span>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigate(`/brands/${brandId}/chat?editScene=${scene.scene_number || idx + 1}`)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity border-purple-200 hover:bg-purple-50 hover:border-purple-300"
-                        title="Edit this scene"
-                      >
-                        <Edit2 className="w-4 h-4 mr-1.5" />
-                        Edit
-                      </Button>
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 rounded-lg border border-purple-100">
+                      <Zap className="w-4 h-4 text-purple-600" />
+                      <span className="text-sm font-medium text-purple-700">
+                        {scene.energy_start} → {scene.energy_end}
+                      </span>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="pt-6">
                   <div className="space-y-4">
                     <div>
-                      <p className="text-foreground leading-relaxed">{scene.description}</p>
+                      <EditableDescription
+                        value={scene.description}
+                        sceneNumber={scene.scene_number || idx + 1}
+                        onSave={handleEditDescription}
+                      />
                     </div>
                     <div className="pt-4 border-t border-purple-50">
                       <p className="text-sm font-semibold mb-2 text-foreground flex items-center gap-2">
@@ -247,11 +439,11 @@ export default function StorylineReview() {
         <div className="mt-8 flex gap-4">
           <Button
             variant="outline"
-            onClick={() => navigate(`/brands/${brandId}/chat`)}
+            onClick={() => navigate(`/brands/${brandId}/chat?creativeBibleId=${creativeBibleId}`)}
             className="flex-1 h-11 border-purple-200 hover:bg-purple-50 hover:border-purple-300 text-base font-medium"
           >
             <Pencil className="mr-2 h-4 w-4" />
-            Edit Brief
+            Update preferences
           </Button>
           <GradientButton
             onClick={handleApprove}
@@ -275,4 +467,3 @@ export default function StorylineReview() {
     </div>
   )
 }
-

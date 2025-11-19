@@ -117,35 +117,35 @@ async def migrate_audio_columns():
     try:
         from app.database import get_engine
         from sqlalchemy import text
-        
+
         engine = get_engine()
-        
+
         with engine.begin() as conn:
             # Check if columns exist and add them if they don't
             migration_sql = """
-            DO $$ 
+            DO $$
             BEGIN
                 -- Add audio_url column if it doesn't exist
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'campaigns' AND column_name = 'audio_url'
                 ) THEN
                     ALTER TABLE campaigns ADD COLUMN audio_url VARCHAR;
                     RAISE NOTICE 'Added audio_url column';
                 END IF;
-                
+
                 -- Add audio_status column if it doesn't exist
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'campaigns' AND column_name = 'audio_status'
                 ) THEN
                     ALTER TABLE campaigns ADD COLUMN audio_status VARCHAR DEFAULT 'pending';
                     RAISE NOTICE 'Added audio_status column';
                 END IF;
-                
+
                 -- Add audio_generation_error column if it doesn't exist
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'campaigns' AND column_name = 'audio_generation_error'
                 ) THEN
                     ALTER TABLE campaigns ADD COLUMN audio_generation_error VARCHAR;
@@ -153,15 +153,55 @@ async def migrate_audio_columns():
                 END IF;
             END $$;
             """
-            
+
             conn.execute(text(migration_sql))
-            
+
         logger.info("Audio columns migration completed successfully")
-        
+
         return {
             "status": "success",
             "message": "Audio columns added to campaigns table",
             "columns_added": ["audio_url", "audio_status", "audio_generation_error"]
+        }
+    except Exception as e:
+        logger.error(f"Migration error: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/migrate-original-creative-bible")
+async def migrate_original_creative_bible():
+    """Add original_creative_bible column to creative_bibles table (migration)."""
+    try:
+        from app.database import get_engine
+        from sqlalchemy import text
+
+        engine = get_engine()
+
+        with engine.begin() as conn:
+            migration_sql = """
+            DO $$
+            BEGIN
+                -- Add original_creative_bible column if it doesn't exist
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'original_creative_bible'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN original_creative_bible JSONB;
+                    RAISE NOTICE 'Added original_creative_bible column';
+                ELSE
+                    RAISE NOTICE 'original_creative_bible column already exists';
+                END IF;
+            END $$;
+            """
+
+            conn.execute(text(migration_sql))
+
+        logger.info("Original creative bible column migration completed successfully")
+
+        return {
+            "status": "success",
+            "message": "original_creative_bible column added to creative_bibles table",
+            "columns_added": ["original_creative_bible"]
         }
     except Exception as e:
         logger.error(f"Migration error: {e}", exc_info=True)
@@ -174,88 +214,88 @@ async def migrate_chat_columns():
     try:
         from app.database import get_engine
         from sqlalchemy import text
-        
+
         engine = get_engine()
-        
+
         with engine.begin() as conn:
             migration_sql = """
-            DO $$ 
+            DO $$
             BEGIN
                 -- Add preference description columns to creative_bibles if they don't exist
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'creative_bibles' AND column_name = 'audience_description'
                 ) THEN
                     ALTER TABLE creative_bibles ADD COLUMN audience_description VARCHAR;
                     RAISE NOTICE 'Added audience_description column';
                 END IF;
-                
+
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'creative_bibles' AND column_name = 'audience_keywords'
                 ) THEN
                     ALTER TABLE creative_bibles ADD COLUMN audience_keywords JSONB;
                     RAISE NOTICE 'Added audience_keywords column';
                 END IF;
-                
+
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'creative_bibles' AND column_name = 'style_description'
                 ) THEN
                     ALTER TABLE creative_bibles ADD COLUMN style_description VARCHAR;
                     RAISE NOTICE 'Added style_description column';
                 END IF;
-                
+
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'creative_bibles' AND column_name = 'style_keywords'
                 ) THEN
                     ALTER TABLE creative_bibles ADD COLUMN style_keywords JSONB;
                     RAISE NOTICE 'Added style_keywords column';
                 END IF;
-                
+
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'creative_bibles' AND column_name = 'emotion_description'
                 ) THEN
                     ALTER TABLE creative_bibles ADD COLUMN emotion_description VARCHAR;
                     RAISE NOTICE 'Added emotion_description column';
                 END IF;
-                
+
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'creative_bibles' AND column_name = 'emotion_keywords'
                 ) THEN
                     ALTER TABLE creative_bibles ADD COLUMN emotion_keywords JSONB;
                     RAISE NOTICE 'Added emotion_keywords column';
                 END IF;
-                
+
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'creative_bibles' AND column_name = 'pacing_description'
                 ) THEN
                     ALTER TABLE creative_bibles ADD COLUMN pacing_description VARCHAR;
                     RAISE NOTICE 'Added pacing_description column';
                 END IF;
-                
+
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'creative_bibles' AND column_name = 'pacing_keywords'
                 ) THEN
                     ALTER TABLE creative_bibles ADD COLUMN pacing_keywords JSONB;
                     RAISE NOTICE 'Added pacing_keywords column';
                 END IF;
-                
+
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'creative_bibles' AND column_name = 'colors_description'
                 ) THEN
                     ALTER TABLE creative_bibles ADD COLUMN colors_description VARCHAR;
                     RAISE NOTICE 'Added colors_description column';
                 END IF;
-                
+
                 IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'creative_bibles' AND column_name = 'colors_keywords'
                 ) THEN
                     ALTER TABLE creative_bibles ADD COLUMN colors_keywords JSONB;
@@ -263,9 +303,9 @@ async def migrate_chat_columns():
                 END IF;
             END $$;
             """
-            
+
             conn.execute(text(migration_sql))
-            
+
             # Create chat_messages table if it doesn't exist
             create_chat_messages_table = """
             CREATE TABLE IF NOT EXISTS chat_messages (
@@ -275,18 +315,18 @@ async def migrate_chat_columns():
                 content TEXT NOT NULL,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
-            
-            CREATE INDEX IF NOT EXISTS idx_chat_messages_creative_bible_id 
+
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_creative_bible_id
             ON chat_messages(creative_bible_id);
-            
-            CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at 
+
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at
             ON chat_messages(created_at);
             """
-            
+
             conn.execute(text(create_chat_messages_table))
-            
+
         logger.info("Chat columns migration completed successfully")
-        
+
         return {
             "status": "success",
             "message": "Chat columns added to creative_bibles table and chat_messages table created",
@@ -303,3 +343,84 @@ async def migrate_chat_columns():
         logger.error(f"Migration error: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
+
+@app.post("/migrate-rename-conversation-history")
+async def migrate_rename_conversation_history():
+    """Rename conversation_history column to campaign_preferences (migration)."""
+    try:
+        from app.database import get_engine
+        from sqlalchemy import text
+
+        engine = get_engine()
+
+        with engine.begin() as conn:
+            migration_sql = """
+            DO $$
+            BEGIN
+                -- Rename conversation_history to campaign_preferences if it exists
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'conversation_history'
+                ) THEN
+                    ALTER TABLE creative_bibles RENAME COLUMN conversation_history TO campaign_preferences;
+                    RAISE NOTICE 'Renamed conversation_history to campaign_preferences';
+                ELSE
+                    RAISE NOTICE 'conversation_history column does not exist or already renamed';
+                END IF;
+            END $$;
+            """
+
+            conn.execute(text(migration_sql))
+
+        logger.info("Conversation history rename migration completed successfully")
+
+        return {
+            "status": "success",
+            "message": "conversation_history column renamed to campaign_preferences",
+            "renamed_columns": ["conversation_history -> campaign_preferences"]
+        }
+    except Exception as e:
+        logger.error(f"Migration error: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/migrate-add-updated-at")
+async def migrate_add_updated_at():
+    """Add updated_at column to creative_bibles table for optimistic locking (migration)."""
+    try:
+        from app.database import get_engine
+        from sqlalchemy import text
+
+        engine = get_engine()
+
+        with engine.begin() as conn:
+            migration_sql = """
+            DO $$
+            BEGIN
+                -- Add updated_at column if it doesn't exist
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'updated_at'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN updated_at TIMESTAMP;
+                    -- Set initial values to created_at for existing records
+                    UPDATE creative_bibles SET updated_at = created_at WHERE updated_at IS NULL;
+                    RAISE NOTICE 'Added updated_at column';
+                ELSE
+                    RAISE NOTICE 'updated_at column already exists';
+                END IF;
+            END $$;
+            """
+
+            conn.execute(text(migration_sql))
+
+        logger.info("Updated_at column migration completed successfully")
+
+        return {
+            "status": "success",
+            "message": "updated_at column added to creative_bibles table",
+            "columns_added": ["updated_at"]
+        }
+    except Exception as e:
+        logger.error(f"Migration error: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}

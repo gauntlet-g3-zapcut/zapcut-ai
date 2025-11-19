@@ -1,4 +1,5 @@
 import { supabase, DEBUG_AUTH } from "./supabase"
+import type { CampaignAnswers } from "../types/campaign"
 
 // API Configuration - HTTPS in production, HTTP in development
 const getApiUrl = (): string => {
@@ -12,6 +13,13 @@ const getApiUrl = (): string => {
 }
 
 const API_URL = getApiUrl()
+
+// Log production API URL for visibility
+if (import.meta.env.VITE_PROD === 'true') {
+  console.log('🚀 PRODUCTION MODE - API URL:', API_URL)
+} else {
+  console.log('🔧 DEVELOPMENT MODE - API URL:', API_URL)
+}
 const TOKEN_REFRESH_BUFFER_MS = 60_000
 
 // Helper for conditional logging
@@ -117,21 +125,35 @@ interface RequestOptions extends RequestInit {
 
 async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions = {}, retryCount = 0): Promise<T> {
   const maxRetries = 1
+  const requestId = Math.random().toString(36).substring(7)
+
+  if (DEBUG_AUTH) {
+    console.log(`[API:${requestId}] ⏳ Starting request:`, {
+      endpoint,
+      method: options.method || 'GET',
+      hasBody: !!options.body,
+      retryCount,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
   const token = await getAuthToken()
+  if (DEBUG_AUTH) console.log(`[API:${requestId}] ✅ Got auth token (length: ${token.length})`)
 
   const url = `${API_URL}${endpoint}`
-
-  console.log('[API] Request starting:', {
-    endpoint,
-    method: options.method || 'GET',
-    hasBody: !!options.body,
-  })
+  if (DEBUG_AUTH) console.log(`[API:${requestId}] 🌐 Full URL: ${url}`)
 
   // Add timeout to prevent hanging requests
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+  const timeoutId = setTimeout(() => {
+    console.error(`[API:${requestId}] ⏰ Request timeout after 30s`)
+    controller.abort()
+  }, 30000) // 30 second timeout
 
   try {
+    if (DEBUG_AUTH) console.log(`[API:${requestId}] 📡 Sending fetch request...`)
+    const fetchStartTime = Date.now()
+
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
@@ -142,28 +164,41 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
       },
     })
 
+    const fetchDuration = Date.now() - fetchStartTime
+    if (DEBUG_AUTH) {
+      console.log(`[API:${requestId}] 📥 Response received (${fetchDuration}ms):`, {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+      })
+    }
+
     clearTimeout(timeoutId)
 
     // Handle 401 Unauthorized - might be due to invalid token
     if (response.status === 401 && retryCount < maxRetries) {
+      if (DEBUG_AUTH) console.log(`[API:${requestId}] 🔄 Got 401, attempting to refresh session...`)
       // Try refreshing the session and retrying once
       try {
         const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
         if (!refreshError && refreshData.session) {
+          if (DEBUG_AUTH) console.log(`[API:${requestId}] ✅ Session refreshed, retrying request...`)
           // Retry the request with the new token
           return apiRequest<T>(endpoint, options, retryCount + 1)
         }
+        console.error(`[API:${requestId}] ❌ Session refresh failed:`, refreshError)
       } catch (refreshErr) {
-        console.error("Failed to refresh session:", refreshErr)
+        console.error(`[API:${requestId}] ❌ Exception during session refresh:`, refreshErr)
       }
       // If refresh fails, sign out and throw error
+      if (DEBUG_AUTH) console.log(`[API:${requestId}] 🚪 Signing out due to auth failure`)
       await supabase.auth.signOut()
       throw new Error("Session expired. Please log in again.")
     }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: "An error occurred" })) as { detail?: string; message?: string }
-      console.error('[API] Request failed:', {
+      console.error(`[API:${requestId}] ❌ Request failed:`, {
         endpoint,
         status: response.status,
         statusText: response.statusText,
@@ -172,21 +207,26 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
       throw new Error(error.detail || error.message || "Request failed")
     }
 
+    if (DEBUG_AUTH) console.log(`[API:${requestId}] 📦 Parsing JSON response...`)
     const data = await response.json()
-    console.log('[API] Request successful:', {
-      endpoint,
-      status: response.status,
-      dataKeys: typeof data === 'object' && data !== null ? Object.keys(data) : 'non-object',
-      isArray: Array.isArray(data),
-      arrayLength: Array.isArray(data) ? data.length : undefined,
-    })
+    if (DEBUG_AUTH) {
+      console.log(`[API:${requestId}] ✅ Request successful:`, {
+        endpoint,
+        status: response.status,
+        dataKeys: typeof data === 'object' && data !== null ? Object.keys(data) : 'non-object',
+        isArray: Array.isArray(data),
+        arrayLength: Array.isArray(data) ? data.length : undefined,
+        totalDuration: `${Date.now() - fetchStartTime}ms`,
+      })
+    }
     return data as T
   } catch (error: unknown) {
     clearTimeout(timeoutId)
     if (error instanceof Error && error.name === 'AbortError') {
-      console.error(`[API] Request timeout: ${url}`)
+      console.error(`[API:${requestId}] ⏰ Request timeout: ${url}`)
       throw new Error("Request timed out. Please check your connection.")
     }
+    console.error(`[API:${requestId}] 💥 Request failed with error:`, error)
     throw error
   }
 }
@@ -205,24 +245,26 @@ async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: F
   const token = await getAuthToken()
 
   // Log FormData contents for debugging
-  console.log('[API] FormData request starting:', {
+  debugLog('[API] FormData request starting:', {
     endpoint,
     method: options.method || "POST",
     formDataKeys: Array.from(formData.keys()),
   })
 
   // Log file details
-  formData.forEach((value, key) => {
-    if (value instanceof File) {
-      console.log(`[API] FormData file: ${key}`, {
-        name: value.name,
-        size: value.size,
-        type: value.type,
-      })
-    } else {
-      console.log(`[API] FormData field: ${key} =`, value)
-    }
-  })
+  if (DEBUG_AUTH) {
+    formData.forEach((value, key) => {
+      if (value instanceof File) {
+        console.log(`[API] FormData file: ${key}`, {
+          name: value.name,
+          size: value.size,
+          type: value.type,
+        })
+      } else {
+        console.log(`[API] FormData field: ${key} =`, value)
+      }
+    })
+  }
 
   const response = await fetch(`${API_URL}${endpoint}`, {
     method: options.method || "POST",
@@ -276,7 +318,7 @@ async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: F
   }
 
   const responseData = await response.json() as Promise<T>
-  console.log('[API] FormData request successful:', {
+  debugLog('[API] FormData request successful:', {
     endpoint,
     status: response.status,
     data: responseData,
@@ -311,8 +353,12 @@ export const api = {
   }),
 
   // Campaign answers
-  submitCampaignAnswers: <T = unknown>(brandId: string, answers: unknown) => apiRequest<T>(`/api/brands/${brandId}/campaign-answers`, {
+  submitCampaignAnswers: <T = unknown>(brandId: string, answers: CampaignAnswers) => apiRequest<T>(`/api/brands/${brandId}/campaign-answers`, {
     method: "POST",
+    body: JSON.stringify({ answers }),
+  }),
+  updateCampaignAnswers: <T = unknown>(brandId: string, creativeBibleId: string, answers: CampaignAnswers) => apiRequest<T>(`/api/brands/${brandId}/campaign-answers/${creativeBibleId}`, {
+    method: "PUT",
     body: JSON.stringify({ answers }),
   }),
   getStoryline: <T = unknown>(brandId: string, creativeBibleId: string) => apiRequest<T>(`/api/brands/${brandId}/storyline/${creativeBibleId}`),
@@ -328,6 +374,15 @@ export const api = {
   }),
   getChatMessages: <T = unknown>(brandId: string, creativeBibleId: string) => apiRequest<T>(`/api/brands/${brandId}/chat/${creativeBibleId}/messages`),
   completeChat: <T = unknown>(brandId: string, creativeBibleId: string) => apiRequest<T>(`/api/brands/${brandId}/chat/${creativeBibleId}/complete`, {
+    method: "POST",
+  }),
+
+  // Storyline editing
+  updateStoryline: <T = unknown>(brandId: string, creativeBibleId: string, sceneNumber: number, description: string) => apiRequest<T>(`/api/brands/${brandId}/storyline/${creativeBibleId}`, {
+    method: "PUT",
+    body: JSON.stringify({ scene_number: sceneNumber, description }),
+  }),
+  revertStoryline: <T = unknown>(brandId: string, creativeBibleId: string) => apiRequest<T>(`/api/brands/${brandId}/storyline/${creativeBibleId}/revert`, {
     method: "POST",
   }),
 }
