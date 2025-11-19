@@ -736,8 +736,9 @@ async def send_chat_message(
         # Use the aspect we captured BEFORE processing (what the user was answering about)
         if current_aspect_being_answered and current_aspect_being_answered not in collected:
             # Check if user provided a meaningful response (not just "yes" or "ok")
+            # Allow short answers like "young", "bold", "fast", "blue" etc.
             user_msg_lower = message_request.message.lower().strip()
-            if len(user_msg_lower) > 10 and user_msg_lower not in ["yes", "ok", "sure", "yeah", "yep"]:
+            if len(user_msg_lower) > 2 and user_msg_lower not in ["yes", "ok", "sure", "yeah", "yep", "nope", "no"]:
                 # Extract and store preference for the aspect the user was answering about
                 preference = agent.extract_and_store_preference(current_aspect_being_answered, message_request.message)
                 if preference:
