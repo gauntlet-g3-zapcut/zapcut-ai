@@ -1,4 +1,5 @@
 import { supabase, DEBUG_AUTH } from "./supabase"
+import type { CampaignAnswers } from "../types/campaign"
 
 // API Configuration - HTTPS in production, HTTP in development
 const getApiUrl = (): string => {
@@ -311,7 +312,7 @@ export const api = {
   }),
 
   // Campaign answers
-  submitCampaignAnswers: <T = unknown>(brandId: string, answers: unknown) => apiRequest<T>(`/api/brands/${brandId}/campaign-answers`, {
+  submitCampaignAnswers: <T = unknown>(brandId: string, answers: CampaignAnswers) => apiRequest<T>(`/api/brands/${brandId}/campaign-answers`, {
     method: "POST",
     body: JSON.stringify({ answers }),
   }),

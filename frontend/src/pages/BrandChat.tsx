@@ -5,50 +5,61 @@ import { GradientButton } from "../components/ui/gradient-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Textarea } from "../components/ui/textarea"
 import { api } from "../services/api"
+import type { Question, QuestionId, CampaignAnswers, SubmitCampaignAnswersResponse } from "../types/campaign"
 
-const QUESTIONS = [
+const QUESTIONS: readonly Question[] = [
   {
     id: "style",
     question: "How do you want this ad to look and feel?",
-    options: ["Modern & Sleek", "Energetic & Fun", "Luxurious & Sophisticated", "Minimal & Clean", "Bold & Dramatic"]
+    options: ["Modern & Sleek", "Energetic & Fun", "Luxurious & Sophisticated", "Minimal & Clean", "Bold & Dramatic"] as const
   },
   {
     id: "audience",
     question: "Who is your target audience?",
-    options: ["Young Adults (18-25)", "Professionals (25-40)", "Families", "Seniors (50+)", "Everyone"]
+    options: ["Young Adults (18-25)", "Professionals (25-40)", "Families", "Seniors (50+)", "Everyone"] as const
   },
   {
     id: "emotion",
     question: "What's the key message or emotion you want viewers to feel?",
-    options: ["Excitement", "Trust & Reliability", "Joy & Happiness", "Luxury & Prestige", "Innovation"]
+    options: ["Excitement", "Trust & Reliability", "Joy & Happiness", "Luxury & Prestige", "Innovation"] as const
   },
   {
     id: "pacing",
     question: "What should be the pacing and energy?",
-    options: ["Fast-paced & Exciting", "Slow & Elegant", "Dynamic Build-up", "Steady & Calm"]
+    options: ["Fast-paced & Exciting", "Slow & Elegant", "Dynamic Build-up", "Steady & Calm"] as const
   },
   {
     id: "colors",
     question: "What colors or visual style do you prefer?",
-    options: ["Bold & Vibrant", "Dark & Moody", "Light & Airy", "Natural & Earthy", "Match Product Colors"]
+    options: ["Bold & Vibrant", "Dark & Moody", "Light & Airy", "Natural & Earthy", "Match Product Colors"] as const
   }
-]
+] as const
+
+const MAX_IDEAS_LENGTH = 2000
 
 export default function BrandChat() {
-  const { brandId } = useParams()
+  const { brandId } = useParams<{ brandId: string }>()
   const navigate = useNavigate()
-  const [answers, setAnswers] = useState({})
-  const [ideas, setIdeas] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [answers, setAnswers] = useState<CampaignAnswers>({})
+  const [ideas, setIdeas] = useState<string>("")
+  const [loading, setLoading] = useState<boolean>(false)
 
-  const handleOptionSelect = (questionId, option) => {
+  const handleOptionSelect = (questionId: QuestionId, option: string): void => {
     setAnswers(prev => ({
       ...prev,
       [questionId]: option
     }))
   }
 
-  const handleSubmit = async () => {
+  const handleIdeasChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
+    const value = e.target.value
+    // Enforce max length
+    if (value.length <= MAX_IDEAS_LENGTH) {
+      setIdeas(value)
+    }
+  }
+
+  const handleSubmit = async (): Promise<void> => {
     // Check if all questions are answered
     const allAnswered = QUESTIONS.every(q => answers[q.id])
     if (!allAnswered) {
@@ -56,15 +67,20 @@ export default function BrandChat() {
       return
     }
 
+    if (!brandId) {
+      alert("Brand ID is missing. Please go back to the dashboard.")
+      return
+    }
+
     setLoading(true)
     try {
       // Include ideas in the submission
-      const submissionData = {
+      const submissionData: CampaignAnswers = {
         ...answers,
         ideas: ideas.trim() || ""
       }
 
-      const response = await api.submitCampaignAnswers(brandId, submissionData)
+      const response = await api.submitCampaignAnswers<SubmitCampaignAnswersResponse>(brandId, submissionData)
       if (!response?.creative_bible_id) {
         throw new Error("Invalid response: missing creative_bible_id")
       }
@@ -77,6 +93,8 @@ export default function BrandChat() {
       setLoading(false)
     }
   }
+
+  const isFormValid = Object.keys(answers).length >= QUESTIONS.length
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 p-4 sm:p-6 lg:p-8">
@@ -128,12 +146,18 @@ export default function BrandChat() {
               <h3 className="text-lg font-semibold text-foreground">
                 6. Any specific ideas or concepts you want to include? (Optional)
               </h3>
-              <Textarea
-                value={ideas}
-                onChange={(e) => setIdeas(e.target.value)}
-                placeholder="Share any specific scenes, messages, or creative ideas you have in mind..."
-                className="min-h-[120px] resize-y border-purple-200 focus:border-purple-400 focus:ring-purple-400"
-              />
+              <div className="relative">
+                <Textarea
+                  value={ideas}
+                  onChange={handleIdeasChange}
+                  placeholder="Share any specific scenes, messages, or creative ideas you have in mind..."
+                  className="min-h-[120px] resize-y border-purple-200 focus:border-purple-400 focus:ring-purple-400"
+                  maxLength={MAX_IDEAS_LENGTH}
+                />
+                <div className="absolute bottom-2 right-2 text-xs text-muted-foreground">
+                  {ideas.length}/{MAX_IDEAS_LENGTH}
+                </div>
+              </div>
               <p className="text-sm text-muted-foreground">
                 Feel free to describe any specific moments, visuals, or messages you'd like to see in your ad.
               </p>
@@ -142,7 +166,7 @@ export default function BrandChat() {
             <div className="pt-6">
               <GradientButton
                 onClick={handleSubmit}
-                disabled={loading || Object.keys(answers).length < QUESTIONS.length}
+                disabled={loading || !isFormValid}
                 className="w-full h-12 text-base"
               >
                 {loading ? "Processing..." : "Continue to Storyline →"}
