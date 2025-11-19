@@ -57,8 +57,8 @@ celery_config = {
 # prefork pool works fine on Linux (production)
 if sys.platform == 'darwin':  # macOS
     celery_config['worker_pool'] = 'threads'
-    celery_config['worker_concurrency'] = 4  # Allow 4 concurrent tasks
-    logger.info("Using 'threads' worker pool with concurrency=4 for macOS compatibility")
+    celery_config['worker_concurrency'] = 10  # Allow up to 10 concurrent tasks
+    logger.info("Using 'threads' worker pool with concurrency=10 for macOS compatibility")
 else:
     logger.info("Using default 'prefork' worker pool for Linux")
 
