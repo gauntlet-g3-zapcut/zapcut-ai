@@ -16,7 +16,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Create FastAPI app
-app = FastAPI(title="AdCraft API", version="1.0.0")
+app = FastAPI(title="AdCut API", version="1.0.0")
 
 # CORS configuration
 PRODUCTION_FRONTEND = "https://app.zapcut.video"
@@ -65,7 +65,7 @@ logger.info("FastAPI app initialized successfully")
 @app.get("/")
 async def root():
     """Root endpoint."""
-    return {"message": "AdCraft API", "status": "running"}
+    return {"message": "AdCut API", "status": "running"}
 
 
 @app.get("/health")

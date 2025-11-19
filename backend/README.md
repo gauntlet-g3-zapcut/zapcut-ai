@@ -1,6 +1,6 @@
-# AdCraft Backend API
+# AdCut Backend API
 
-FastAPI backend for AdCraft video generation platform.
+FastAPI backend for AdCut video generation platform.
 
 ## Setup
 

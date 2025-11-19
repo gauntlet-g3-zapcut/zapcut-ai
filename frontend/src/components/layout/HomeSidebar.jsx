@@ -15,7 +15,7 @@ export default function HomeSidebar({ active, userEmail, onLogout }) {
     <aside className="w-64 bg-white/80 backdrop-blur-sm border-r border-purple-100 h-screen p-6 flex flex-col fixed left-0 top-0 overflow-y-auto">
       <div className="mb-8">
         <h2 className="text-2xl font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
-          AdCraft AI
+          AdCut AI
         </h2>
       </div>
 
