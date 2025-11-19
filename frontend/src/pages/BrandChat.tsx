@@ -55,9 +55,15 @@ export default function BrandChat() {
 
       setInitialLoading(true)
       try {
+        console.log("[BrandChat] Loading creative bible:", creativeBibleId)
         const response = await api.getStoryline(brandId, creativeBibleId)
+        console.log("[BrandChat] Response:", response)
+        console.log("[BrandChat] Campaign preferences:", response.creative_bible?.campaign_preferences)
+
         if (response.creative_bible?.campaign_preferences) {
           const prefs = response.creative_bible.campaign_preferences
+          console.log("[BrandChat] Found preferences:", prefs)
+
           // Pre-fill answers from existing campaign preferences
           const loadedAnswers: CampaignAnswers = {}
           if (prefs.style) loadedAnswers.style = prefs.style
@@ -66,8 +72,11 @@ export default function BrandChat() {
           if (prefs.pacing) loadedAnswers.pacing = prefs.pacing
           if (prefs.colors) loadedAnswers.colors = prefs.colors
 
+          console.log("[BrandChat] Loaded answers:", loadedAnswers)
           setAnswers(loadedAnswers)
           setIdeas(prefs.ideas || "")
+        } else {
+          console.warn("[BrandChat] No campaign_preferences found in response")
         }
       } catch (error) {
         console.error("Failed to load creative bible:", error)

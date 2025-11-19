@@ -314,7 +314,8 @@ async def get_storyline(
             "brand_style": creative_bible.creative_bible.get("brand_style"),
             "vibe": creative_bible.creative_bible.get("vibe"),
             "colors": creative_bible.creative_bible.get("colors", []),
-            "energy_level": creative_bible.creative_bible.get("energy_level")
+            "energy_level": creative_bible.creative_bible.get("energy_level"),
+            "campaign_preferences": creative_bible.campaign_preferences
         },
         "storyline": creative_bible.creative_bible.get("storyline", {}),
         "sora_prompts": creative_bible.creative_bible.get("sora_prompts", []),
