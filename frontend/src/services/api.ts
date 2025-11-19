@@ -12,6 +12,7 @@ const getApiUrl = (): string => {
 }
 
 const API_URL = getApiUrl()
+const TOKEN_REFRESH_BUFFER_MS = 60_000
 
 // Helper for conditional logging
 const debugLog = (...args: unknown[]) => {
@@ -23,6 +24,11 @@ const debugLog = (...args: unknown[]) => {
 /**
  * Get a valid Supabase auth token with retry logic
  */
+const shouldRefreshSession = (session: { expires_at?: number } | null): boolean => {
+  if (!session?.expires_at) return false
+  return session.expires_at * 1000 - Date.now() <= TOKEN_REFRESH_BUFFER_MS
+}
+
 async function getAuthToken(): Promise<string> {
   // Check localStorage for debugging
   if (typeof window !== 'undefined') {
@@ -46,7 +52,27 @@ async function getAuthToken(): Promise<string> {
 
     // If we have a valid session, return it
     if (!error && session?.access_token) {
-      debugLog('[Auth] Valid session found')
+      if (shouldRefreshSession(session)) {
+        debugLog('[Auth] Session expiring soon; attempting proactive refresh')
+        try {
+          const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession()
+          if (!refreshError && refreshed.session?.access_token) {
+            debugLog('[Auth] Session refreshed proactively')
+            return refreshed.session.access_token
+          }
+          if (refreshError) {
+            console.error('[Auth] Proactive refresh failed:', refreshError)
+          }
+        } catch (refreshErr) {
+          console.error('[Auth] Proactive refresh exception:', refreshErr)
+        }
+      } else {
+        debugLog('[Auth] Valid session found')
+        return session.access_token
+      }
+    }
+
+    if (!error && session?.access_token) {
       return session.access_token
     }
 

@@ -1,74 +1,175 @@
-import { createContext, useContext, useEffect, useState } from "react"
-import { supabase } from "../services/supabase"
+import { createContext, useContext, useEffect, useRef, useState } from "react"
+import {
+  supabase,
+  readSupabaseSessionFromStorage,
+  clearSupabaseAuthStorage,
+  DEBUG_AUTH,
+} from "../services/supabase"
 
 const AuthContext = createContext()
 
+const TOKEN_REFRESH_BUFFER_MS = 60 * 1000 // refresh 60s before expiry
+const MIN_REFRESH_INTERVAL_MS = 15 * 1000 // clamp refresh timer to avoid extremely short intervals
+const hasWindow = typeof window !== "undefined"
+const persistedSnapshot = hasWindow ? readSupabaseSessionFromStorage() : null
+const initialUser = persistedSnapshot?.user ?? null
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState(initialUser)
   const [loading, setLoading] = useState(true)
+  const sessionRef = useRef(null)
+  const refreshTimerRef = useRef(null)
+
+  function clearRefreshTimer() {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = null
+    }
+  }
+
+  function shouldRefreshSoon(session) {
+    if (!session?.expires_at) return false
+    const expiresAtMs = session.expires_at * 1000
+    return expiresAtMs - Date.now() <= TOKEN_REFRESH_BUFFER_MS
+  }
+
+  function scheduleSessionRefresh(session) {
+    if (!hasWindow || !session?.expires_at) return
+
+    const expiresAtMs = session.expires_at * 1000
+    const now = Date.now()
+    const refreshIn = Math.max(expiresAtMs - now - TOKEN_REFRESH_BUFFER_MS, MIN_REFRESH_INTERVAL_MS)
+
+    if (DEBUG_AUTH) {
+      console.log("[Auth] Scheduling session refresh", {
+        expiresAt: session.expires_at,
+        inMs: refreshIn,
+      })
+    }
+
+    clearRefreshTimer()
+
+    refreshTimerRef.current = window.setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.auth.refreshSession()
+        if (error) {
+          throw error
+        }
+
+        if (data?.session) {
+          handleSessionUpdate(data.session, { reason: "auto-refresh" })
+        } else {
+          handleSessionUpdate(null, { reason: "auto-refresh-empty" })
+        }
+      } catch (err) {
+        console.error("[Auth] Automatic session refresh failed:", err)
+        handleSessionUpdate(null, { reason: "auto-refresh-error" })
+      }
+    }, refreshIn)
+  }
+
+  function handleSessionUpdate(session, { reason } = {}) {
+    if (DEBUG_AUTH) {
+      console.log("[Auth] Session update", {
+        reason,
+        hasSession: !!session,
+        expiresAt: session?.expires_at,
+      })
+    }
+
+    clearRefreshTimer()
+    sessionRef.current = session ?? null
+
+    if (session?.user) {
+      setUser(session.user)
+      scheduleSessionRefresh(session)
+    } else {
+      setUser(null)
+    }
+  }
 
   useEffect(() => {
     let mounted = true
 
-    // Get initial session with error handling
     const initializeSession = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession()
-        
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession()
+
+        let activeSession = session ?? null
+
         if (error) {
-          console.error('Error getting session:', error)
-          // Try to refresh the session
-          try {
-            const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
-            if (!refreshError && refreshData.session && mounted) {
-              setUser(refreshData.session.user)
-              setLoading(false)
-              return
+          console.error("[Auth] Error getting session:", error)
+        }
+
+        // Attempt to restore from localStorage when Supabase client returns null on boot
+        if (!activeSession) {
+          const stored = readSupabaseSessionFromStorage()
+          if (stored?.refresh_token) {
+            try {
+              const { data: setData, error: setError } = await supabase.auth.setSession({
+                access_token: stored.access_token,
+                refresh_token: stored.refresh_token,
+              })
+              if (setError) {
+                console.error("[Auth] Failed to set session from storage:", setError)
+              } else if (setData?.session) {
+                activeSession = setData.session
+              }
+            } catch (setErr) {
+              console.error("[Auth] Exception restoring session from storage:", setErr)
             }
-          } catch (refreshErr) {
-            console.error('Error refreshing session:', refreshErr)
           }
         }
-        
+
+        // Ensure the recovered session is fresh enough before using it
+        if (activeSession && shouldRefreshSoon(activeSession)) {
+          try {
+            const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession()
+            if (refreshError) {
+              console.error("[Auth] Error refreshing near-expiry session:", refreshError)
+            } else if (refreshed?.session) {
+              activeSession = refreshed.session
+            }
+          } catch (refreshErr) {
+            console.error("[Auth] Exception during session refresh:", refreshErr)
+          }
+        }
+
         if (mounted) {
-          setUser(session?.user ?? null)
-          setLoading(false)
+          handleSessionUpdate(activeSession, { reason: "bootstrap" })
         }
       } catch (err) {
-        console.error('Exception getting session:', err)
+        console.error("[Auth] Exception initializing session:", err)
         if (mounted) {
-          setUser(null)
-          setLoading(false)
+          handleSessionUpdate(null, { reason: "bootstrap-error" })
         }
+      }
+      if (mounted) {
+        setLoading(false)
       }
     }
 
     initializeSession()
 
-    // Listen for auth changes - this handles token refresh automatically
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (mounted) {
-        // Handle token refresh events
-        if (event === 'TOKEN_REFRESHED' && session) {
-          setUser(session.user)
-          setLoading(false)
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null)
-          setLoading(false)
-        } else if (session) {
-          setUser(session.user)
-          setLoading(false)
-        } else {
-          setUser(null)
-          setLoading(false)
+        if (event === "SIGNED_OUT") {
+          clearSupabaseAuthStorage()
         }
+
+        handleSessionUpdate(session ?? null, { reason: event })
+        setLoading(false)
       }
     })
 
     return () => {
       mounted = false
+      clearRefreshTimer()
       subscription.unsubscribe()
     }
   }, [])
@@ -120,8 +221,61 @@ export function AuthProvider({ children }) {
   }
 
   const logout = async () => {
+    clearRefreshTimer()
     const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    if (error) {
+      throw error
+    }
+    clearSupabaseAuthStorage()
+    handleSessionUpdate(null, { reason: "manual-logout" })
+  }
+
+  const refreshSession = async () => {
+    const { data, error } = await supabase.auth.refreshSession()
+    if (error) {
+      throw error
+    }
+    handleSessionUpdate(data?.session ?? null, { reason: "manual-refresh" })
+    return data?.session ?? null
+  }
+
+  const getAccessToken = async () => {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession()
+
+    if (error) {
+      throw error
+    }
+
+    let activeSession = session ?? sessionRef.current
+
+    if (!activeSession) {
+      throw new Error("User not authenticated")
+    }
+
+    if (shouldRefreshSoon(activeSession)) {
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession()
+      if (refreshError) {
+        await supabase.auth.signOut()
+        clearSupabaseAuthStorage()
+        handleSessionUpdate(null, { reason: "refresh-failed" })
+        throw refreshError
+      }
+
+      if (!refreshed?.session) {
+        await supabase.auth.signOut()
+        clearSupabaseAuthStorage()
+        handleSessionUpdate(null, { reason: "refresh-empty" })
+        throw new Error("Session refresh failed")
+      }
+
+      activeSession = refreshed.session
+      handleSessionUpdate(activeSession, { reason: "token-refresh" })
+    }
+
+    return activeSession.access_token
   }
 
   const value = {
@@ -131,6 +285,8 @@ export function AuthProvider({ children }) {
     loginWithGoogle,
     logout,
     loading,
+    refreshSession,
+    getAccessToken,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
