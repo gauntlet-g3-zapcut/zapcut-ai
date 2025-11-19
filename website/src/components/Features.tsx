@@ -59,16 +59,29 @@ export default function Features() {
   const ref = useRef(null)
   const isInView = useInView(ref, { once: true, margin: "-100px" })
 
-  const features = [
+  const mainFeatures = [
     {
-      icon: <Wand2 className="w-7 h-7" />,
-      title: "AI Video Ads Generation",
-      description: "Generate professional videos from text prompts using cutting-edge AI technology. Transform ideas into reality instantly."
+      icon: <Brain className="w-8 h-8" />,
+      title: "AI-Powered",
+      description: "Let our Creative Director AI guide you through the process. Chat with our AI to define your ad style, and watch it create a complete video production."
     },
     {
-      icon: <Brain className="w-7 h-7" />,
-      title: "Smart Editing",
-      description: "AI-powered editing suggestions and automatic enhancements. Let intelligence guide your creative process."
+      icon: <Film className="w-8 h-8" />,
+      title: "4K Quality",
+      description: "Generate 4K video ads with matching soundtracks, ready for any platform. Professional-grade video output that stands out."
+    },
+    {
+      icon: <Zap className="w-8 h-8" />,
+      title: "Fast & Easy",
+      description: "From concept to video in under 5 minutes. No video editing skills required. Just describe your vision and we'll bring it to life."
+    }
+  ]
+
+  const additionalFeatures = [
+    {
+      icon: <Wand2 className="w-7 h-7" />,
+      title: "AI Video Generation",
+      description: "Generate professional videos from text prompts using cutting-edge AI technology. Transform ideas into reality instantly."
     },
     {
       icon: <Scissors className="w-7 h-7" />,
@@ -84,16 +97,6 @@ export default function Features() {
       icon: <Palette className="w-7 h-7" />,
       title: "Effects & Filters",
       description: "Extensive library of visual effects, color grading, and filters. Make every frame look cinematic."
-    },
-    {
-      icon: <Film className="w-7 h-7" />,
-      title: "4K Export",
-      description: "Export in stunning 4K resolution with multiple format options. Professional quality, every time."
-    },
-    {
-      icon: <Zap className="w-7 h-7" />,
-      title: "Lightning Fast",
-      description: "GPU-accelerated rendering and real-time preview. No more waiting for renders to complete."
     },
     {
       icon: <Video className="w-7 h-7" />,
@@ -123,17 +126,63 @@ export default function Features() {
           className="text-center mb-20 sm:mb-24 w-full flex flex-col items-center"
         >
           <h2 className="text-4xl sm:text-5xl md:text-6xl font-bold mb-8">
-            <span className="gradient-text">Powerful Features</span>
+            <span className="gradient-text">Why Choose ZapCut</span>
           </h2>
           <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto leading-relaxed text-center" style={{ marginBottom: '40px' }}>
-            Everything you need to create, edit, and export professional videos. No compromises.
+            Everything you need to create professional video ads. No compromises.
           </p>
         </motion.div>
 
-        {/* Features grid */}
+        {/* Main Features - Larger cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-10 w-full max-w-7xl mx-auto px-6 mb-24 justify-items-center">
+          {mainFeatures.map((feature, index) => (
+            <motion.div
+              key={index}
+              ref={ref}
+              initial={{ opacity: 0, y: 50 }}
+              animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 50 }}
+              transition={{ duration: 0.6, delay: index * 0.1 }}
+              className="group relative w-full max-w-sm mx-auto p-10 sm:p-12 bg-gradient-to-br from-zinc-900/70 to-zinc-900/40 backdrop-blur-sm border-2 border-zinc-700 rounded-3xl hover:border-cyan-500/70 transition-all duration-300 hover:scale-105 text-center"
+            >
+              {/* Enhanced glow effect on hover */}
+              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-cyan-500/0 to-purple-600/0 group-hover:from-cyan-500/15 group-hover:to-purple-600/15 transition-all duration-300" />
+
+              <div className="relative flex flex-col items-center gap-2 text-center">
+                {/* Larger icon */}
+                <div className="mb-6 w-20 h-20 rounded-2xl bg-gradient-to-br from-cyan-500/30 to-purple-600/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                  <div className="text-cyan-400 group-hover:text-cyan-300 transition-colors">
+                    {feature.icon}
+                  </div>
+                </div>
+
+                {/* Content */}
+                <h3 className="text-2xl sm:text-3xl font-bold mb-4 text-white group-hover:text-cyan-300 transition-colors">
+                  {feature.title}
+                </h3>
+                <p className="text-gray-400 text-base leading-relaxed">
+                  {feature.description}
+                </p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Additional Features heading */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
+          transition={{ duration: 0.8, delay: 0.4 }}
+          className="text-center mb-16 w-full"
+        >
+          <h3 className="text-3xl sm:text-4xl font-bold mb-4">
+            <span className="gradient-text">Plus Even More Features</span>
+          </h3>
+        </motion.div>
+
+        {/* Additional Features grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7 sm:gap-8 lg:gap-10 w-full max-w-7xl mx-auto px-6 justify-items-center">
-          {features.map((feature, index) => (
-            <FeatureCard key={index} {...feature} index={index} />
+          {additionalFeatures.map((feature, index) => (
+            <FeatureCard key={index} {...feature} index={index + 3} />
           ))}
         </div>
       </div>

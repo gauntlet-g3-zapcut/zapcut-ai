@@ -33,9 +33,9 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.4 }}
           className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold mb-8 leading-tight"
         >
-          Generate Video Ads
+          Create a Winning Ad
           <br />
-          <span className="gradient-text">At Light Speed</span>
+          <span className="gradient-text">In Minutes</span>
         </motion.h1>
 
         {/* Subtitle */}
@@ -46,8 +46,7 @@ export default function Hero() {
           style={{ marginTop: '20px', marginBottom: '20px' }}
           className="text-lg sm:text-xl md:text-2xl text-gray-300 mb-12 sm:mb-16 max-w-3xl mx-auto leading-relaxed"
         >
-          Professional video editing meets artificial intelligence.
-          Generate, edit, and export stunning videos in minutes.
+          Create stunning 4K video ads with AI. Generate professional product videos with music in minutes, not hours.
         </motion.p>
 
         {/* CTA Buttons */}
@@ -63,7 +62,7 @@ export default function Hero() {
             className="group relative px-14 py-6 bg-gradient-to-r from-cyan-500 to-purple-600 rounded-xl font-semibold text-white text-lg transition-all hover:scale-105 hover:shadow-[0_0_40px_rgba(6,182,212,0.6)] flex items-center gap-2"
           >
             <Zap className="w-5 h-5" />
-            Download Now
+            Get Started
             <span className="absolute inset-0 rounded-xl bg-gradient-to-r from-cyan-400 to-purple-500 opacity-0 group-hover:opacity-20 transition-opacity blur-xl" />
           </a>
 
