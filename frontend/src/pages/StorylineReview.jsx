@@ -4,7 +4,7 @@ import { Button } from "../components/ui/button"
 import { GradientButton } from "../components/ui/gradient-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { api } from "../services/api"
-import { Play, Sparkles, Loader2, Palette, Zap, Heart, Edit2, Pencil, RotateCcw } from "lucide-react"
+import { Play, Sparkles, Loader2, Palette, Zap, Heart, Pencil, RotateCcw } from "lucide-react"
 
 // Inline editable description component
 function EditableDescription({ value, sceneNumber, onSave }) {
@@ -353,23 +353,11 @@ export default function StorylineReview() {
                         {scene.start_time}s - {scene.end_time}s ({scene.duration}s)
                       </CardDescription>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 rounded-lg border border-purple-100">
-                        <Zap className="w-4 h-4 text-purple-600" />
-                        <span className="text-sm font-medium text-purple-700">
-                          {scene.energy_start} → {scene.energy_end}
-                        </span>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigate(`/brands/${brandId}/chat?editScene=${scene.scene_number || idx + 1}`)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity border-purple-200 hover:bg-purple-50 hover:border-purple-300"
-                        title="Edit this scene"
-                      >
-                        <Edit2 className="w-4 h-4 mr-1.5" />
-                        Edit
-                      </Button>
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 rounded-lg border border-purple-100">
+                      <Zap className="w-4 h-4 text-purple-600" />
+                      <span className="text-sm font-medium text-purple-700">
+                        {scene.energy_start} → {scene.energy_end}
+                      </span>
                     </div>
                   </div>
                 </CardHeader>
@@ -402,11 +390,11 @@ export default function StorylineReview() {
         <div className="mt-8 flex gap-4">
           <Button
             variant="outline"
-            onClick={() => navigate(`/brands/${brandId}/chat`)}
+            onClick={() => navigate(`/brands/${brandId}/chat?creativeBibleId=${creativeBibleId}`)}
             className="flex-1 h-11 border-purple-200 hover:bg-purple-50 hover:border-purple-300 text-base font-medium"
           >
             <Pencil className="mr-2 h-4 w-4" />
-            Edit Brief
+            Update preferences
           </Button>
           <GradientButton
             onClick={handleApprove}

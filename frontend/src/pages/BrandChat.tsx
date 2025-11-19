@@ -1,11 +1,12 @@
-import { useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useState, useEffect } from "react"
+import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { Button } from "../components/ui/button"
 import { GradientButton } from "../components/ui/gradient-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Textarea } from "../components/ui/textarea"
 import { api } from "../services/api"
 import type { Question, QuestionId, CampaignAnswers, SubmitCampaignAnswersResponse } from "../types/campaign"
+import { Loader2 } from "lucide-react"
 
 const QUESTIONS: readonly Question[] = [
   {
@@ -39,10 +40,45 @@ const MAX_IDEAS_LENGTH = 2000
 
 export default function BrandChat() {
   const { brandId } = useParams<{ brandId: string }>()
+  const [searchParams] = useSearchParams()
+  const creativeBibleId = searchParams.get("creativeBibleId")
   const navigate = useNavigate()
   const [answers, setAnswers] = useState<CampaignAnswers>({})
   const [ideas, setIdeas] = useState<string>("")
   const [loading, setLoading] = useState<boolean>(false)
+  const [initialLoading, setInitialLoading] = useState<boolean>(false)
+
+  // Load existing creative bible if editing
+  useEffect(() => {
+    const loadCreativeBible = async () => {
+      if (!creativeBibleId || !brandId) return
+
+      setInitialLoading(true)
+      try {
+        const response = await api.getStoryline(brandId, creativeBibleId)
+        if (response.creative_bible?.campaign_preferences) {
+          const prefs = response.creative_bible.campaign_preferences
+          // Pre-fill answers from existing campaign preferences
+          const loadedAnswers: CampaignAnswers = {}
+          if (prefs.style) loadedAnswers.style = prefs.style
+          if (prefs.audience) loadedAnswers.audience = prefs.audience
+          if (prefs.emotion) loadedAnswers.emotion = prefs.emotion
+          if (prefs.pacing) loadedAnswers.pacing = prefs.pacing
+          if (prefs.colors) loadedAnswers.colors = prefs.colors
+
+          setAnswers(loadedAnswers)
+          setIdeas(prefs.ideas || "")
+        }
+      } catch (error) {
+        console.error("Failed to load creative bible:", error)
+        alert("Failed to load existing preferences. Starting fresh.")
+      } finally {
+        setInitialLoading(false)
+      }
+    }
+
+    loadCreativeBible()
+  }, [creativeBibleId, brandId])
 
   const handleOptionSelect = (questionId: QuestionId, option: string): void => {
     setAnswers(prev => ({
@@ -80,40 +116,67 @@ export default function BrandChat() {
         ideas: ideas.trim() || ""
       }
 
-      const response = await api.submitCampaignAnswers<SubmitCampaignAnswersResponse>(brandId, submissionData)
-      if (!response?.creative_bible_id) {
-        throw new Error("Invalid response: missing creative_bible_id")
+      let responseCreativeBibleId: string
+
+      if (isEditMode && creativeBibleId) {
+        // Update existing creative bible
+        const response = await api.updateCampaignAnswers<SubmitCampaignAnswersResponse>(brandId, creativeBibleId, submissionData)
+        if (!response?.creative_bible_id) {
+          throw new Error("Invalid response: missing creative_bible_id")
+        }
+        responseCreativeBibleId = response.creative_bible_id
+      } else {
+        // Create new creative bible
+        const response = await api.submitCampaignAnswers<SubmitCampaignAnswersResponse>(brandId, submissionData)
+        if (!response?.creative_bible_id) {
+          throw new Error("Invalid response: missing creative_bible_id")
+        }
+        responseCreativeBibleId = response.creative_bible_id
       }
-      navigate(`/brands/${brandId}/storyline/${response.creative_bible_id}`)
+
+      navigate(`/brands/${brandId}/storyline/${responseCreativeBibleId}`)
     } catch (error) {
       console.error("Failed to submit answers:", error)
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
-      alert(`Failed to submit answers: ${errorMessage}. Please check the console for details.`)
+      alert(`Failed to ${isEditMode ? "update" : "submit"} answers: ${errorMessage}. Please check the console for details.`)
     } finally {
       setLoading(false)
     }
   }
 
   const isFormValid = Object.keys(answers).length >= QUESTIONS.length
+  const isEditMode = !!creativeBibleId
+
+  // Show loading spinner while fetching existing preferences
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+          <p className="text-muted-foreground">Loading preferences...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 p-4 sm:p-6 lg:p-8">
       <div className="max-w-4xl mx-auto">
         <Button
           variant="ghost"
-          onClick={() => navigate("/dashboard")}
+          onClick={() => navigate(isEditMode ? `/brands/${brandId}/storyline/${creativeBibleId}` : "/dashboard")}
           className="mb-6 hover:bg-white/50 transition-colors"
         >
-          ← Back to Dashboard
+          ← Back {isEditMode ? "to Storyline" : "to Dashboard"}
         </Button>
 
         <Card className="shadow-lg bg-white/80 backdrop-blur-sm">
           <CardHeader className="pb-4 border-b border-purple-100">
             <CardTitle className="text-3xl font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
-              Create New Campaign
+              {isEditMode ? "Update Campaign Preferences" : "Create New Campaign"}
             </CardTitle>
             <CardDescription className="text-base mt-2">
-              Select your preferences for your video ad campaign
+              {isEditMode ? "Update your preferences and regenerate the storyline" : "Select your preferences for your video ad campaign"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-8 pt-6">
@@ -169,8 +232,13 @@ export default function BrandChat() {
                 disabled={loading || !isFormValid}
                 className="w-full h-12 text-base"
               >
-                {loading ? "Processing..." : "Continue to Storyline →"}
+                {loading ? "Processing..." : isEditMode ? "Update & Regenerate Storyline →" : "Continue to Storyline →"}
               </GradientButton>
+              {isEditMode && (
+                <p className="text-sm text-muted-foreground text-center mt-3">
+                  Your storyline will be regenerated with the updated preferences
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>

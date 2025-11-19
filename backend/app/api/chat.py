@@ -116,6 +116,75 @@ async def submit_campaign_answers(
         raise HTTPException(status_code=500, detail="Failed to save campaign answers. Please try again.")
 
 
+@router.put("/{brand_id}/campaign-answers/{creative_bible_id}")
+async def update_campaign_answers(
+    brand_id: str,
+    creative_bible_id: str,
+    campaign_answers: CampaignAnswers,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update campaign answers for existing creative bible and regenerate storyline."""
+    logger.info(f"[UPDATE-CAMPAIGN] Received update for brand: {brand_id}, creative_bible: {creative_bible_id}")
+    logger.info(f"[UPDATE-CAMPAIGN] Answers keys: {list(campaign_answers.answers.keys())}")
+
+    try:
+        brand_uuid = uuid.UUID(brand_id)
+        creative_bible_uuid = uuid.UUID(creative_bible_id)
+    except ValueError as e:
+        logger.error(f"Invalid ID format: brand_id={brand_id}, creative_bible_id={creative_bible_id}, error: {e}")
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    brand = db.query(Brand).filter(
+        Brand.id == brand_uuid,
+        Brand.user_id == current_user.id
+    ).first()
+
+    if not brand:
+        logger.warning(f"Brand not found: {brand_id} for user: {current_user.id}")
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    creative_bible = db.query(CreativeBible).filter(
+        CreativeBible.id == creative_bible_uuid,
+        CreativeBible.brand_id == brand.id
+    ).first()
+
+    if not creative_bible:
+        logger.warning(f"Creative Bible not found: {creative_bible_id} for brand: {brand_id}")
+        raise HTTPException(status_code=404, detail="Creative Bible not found")
+
+    # Validate answers
+    required_keys = ["style", "audience", "emotion", "pacing", "colors"]
+    missing_keys = [key for key in required_keys if key not in campaign_answers.answers]
+    if missing_keys:
+        logger.error(f"Missing required answer keys: {missing_keys}")
+        raise HTTPException(status_code=400, detail=f"All questions must be answered. Missing: {', '.join(missing_keys)}")
+
+    try:
+        logger.info(f"[UPDATE-CAMPAIGN] Updating campaign preferences and clearing old storyline")
+        # Update campaign preferences
+        creative_bible.campaign_preferences = campaign_answers.answers
+        # Clear the old storyline so it will be regenerated
+        creative_bible.creative_bible = {}
+        # Save original if not already saved
+        if not creative_bible.original_creative_bible:
+            creative_bible.original_creative_bible = {}
+
+        db.commit()
+        db.refresh(creative_bible)
+
+        logger.info(f"[UPDATE-CAMPAIGN] Updated creative bible: {creative_bible.id}")
+
+        return {
+            "creative_bible_id": str(creative_bible.id),
+            "message": "Campaign preferences updated successfully"
+        }
+    except Exception as e:
+        logger.error(f"[UPDATE-CAMPAIGN] Error updating creative bible: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update campaign preferences. Please try again.")
+
+
 @router.get("/{brand_id}/storyline/{creative_bible_id}")
 async def get_storyline(
     brand_id: str,

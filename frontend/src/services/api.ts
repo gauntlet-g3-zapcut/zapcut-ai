@@ -316,6 +316,10 @@ export const api = {
     method: "POST",
     body: JSON.stringify({ answers }),
   }),
+  updateCampaignAnswers: <T = unknown>(brandId: string, creativeBibleId: string, answers: CampaignAnswers) => apiRequest<T>(`/api/brands/${brandId}/campaign-answers/${creativeBibleId}`, {
+    method: "PUT",
+    body: JSON.stringify({ answers }),
+  }),
   getStoryline: <T = unknown>(brandId: string, creativeBibleId: string) => apiRequest<T>(`/api/brands/${brandId}/storyline/${creativeBibleId}`),
 
   // Chat
