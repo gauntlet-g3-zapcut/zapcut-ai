@@ -127,19 +127,21 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
   const maxRetries = 1
   const requestId = Math.random().toString(36).substring(7)
 
-  console.log(`[API:${requestId}] ⏳ Starting request:`, {
-    endpoint,
-    method: options.method || 'GET',
-    hasBody: !!options.body,
-    retryCount,
-    timestamp: new Date().toISOString(),
-  })
+  if (DEBUG_AUTH) {
+    console.log(`[API:${requestId}] ⏳ Starting request:`, {
+      endpoint,
+      method: options.method || 'GET',
+      hasBody: !!options.body,
+      retryCount,
+      timestamp: new Date().toISOString(),
+    })
+  }
 
   const token = await getAuthToken()
-  console.log(`[API:${requestId}] ✅ Got auth token (length: ${token.length})`)
+  if (DEBUG_AUTH) console.log(`[API:${requestId}] ✅ Got auth token (length: ${token.length})`)
 
   const url = `${API_URL}${endpoint}`
-  console.log(`[API:${requestId}] 🌐 Full URL: ${url}`)
+  if (DEBUG_AUTH) console.log(`[API:${requestId}] 🌐 Full URL: ${url}`)
 
   // Add timeout to prevent hanging requests
   const controller = new AbortController()
@@ -149,7 +151,7 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
   }, 30000) // 30 second timeout
 
   try {
-    console.log(`[API:${requestId}] 📡 Sending fetch request...`)
+    if (DEBUG_AUTH) console.log(`[API:${requestId}] 📡 Sending fetch request...`)
     const fetchStartTime = Date.now()
 
     const response = await fetch(url, {
@@ -163,22 +165,24 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
     })
 
     const fetchDuration = Date.now() - fetchStartTime
-    console.log(`[API:${requestId}] 📥 Response received (${fetchDuration}ms):`, {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok,
-    })
+    if (DEBUG_AUTH) {
+      console.log(`[API:${requestId}] 📥 Response received (${fetchDuration}ms):`, {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+      })
+    }
 
     clearTimeout(timeoutId)
 
     // Handle 401 Unauthorized - might be due to invalid token
     if (response.status === 401 && retryCount < maxRetries) {
-      console.log(`[API:${requestId}] 🔄 Got 401, attempting to refresh session...`)
+      if (DEBUG_AUTH) console.log(`[API:${requestId}] 🔄 Got 401, attempting to refresh session...`)
       // Try refreshing the session and retrying once
       try {
         const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
         if (!refreshError && refreshData.session) {
-          console.log(`[API:${requestId}] ✅ Session refreshed, retrying request...`)
+          if (DEBUG_AUTH) console.log(`[API:${requestId}] ✅ Session refreshed, retrying request...`)
           // Retry the request with the new token
           return apiRequest<T>(endpoint, options, retryCount + 1)
         }
@@ -187,7 +191,7 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
         console.error(`[API:${requestId}] ❌ Exception during session refresh:`, refreshErr)
       }
       // If refresh fails, sign out and throw error
-      console.log(`[API:${requestId}] 🚪 Signing out due to auth failure`)
+      if (DEBUG_AUTH) console.log(`[API:${requestId}] 🚪 Signing out due to auth failure`)
       await supabase.auth.signOut()
       throw new Error("Session expired. Please log in again.")
     }
@@ -203,16 +207,18 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
       throw new Error(error.detail || error.message || "Request failed")
     }
 
-    console.log(`[API:${requestId}] 📦 Parsing JSON response...`)
+    if (DEBUG_AUTH) console.log(`[API:${requestId}] 📦 Parsing JSON response...`)
     const data = await response.json()
-    console.log(`[API:${requestId}] ✅ Request successful:`, {
-      endpoint,
-      status: response.status,
-      dataKeys: typeof data === 'object' && data !== null ? Object.keys(data) : 'non-object',
-      isArray: Array.isArray(data),
-      arrayLength: Array.isArray(data) ? data.length : undefined,
-      totalDuration: `${Date.now() - fetchStartTime}ms`,
-    })
+    if (DEBUG_AUTH) {
+      console.log(`[API:${requestId}] ✅ Request successful:`, {
+        endpoint,
+        status: response.status,
+        dataKeys: typeof data === 'object' && data !== null ? Object.keys(data) : 'non-object',
+        isArray: Array.isArray(data),
+        arrayLength: Array.isArray(data) ? data.length : undefined,
+        totalDuration: `${Date.now() - fetchStartTime}ms`,
+      })
+    }
     return data as T
   } catch (error: unknown) {
     clearTimeout(timeoutId)

@@ -73,25 +73,27 @@ export default function Dashboard() {
     const cachedBrands = getBrandsCache()
     const cachedTimestamp = getCacheTimestamp()
 
-    console.log('[Dashboard] useEffect triggered with dependencies:', {
-      user: !!user,
-      authLoading,
-      'location.state?.refetch': location.state?.refetch,
-      'location.pathname': location.pathname,
-      isFetchingRef: isFetchingRef.current,
-      hasCache: !!cachedBrands,
-      cacheTimestamp: cachedTimestamp,
-    })
+    if (DEBUG_AUTH) {
+      console.log('[Dashboard] useEffect triggered with dependencies:', {
+        user: !!user,
+        authLoading,
+        'location.state?.refetch': location.state?.refetch,
+        'location.pathname': location.pathname,
+        isFetchingRef: isFetchingRef.current,
+        hasCache: !!cachedBrands,
+        cacheTimestamp: cachedTimestamp,
+      })
+    }
 
     // Wait for auth to finish loading and user to be available
     if (authLoading) {
-      console.log('[Dashboard] Auth still loading, waiting...')
+      if (DEBUG_AUTH) console.log('[Dashboard] Auth still loading, waiting...')
       setLoading(true)
       return
     }
 
     if (!user) {
-      console.log('[Dashboard] No user found, skipping fetch')
+      if (DEBUG_AUTH) console.log('[Dashboard] No user found, skipping fetch')
       // User not authenticated, redirect will happen via PrivateRoute
       setLoading(false)
       return
@@ -99,18 +101,18 @@ export default function Dashboard() {
 
     // Prevent concurrent fetches
     if (isFetchingRef.current) {
-      console.log('[Dashboard] Already fetching, skipping...')
+      if (DEBUG_AUTH) console.log('[Dashboard] Already fetching, skipping...')
       return
     }
 
     const fetchBrands = async () => {
-      console.log('[Dashboard] Starting fetchBrands function')
+      if (DEBUG_AUTH) console.log('[Dashboard] Starting fetchBrands function')
       isFetchingRef.current = true
 
       try {
         // Check if we should force refetch (e.g., after creating a brand)
         const shouldRefetch = location.state?.refetch
-        console.log('[Dashboard] shouldRefetch:', shouldRefetch)
+        if (DEBUG_AUTH) console.log('[Dashboard] shouldRefetch:', shouldRefetch)
 
         // Check cache first (unless forced refetch)
         const now = Date.now()
@@ -119,59 +121,65 @@ export default function Dashboard() {
         const cacheAge = cachedTimestamp ? now - cachedTimestamp : null
         const cacheValid = !shouldRefetch && cachedBrands && cachedTimestamp && cacheAge < CACHE_DURATION
 
-        console.log('[Dashboard] Cache check:', {
-          shouldRefetch,
-          hasCache: !!cachedBrands,
-          cacheAge: cacheAge ? `${(cacheAge / 1000).toFixed(1)}s` : 'none',
-          cacheValid,
-          CACHE_DURATION: `${CACHE_DURATION / 1000}s`,
-        })
+        if (DEBUG_AUTH) {
+          console.log('[Dashboard] Cache check:', {
+            shouldRefetch,
+            hasCache: !!cachedBrands,
+            cacheAge: cacheAge ? `${(cacheAge / 1000).toFixed(1)}s` : 'none',
+            cacheValid,
+            CACHE_DURATION: `${CACHE_DURATION / 1000}s`,
+          })
+        }
 
         if (cacheValid) {
-          console.log('[Dashboard] Using cached brands:', {
-            count: cachedBrands.length,
-            cacheAge: ((now - cachedTimestamp) / 1000).toFixed(1) + 's',
-          })
+          if (DEBUG_AUTH) {
+            console.log('[Dashboard] Using cached brands:', {
+              count: cachedBrands.length,
+              cacheAge: ((now - cachedTimestamp) / 1000).toFixed(1) + 's',
+            })
+          }
           setBrands(cachedBrands)
           setLoading(false)
           return
         }
 
         if (shouldRefetch) {
-          console.log('[Dashboard] Force refetching brands (cache invalidated)')
+          if (DEBUG_AUTH) console.log('[Dashboard] Force refetching brands (cache invalidated)')
           // Clear the state immediately to prevent re-triggering
           navigate(location.pathname, { replace: true, state: {} })
         }
 
-        console.log('[Dashboard] Fetching brands from API...')
+        if (DEBUG_AUTH) console.log('[Dashboard] Fetching brands from API...')
         setLoading(true)
         setError(null)
         const data = await api.getBrands()
 
-        console.log('[Dashboard] Brands fetched successfully:', {
-          count: data.length,
-          brands: data.map(b => ({
-            id: b.id,
-            title: b.title,
-            hasImage1: !!b.product_image_1_url,
-            hasImage2: !!b.product_image_2_url,
-            image1Url: b.product_image_1_url,
-            image2Url: b.product_image_2_url,
-          })),
-        })
+        if (DEBUG_AUTH) {
+          console.log('[Dashboard] Brands fetched successfully:', {
+            count: data.length,
+            brands: data.map(b => ({
+              id: b.id,
+              title: b.title,
+              hasImage1: !!b.product_image_1_url,
+              hasImage2: !!b.product_image_2_url,
+              image1Url: b.product_image_1_url,
+              image2Url: b.product_image_2_url,
+            })),
+          })
+        }
 
         setBrands(data)
         // Update cache
         setBrandsCache(data)
-        console.log('[Dashboard] Cache updated, timestamp:', getCacheTimestamp())
+        if (DEBUG_AUTH) console.log('[Dashboard] Cache updated, timestamp:', getCacheTimestamp())
       } catch (error) {
         console.error("[Dashboard] Failed to fetch brands:", error)
         setError(error.message || "Failed to load brands")
         // Clear cache on error
         clearBrandsCache()
-        console.log('[Dashboard] Cache cleared due to error')
+        if (DEBUG_AUTH) console.log('[Dashboard] Cache cleared due to error')
       } finally {
-        console.log('[Dashboard] Fetch complete, resetting isFetchingRef')
+        if (DEBUG_AUTH) console.log('[Dashboard] Fetch complete, resetting isFetchingRef')
         setLoading(false)
         isFetchingRef.current = false
       }
