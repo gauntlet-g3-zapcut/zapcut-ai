@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy both Frontend and Backend
+# Deploy Frontend, Backend API, and Backend Worker
 
 set -e
 
@@ -20,27 +20,15 @@ echo ""
 echo "✅ Frontend deployed successfully!"
 echo ""
 
-# Deploy Backend API
-echo "📦 Deploying Backend API (zapcut-api)..."
+# Deploy Backend (API and Worker) using backend deploy script
+echo "📦 Deploying Backend (API and Worker)..."
 cd "${BACKEND_DIR}"
-
-# Check if fly CLI is available
-if ! command -v fly &> /dev/null; then
-    echo "❌ Error: fly CLI not found. Please install it first:"
-    echo "   https://fly.io/docs/getting-started/installing-flyctl/"
-    exit 1
-fi
-
-fly deploy --config fly.api.toml -a zapcut-api
+bash deploy-both.sh
 
 echo ""
-echo "✅ Backend API deployed successfully!"
-echo ""
-
-echo "🎉 Deployment complete!"
+echo "🎉 All deployments complete!"
 echo ""
 echo "Frontend: Deployed to Cloudflare Pages"
 echo "Backend API: https://zapcut-api.fly.dev"
-echo ""
-echo "View API logs: fly logs -a zapcut-api"
+echo "Backend Worker: zapcut-worker"
 
