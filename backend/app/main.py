@@ -383,3 +383,44 @@ async def migrate_rename_conversation_history():
         logger.error(f"Migration error: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
+
+@app.post("/migrate-add-updated-at")
+async def migrate_add_updated_at():
+    """Add updated_at column to creative_bibles table for optimistic locking (migration)."""
+    try:
+        from app.database import get_engine
+        from sqlalchemy import text
+
+        engine = get_engine()
+
+        with engine.begin() as conn:
+            migration_sql = """
+            DO $$
+            BEGIN
+                -- Add updated_at column if it doesn't exist
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'updated_at'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN updated_at TIMESTAMP;
+                    -- Set initial values to created_at for existing records
+                    UPDATE creative_bibles SET updated_at = created_at WHERE updated_at IS NULL;
+                    RAISE NOTICE 'Added updated_at column';
+                ELSE
+                    RAISE NOTICE 'updated_at column already exists';
+                END IF;
+            END $$;
+            """
+
+            conn.execute(text(migration_sql))
+
+        logger.info("Updated_at column migration completed successfully")
+
+        return {
+            "status": "success",
+            "message": "updated_at column added to creative_bibles table",
+            "columns_added": ["updated_at"]
+        }
+    except Exception as e:
+        logger.error(f"Migration error: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
