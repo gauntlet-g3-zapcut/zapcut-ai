@@ -94,7 +94,7 @@ function EditableDescription({ value, sceneNumber, onSave }: EditableDescription
         onChange={handleChange}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        className="w-full p-2 border border-purple-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none overflow-hidden leading-relaxed"
+        className="w-full p-2 border border-purple-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none overflow-hidden leading-relaxed bg-white text-gray-900"
         style={{ minHeight: '60px' }}
       />
     )

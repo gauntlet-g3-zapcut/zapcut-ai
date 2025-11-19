@@ -1,4 +1,4 @@
-import { useState, useEffect, SyntheticEvent } from "react"
+import { useState, useEffect, useRef, SyntheticEvent } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
 import { Button } from "../components/ui/button"
@@ -18,10 +18,47 @@ interface Brand {
   created_at: string
 }
 
-// Cache brands in memory to avoid unnecessary API calls
-let brandsCache: Brand[] | null = null
-let brandsCacheTimestamp: number | null = null
+// Cache brands using sessionStorage to persist across HMR and component remounts
 const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+const BRANDS_CACHE_KEY = 'zapcut_brands_cache'
+const BRANDS_CACHE_TIMESTAMP_KEY = 'zapcut_brands_cache_timestamp'
+
+// Helper functions to manage cache in sessionStorage
+const getBrandsCache = (): Brand[] | null => {
+  try {
+    const cached = sessionStorage.getItem(BRANDS_CACHE_KEY)
+    return cached ? JSON.parse(cached) : null
+  } catch {
+    return null
+  }
+}
+
+const setBrandsCache = (brands: Brand[]): void => {
+  try {
+    sessionStorage.setItem(BRANDS_CACHE_KEY, JSON.stringify(brands))
+    sessionStorage.setItem(BRANDS_CACHE_TIMESTAMP_KEY, Date.now().toString())
+  } catch (error) {
+    console.warn('[Dashboard] Failed to cache brands:', error)
+  }
+}
+
+const getCacheTimestamp = (): number | null => {
+  try {
+    const timestamp = sessionStorage.getItem(BRANDS_CACHE_TIMESTAMP_KEY)
+    return timestamp ? parseInt(timestamp, 10) : null
+  } catch {
+    return null
+  }
+}
+
+const clearBrandsCache = (): void => {
+  try {
+    sessionStorage.removeItem(BRANDS_CACHE_KEY)
+    sessionStorage.removeItem(BRANDS_CACHE_TIMESTAMP_KEY)
+  } catch (error) {
+    console.warn('[Dashboard] Failed to clear cache:', error)
+  }
+}
 
 export default function Dashboard() {
   const { user, logout, loading: authLoading } = useAuth()
@@ -30,40 +67,79 @@ export default function Dashboard() {
   const [brands, setBrands] = useState<Brand[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const isFetchingRef = useRef(false)
 
   useEffect(() => {
+    const cachedBrands = getBrandsCache()
+    const cachedTimestamp = getCacheTimestamp()
+
+    console.log('[Dashboard] useEffect triggered with dependencies:', {
+      user: !!user,
+      authLoading,
+      'location.state?.refetch': location.state?.refetch,
+      'location.pathname': location.pathname,
+      isFetchingRef: isFetchingRef.current,
+      hasCache: !!cachedBrands,
+      cacheTimestamp: cachedTimestamp,
+    })
+
     // Wait for auth to finish loading and user to be available
     if (authLoading) {
+      console.log('[Dashboard] Auth still loading, waiting...')
       setLoading(true)
       return
     }
 
     if (!user) {
+      console.log('[Dashboard] No user found, skipping fetch')
       // User not authenticated, redirect will happen via PrivateRoute
       setLoading(false)
       return
     }
 
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) {
+      console.log('[Dashboard] Already fetching, skipping...')
+      return
+    }
+
     const fetchBrands = async () => {
+      console.log('[Dashboard] Starting fetchBrands function')
+      isFetchingRef.current = true
+
       try {
         // Check if we should force refetch (e.g., after creating a brand)
         const shouldRefetch = location.state?.refetch
+        console.log('[Dashboard] shouldRefetch:', shouldRefetch)
 
         // Check cache first (unless forced refetch)
         const now = Date.now()
-        if (!shouldRefetch && brandsCache && brandsCacheTimestamp && (now - brandsCacheTimestamp) < CACHE_DURATION) {
+        const cachedBrands = getBrandsCache()
+        const cachedTimestamp = getCacheTimestamp()
+        const cacheAge = cachedTimestamp ? now - cachedTimestamp : null
+        const cacheValid = !shouldRefetch && cachedBrands && cachedTimestamp && cacheAge < CACHE_DURATION
+
+        console.log('[Dashboard] Cache check:', {
+          shouldRefetch,
+          hasCache: !!cachedBrands,
+          cacheAge: cacheAge ? `${(cacheAge / 1000).toFixed(1)}s` : 'none',
+          cacheValid,
+          CACHE_DURATION: `${CACHE_DURATION / 1000}s`,
+        })
+
+        if (cacheValid) {
           console.log('[Dashboard] Using cached brands:', {
-            count: brandsCache.length,
-            cacheAge: ((now - brandsCacheTimestamp) / 1000).toFixed(1) + 's',
+            count: cachedBrands.length,
+            cacheAge: ((now - cachedTimestamp) / 1000).toFixed(1) + 's',
           })
-          setBrands(brandsCache)
+          setBrands(cachedBrands)
           setLoading(false)
           return
         }
 
         if (shouldRefetch) {
           console.log('[Dashboard] Force refetching brands (cache invalidated)')
-          // Clear the state so we don't refetch on every render
+          // Clear the state immediately to prevent re-triggering
           navigate(location.pathname, { replace: true, state: {} })
         }
 
@@ -86,25 +162,28 @@ export default function Dashboard() {
 
         setBrands(data)
         // Update cache
-        brandsCache = data
-        brandsCacheTimestamp = now
+        setBrandsCache(data)
+        console.log('[Dashboard] Cache updated, timestamp:', getCacheTimestamp())
       } catch (error) {
         console.error("[Dashboard] Failed to fetch brands:", error)
         setError(error.message || "Failed to load brands")
         // Clear cache on error
-        brandsCache = null
-        brandsCacheTimestamp = null
+        clearBrandsCache()
+        console.log('[Dashboard] Cache cleared due to error')
       } finally {
+        console.log('[Dashboard] Fetch complete, resetting isFetchingRef')
         setLoading(false)
+        isFetchingRef.current = false
       }
     }
+
     fetchBrands()
-  }, [user, authLoading, location.pathname, location.state, navigate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading, location.state?.refetch])
 
   const handleLogout = async () => {
     // Clear cache on logout
-    brandsCache = null
-    brandsCacheTimestamp = null
+    clearBrandsCache()
     await logout()
     navigate("/")
   }
@@ -119,19 +198,12 @@ export default function Dashboard() {
       // Refresh the brands list and update cache
       const data = await api.getBrands()
       setBrands(data)
-      brandsCache = data
-      brandsCacheTimestamp = Date.now()
+      setBrandsCache(data)
     } catch (error) {
       console.error("Failed to delete brand:", error)
       const errorMessage = error instanceof Error ? error.message : "Failed to delete brand"
       alert(errorMessage)
     }
-  }
-
-  // Function to invalidate cache (can be called after creating/updating brands)
-  const invalidateBrandsCache = () => {
-    brandsCache = null
-    brandsCacheTimestamp = null
   }
 
   return (
