@@ -16,7 +16,7 @@ class CreativeBible(Base):
     creative_bible = Column(JSON, nullable=False, default=dict)
     original_creative_bible = Column(JSON, nullable=True)  # For revert functionality
     reference_image_urls = Column(JSON, nullable=False, default=dict)
-    conversation_history = Column(JSON, nullable=True)
+    campaign_preferences = Column(JSON, nullable=True)  # Form answers: style, audience, emotion, pacing, colors, ideas
     created_at = Column(DateTime(timezone=False), nullable=False)
     
     # Chat-based preference storage

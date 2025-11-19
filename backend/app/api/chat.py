@@ -93,7 +93,7 @@ async def submit_campaign_answers(
             name=f"campaign_{uuid.uuid4().hex[:8]}",
             creative_bible={},
             reference_image_urls={},
-            conversation_history=campaign_answers.answers,
+            campaign_preferences=campaign_answers.answers,
             created_at=datetime.utcnow()
         )
         logger.info(f"[CAMPAIGN-ANSWERS] CreativeBible object created, adding to session")
@@ -147,7 +147,7 @@ async def get_storyline(
     
     # Generate storyline if not exists
     if not creative_bible.creative_bible or not creative_bible.creative_bible.get("brand_style"):
-        # Extract preferences from chat-based fields (new format) or fallback to conversation_history (old format)
+        # Extract preferences from chat-based fields (new format) or fallback to campaign_preferences (form format)
         if creative_bible.audience_description:
             # New chat-based format
             style_desc = creative_bible.style_description or ""
@@ -161,8 +161,8 @@ async def get_storyline(
             audience_desc = creative_bible.audience_description or ""
             audience_keywords = creative_bible.audience_keywords or []
         else:
-            # Fallback to old format (conversation_history)
-            answers = creative_bible.conversation_history or {}
+            # Fallback to form-based format (campaign_preferences)
+            answers = creative_bible.campaign_preferences or {}
             style_desc = answers.get("style", "Modern & Sleek")
             style_keywords = []
             emotion_desc = answers.get("emotion", "Excitement")
@@ -176,8 +176,8 @@ async def get_storyline(
 
         # Get optional ideas field (from form submission)
         ideas = ""
-        if creative_bible.conversation_history:
-            ideas = creative_bible.conversation_history.get("ideas", "")
+        if creative_bible.campaign_preferences:
+            ideas = creative_bible.campaign_preferences.get("ideas", "")
         
         # Get brand information
         brand_title = brand.title or "Product"
@@ -524,7 +524,7 @@ async def create_chat_session(
             name=f"campaign_{uuid.uuid4().hex[:8]}",
             creative_bible={},
             reference_image_urls={},
-            conversation_history={},
+            campaign_preferences={},
             created_at=datetime.utcnow()
         )
         db.add(creative_bible)
