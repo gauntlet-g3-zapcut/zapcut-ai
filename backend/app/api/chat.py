@@ -173,6 +173,11 @@ async def get_storyline(
             colors_keywords = []
             audience_desc = answers.get("audience", "Everyone")
             audience_keywords = []
+
+        # Get optional ideas field (from form submission)
+        ideas = ""
+        if creative_bible.conversation_history:
+            ideas = creative_bible.conversation_history.get("ideas", "")
         
         # Get brand information
         brand_title = brand.title or "Product"
@@ -190,7 +195,8 @@ async def get_storyline(
                     emotion_desc, emotion_keywords,
                     pacing_desc, pacing_keywords,
                     colors_desc, colors_keywords,
-                    audience_desc, audience_keywords
+                    audience_desc, audience_keywords,
+                    ideas
                 )
                 logger.info(f"Generated storyline with OpenAI for creative bible: {creative_bible.id}")
             except Exception as e:
@@ -254,18 +260,22 @@ async def _generate_storyline_with_openai(
     colors_desc: str,
     colors_keywords: list,
     audience_desc: str,
-    audience_keywords: list
+    audience_keywords: list,
+    ideas: str = ""
 ) -> dict:
     """Generate storyline using OpenAI."""
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
-    
+
     # Build keyword context
     style_context = f"{style_desc}" + (f" (Keywords: {', '.join(style_keywords)})" if style_keywords else "")
     emotion_context = f"{emotion_desc}" + (f" (Keywords: {', '.join(emotion_keywords)})" if emotion_keywords else "")
     pacing_context = f"{pacing_desc}" + (f" (Keywords: {', '.join(pacing_keywords)})" if pacing_keywords else "")
     colors_context = f"{colors_desc}" + (f" (Keywords: {', '.join(colors_keywords)})" if colors_keywords else "")
     audience_context = f"{audience_desc}" + (f" (Keywords: {', '.join(audience_keywords)})" if audience_keywords else "")
-    
+
+    # Build ideas section if provided
+    ideas_section = f"\nSpecific Ideas/Concepts to Include: {ideas}\n" if ideas and ideas.strip() else ""
+
     prompt = f"""Create a 30-second video ad storyline for a product/brand.
 
 Brand: {brand_title}
@@ -274,7 +284,7 @@ Visual Style: {style_context}
 Target Audience: {audience_context}
 Emotion/Message: {emotion_context}
 Pacing: {pacing_context}
-Color Palette: {colors_context}
+Color Palette: {colors_context}{ideas_section}
 
 Generate a creative bible and detailed storyline with exactly 5 scenes, each 6 seconds long (total 30 seconds).
 
