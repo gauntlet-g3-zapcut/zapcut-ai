@@ -122,7 +122,7 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
 
   const url = `${API_URL}${endpoint}`
 
-  console.log('[API] Request starting:', {
+  debugLog('[API] Request starting:', {
     endpoint,
     method: options.method || 'GET',
     hasBody: !!options.body,
@@ -174,7 +174,7 @@ async function apiRequest<T = unknown>(endpoint: string, options: RequestOptions
     }
 
     const data = await response.json()
-    console.log('[API] Request successful:', {
+    debugLog('[API] Request successful:', {
       endpoint,
       status: response.status,
       dataKeys: typeof data === 'object' && data !== null ? Object.keys(data) : 'non-object',
@@ -206,24 +206,26 @@ async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: F
   const token = await getAuthToken()
 
   // Log FormData contents for debugging
-  console.log('[API] FormData request starting:', {
+  debugLog('[API] FormData request starting:', {
     endpoint,
     method: options.method || "POST",
     formDataKeys: Array.from(formData.keys()),
   })
 
   // Log file details
-  formData.forEach((value, key) => {
-    if (value instanceof File) {
-      console.log(`[API] FormData file: ${key}`, {
-        name: value.name,
-        size: value.size,
-        type: value.type,
-      })
-    } else {
-      console.log(`[API] FormData field: ${key} =`, value)
-    }
-  })
+  if (DEBUG_AUTH) {
+    formData.forEach((value, key) => {
+      if (value instanceof File) {
+        console.log(`[API] FormData file: ${key}`, {
+          name: value.name,
+          size: value.size,
+          type: value.type,
+        })
+      } else {
+        console.log(`[API] FormData field: ${key} =`, value)
+      }
+    })
+  }
 
   const response = await fetch(`${API_URL}${endpoint}`, {
     method: options.method || "POST",
@@ -277,7 +279,7 @@ async function apiRequestWithFormData<T = unknown>(endpoint: string, formData: F
   }
 
   const responseData = await response.json() as Promise<T>
-  console.log('[API] FormData request successful:', {
+  debugLog('[API] FormData request successful:', {
     endpoint,
     status: response.status,
     data: responseData,
