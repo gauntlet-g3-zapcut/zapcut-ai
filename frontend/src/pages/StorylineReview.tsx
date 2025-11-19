@@ -6,11 +6,46 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { api } from "../services/api"
 import { Play, Sparkles, Loader2, Palette, Zap, Heart, Pencil, RotateCcw } from "lucide-react"
 
+interface Scene {
+  scene_number: number
+  title: string
+  description: string
+  visual_notes: string
+  start_time: number
+  end_time: number
+  duration: number
+  energy_start: number
+  energy_end: number
+}
+
+interface Storyline {
+  scenes: Scene[]
+}
+
+interface CreativeBible {
+  brand_style?: string
+  vibe?: string
+  colors?: string[]
+  energy_level?: string
+  campaign_preferences?: Record<string, unknown>
+}
+
+interface StorylineResponse {
+  storyline: Storyline
+  creative_bible: CreativeBible
+}
+
+interface EditableDescriptionProps {
+  value: string
+  sceneNumber: number
+  onSave: (sceneNumber: number, newDescription: string) => void
+}
+
 // Inline editable description component
-function EditableDescription({ value, sceneNumber, onSave }) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editValue, setEditValue] = useState(value)
-  const textareaRef = useRef(null)
+function EditableDescription({ value, sceneNumber, onSave }: EditableDescriptionProps) {
+  const [isEditing, setIsEditing] = useState<boolean>(false)
+  const [editValue, setEditValue] = useState<string>(value)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     if (isEditing && textareaRef.current) {
@@ -32,7 +67,7 @@ function EditableDescription({ value, sceneNumber, onSave }) {
     }
   }
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') {
       setEditValue(value)
       setIsEditing(false)
@@ -44,7 +79,7 @@ function EditableDescription({ value, sceneNumber, onSave }) {
     }
   }
 
-  const handleChange = (e) => {
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setEditValue(e.target.value)
     // Auto-resize textarea
     e.target.style.height = 'auto'
@@ -77,20 +112,22 @@ function EditableDescription({ value, sceneNumber, onSave }) {
 }
 
 export default function StorylineReview() {
-  const { brandId, creativeBibleId } = useParams()
+  const { brandId, creativeBibleId } = useParams<{ brandId: string; creativeBibleId: string }>()
   const navigate = useNavigate()
-  const [storyline, setStoryline] = useState(null)
-  const [creativeBible, setCreativeBible] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [generating, setGenerating] = useState(false)
-  const [editingScene, setEditingScene] = useState(null) // Track which scene is being edited
-  const [saving, setSaving] = useState(false)
-  const [reverting, setReverting] = useState(false)
+  const [storyline, setStoryline] = useState<Storyline | null>(null)
+  const [creativeBible, setCreativeBible] = useState<CreativeBible | null>(null)
+  const [loading, setLoading] = useState<boolean>(true)
+  const [generating, setGenerating] = useState<boolean>(false)
+  const [editingScene, setEditingScene] = useState<number | null>(null)
+  const [saving, setSaving] = useState<boolean>(false)
+  const [reverting, setReverting] = useState<boolean>(false)
 
   useEffect(() => {
     const fetchStoryline = async () => {
+      if (!brandId || !creativeBibleId) return
+
       try {
-        const response = await api.getStoryline(brandId, creativeBibleId)
+        const response = await api.getStoryline<StorylineResponse>(brandId, creativeBibleId)
         setStoryline(response.storyline)
         setCreativeBible(response.creative_bible)
       } catch (error) {
@@ -104,9 +141,11 @@ export default function StorylineReview() {
   }, [brandId, creativeBibleId])
 
   const handleApprove = async () => {
+    if (!brandId || !creativeBibleId) return
+
     setGenerating(true)
     try {
-      const response = await api.createCampaign({
+      const response = await api.createCampaign<{ campaign_id: string }>({
         brand_id: brandId,
         creative_bible_id: creativeBibleId
       })
@@ -123,25 +162,31 @@ export default function StorylineReview() {
     } catch (error) {
       console.error("Failed to start generation:", error)
       setGenerating(false) // Only reset if there's an error
-      alert(`Failed to start video generation: ${error.message || "Please try again."}`)
+      const errorMessage = error instanceof Error ? error.message : "Please try again."
+      alert(`Failed to start video generation: ${errorMessage}`)
     }
   }
 
-  const handleEditDescription = async (sceneNumber, newDescription) => {
+  const handleEditDescription = async (sceneNumber: number, newDescription: string) => {
+    if (!brandId || !creativeBibleId) return
+
     // Optimistic update - update UI immediately
-    setStoryline(prevStoryline => ({
-      ...prevStoryline,
-      scenes: prevStoryline.scenes.map(scene =>
-        scene.scene_number === sceneNumber
-          ? { ...scene, description: newDescription }
-          : scene
-      )
-    }))
+    setStoryline(prevStoryline => {
+      if (!prevStoryline) return null
+      return {
+        ...prevStoryline,
+        scenes: prevStoryline.scenes.map(scene =>
+          scene.scene_number === sceneNumber
+            ? { ...scene, description: newDescription }
+            : scene
+        )
+      }
+    })
 
     // Save to backend
     try {
       setSaving(true)
-      const response = await api.updateStoryline(brandId, creativeBibleId, sceneNumber, newDescription)
+      const response = await api.updateStoryline<{ storyline: Storyline }>(brandId, creativeBibleId, sceneNumber, newDescription)
 
       // Update with server response (in case backend modified anything)
       if (response?.storyline) {
@@ -149,11 +194,12 @@ export default function StorylineReview() {
       }
     } catch (error) {
       console.error("Failed to save description:", error)
-      alert(`Failed to save changes: ${error.message || "Please try again."}`)
+      const errorMessage = error instanceof Error ? error.message : "Please try again."
+      alert(`Failed to save changes: ${errorMessage}`)
 
       // Revert optimistic update on error - refetch from server
       try {
-        const response = await api.getStoryline(brandId, creativeBibleId)
+        const response = await api.getStoryline<StorylineResponse>(brandId, creativeBibleId)
         setStoryline(response.storyline)
       } catch (refetchError) {
         console.error("Failed to refetch storyline:", refetchError)
@@ -164,13 +210,15 @@ export default function StorylineReview() {
   }
 
   const handleRevertToOriginal = async () => {
+    if (!brandId || !creativeBibleId) return
+
     if (!confirm("Are you sure you want to revert to the original AI-generated storyline? All your edits will be lost.")) {
       return
     }
 
     try {
       setReverting(true)
-      const response = await api.revertStoryline(brandId, creativeBibleId)
+      const response = await api.revertStoryline<{ storyline: Storyline }>(brandId, creativeBibleId)
 
       if (response?.storyline) {
         setStoryline(response.storyline)
@@ -178,7 +226,8 @@ export default function StorylineReview() {
       }
     } catch (error) {
       console.error("Failed to revert storyline:", error)
-      alert(`Failed to revert: ${error.message || "Please try again."}`)
+      const errorMessage = error instanceof Error ? error.message : "Please try again."
+      alert(`Failed to revert: ${errorMessage}`)
     } finally {
       setReverting(false)
     }
@@ -195,7 +244,7 @@ export default function StorylineReview() {
               <Sparkles className="h-10 w-10 text-purple-600 animate-spin" style={{ animationDuration: '2s' }} />
             </div>
           </div>
-          
+
           {/* Main text with fade animation */}
           <div className="text-center space-y-2">
             <h2 className="text-2xl font-semibold text-foreground animate-pulse" style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -332,9 +381,9 @@ export default function StorylineReview() {
                 </span>
               </div>
             </div>
-            
+
             {storyline.scenes?.map((scene, idx) => (
-              <Card 
+              <Card
                 key={`scene-${scene.scene_number || idx}-${scene.title || idx}`}
                 className="shadow-lg bg-white/80 backdrop-blur-sm border-purple-100 hover:shadow-xl transition-shadow group"
               >
@@ -418,4 +467,3 @@ export default function StorylineReview() {
     </div>
   )
 }
-
