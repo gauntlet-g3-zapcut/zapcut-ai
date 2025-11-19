@@ -53,11 +53,12 @@ celery_config = {
     },
 }
 
-# Use solo pool on macOS to avoid fork safety issues
+# Use threads pool on macOS to avoid fork safety issues while maintaining concurrency
 # prefork pool works fine on Linux (production)
 if sys.platform == 'darwin':  # macOS
-    celery_config['worker_pool'] = 'solo'
-    logger.info("Using 'solo' worker pool for macOS compatibility")
+    celery_config['worker_pool'] = 'threads'
+    celery_config['worker_concurrency'] = 4  # Allow 4 concurrent tasks
+    logger.info("Using 'threads' worker pool with concurrency=4 for macOS compatibility")
 else:
     logger.info("Using default 'prefork' worker pool for Linux")
 
