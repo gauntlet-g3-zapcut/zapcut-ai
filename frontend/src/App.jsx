@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { AuthProvider, useAuth } from "./context/AuthContext"
 import Login from "./pages/Login"
 import Dashboard from "./pages/Dashboard"
+import BrandsCampaignsList from "./pages/BrandsCampaignsList"
 import CreateBrand from "./pages/CreateBrand"
 import EditBrand from "./pages/EditBrand"
 import BrandChat from "./pages/BrandChat"
@@ -32,7 +33,7 @@ function AppRoutes() {
         path="/"
         element={
           <PrivateRoute>
-            <Dashboard />
+            <BrandsCampaignsList />
           </PrivateRoute>
         }
       />
@@ -41,7 +42,15 @@ function AppRoutes() {
         path="/dashboard"
         element={
           <PrivateRoute>
-            <Dashboard />
+            <BrandsCampaignsList />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/brands"
+        element={
+          <PrivateRoute>
+            <BrandsCampaignsList />
           </PrivateRoute>
         }
       />
@@ -49,7 +58,7 @@ function AppRoutes() {
         path="/campaigns"
         element={
           <PrivateRoute>
-            <CampaignsList />
+            <BrandsCampaignsList />
           </PrivateRoute>
         }
       />
