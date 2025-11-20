@@ -3,8 +3,7 @@ import { Button } from "../ui/button"
 import { cn } from "@/lib/utils"
 
 const NAV_ITEMS = [
-  { id: "brands", label: "Brands", to: "/dashboard" },
-  { id: "campaigns", label: "Campaigns", to: "/campaigns" },
+  { id: "brands", label: "Brands & Campaigns", to: "/dashboard" },
   { id: "editor", label: "Editor", to: "/editor" },
 ]
 
