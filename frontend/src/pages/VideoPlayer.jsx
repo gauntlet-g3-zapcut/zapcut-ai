@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { Button } from "../components/ui/button"
 import { GradientButton } from "@/components/ui/gradient-button"
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card"
 import { api } from "../services/api"
 import { Download, Share2, ArrowLeft, Play, Volume2, VolumeX } from "lucide-react"
+import { prepareEditorProject } from "@/lib/editor-bridge"
 
 export default function VideoPlayer() {
   const { campaignId } = useParams()
@@ -17,6 +18,7 @@ export default function VideoPlayer() {
   const [isPlayingAll, setIsPlayingAll] = useState(false)
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0)
   const [audioMuted, setAudioMuted] = useState(false)
+  const [isSyncingEditor, setIsSyncingEditor] = useState(false)
   const videoRef = useRef(null)
   const audioRef = useRef(null)
   const scenesRef = useRef([])
@@ -73,6 +75,102 @@ export default function VideoPlayer() {
       alert("Link copied to clipboard!")
     } catch (error) {
       console.error("Failed to copy link:", error)
+    }
+  }
+
+  const completedScenes = useMemo(() => {
+    if (!statusData?.progress?.scenes) {
+      return []
+    }
+    return statusData.progress.scenes
+      .filter((scene) => scene.status === "completed" && scene.video_url)
+      .sort((a, b) => {
+        const aOrder = a.scene_number ?? a.order ?? a.index ?? 0
+        const bOrder = b.scene_number ?? b.order ?? b.index ?? 0
+        return aOrder - bOrder
+      })
+  }, [statusData?.progress?.scenes])
+
+  useEffect(() => {
+    scenesRef.current = completedScenes
+  }, [completedScenes])
+
+  useEffect(() => {
+    if (completedScenes.length === 0) {
+      return
+    }
+
+    if (
+      !selectedScene ||
+      !completedScenes.some(
+        (scene) =>
+          scene.scene_number === selectedScene.scene_number && scene.video_url === selectedScene.video_url
+      )
+    ) {
+      setSelectedScene(completedScenes[0])
+    }
+  }, [completedScenes, selectedScene])
+
+  const soundtrackAsset = useMemo(() => {
+    if (!statusData?.audio?.audio_url || statusData.audio.status !== "completed") {
+      return null
+    }
+
+    return {
+      url: statusData.audio.audio_url,
+      name: statusData.audio.file_name || statusData.audio.title || "Soundtrack"
+    }
+  }, [statusData?.audio])
+
+  const finalCompositeAsset = useMemo(() => {
+    if (!campaign?.final_video_url) {
+      return null
+    }
+
+    const labelBase =
+      campaign.title || campaign.name || campaign.brand_title || `Campaign ${campaignId}`
+
+    return {
+      url: campaign.final_video_url,
+      name: `${labelBase} - Final Cut`
+    }
+  }, [campaign, campaignId])
+
+  const editorProjectName = useMemo(() => {
+    return (
+      campaign?.title ||
+      campaign?.name ||
+      campaign?.brand_title ||
+      (campaign ? `Campaign ${campaign.id}` : `Campaign ${campaignId}`)
+    )
+  }, [campaign, campaignId])
+
+  const handleAddToEditor = async () => {
+    if (completedScenes.length === 0 || isSyncingEditor) {
+      return
+    }
+
+    setIsSyncingEditor(true)
+
+    try {
+      await prepareEditorProject({
+        projectName: editorProjectName,
+        videos: completedScenes.map((scene, index) => ({
+          url: scene.video_url,
+          name: scene.title?.trim() || `Scene ${scene.scene_number ?? index + 1}`,
+          order: scene.scene_number ?? index + 1,
+          sceneNumber: scene.scene_number
+        })),
+        audio: soundtrackAsset || undefined,
+        includeFinalComposite: finalCompositeAsset || undefined
+      })
+
+      navigate("/editor")
+    } catch (error) {
+      console.error("Failed to sync project to editor:", error)
+      alert("We couldn't load this campaign into the editor. Please try again.")
+    } finally {
+      setIsSyncingEditor(false)
     }
   }
 
@@ -202,6 +300,13 @@ export default function VideoPlayer() {
             {/* Action Buttons */}
             {selectedScene?.video_url && (
               <div className="mt-6 space-y-4">
+                <GradientButton
+                  onClick={handleAddToEditor}
+                  className="w-full"
+                  disabled={completedScenes.length === 0 || isSyncingEditor}
+                >
+                  {isSyncingEditor ? "Adding to Editor..." : "Add to Editor"}
+                </GradientButton>
                 {/* Play All Button */}
                 {scenesRef.current.length > 1 && (
                   <GradientButton 
