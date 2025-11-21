@@ -5,7 +5,7 @@ import Dashboard from "./pages/Dashboard"
 import BrandsCampaignsList from "./pages/BrandsCampaignsList"
 import CreateBrand from "./pages/CreateBrand"
 import EditBrand from "./pages/EditBrand"
-import BrandChat from "./pages/BrandChat"
+import CampaignPreferences from "./pages/CampaignPreferences"
 import StorylineReview from "./pages/StorylineReview"
 import VideoProgress from "./pages/VideoProgress"
 import VideoPlayer from "./pages/VideoPlayer"
@@ -90,12 +90,20 @@ function AppRoutes() {
         path="/brands/:brandId/chat"
         element={
           <PrivateRoute>
-            <BrandChat />
+            <CampaignPreferences />
           </PrivateRoute>
         }
       />
       <Route
         path="/brands/:brandId/storyline/:creativeBibleId"
+        element={
+          <PrivateRoute>
+            <StorylineReview />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/campaigns/:campaignId/storyline"
         element={
           <PrivateRoute>
             <StorylineReview />

@@ -308,7 +308,23 @@ async def get_storyline(
                 logger.info(f"First sora_prompt example: {saved_sora_prompts[0]}")
         
         logger.info(f"Saved storyline for creative bible: {creative_bible.id}")
-    
+
+        # Update any draft campaigns that use this creative bible with the storyline
+        from app.models.campaign import Campaign
+        draft_campaigns = db.query(Campaign).filter(
+            Campaign.creative_bible_id == creative_bible.id,
+            Campaign.status == "draft"
+        ).all()
+
+        if draft_campaigns:
+            logger.info(f"Updating {len(draft_campaigns)} draft campaigns with storyline")
+            for campaign in draft_campaigns:
+                campaign.storyline = creative_bible_data.get("storyline", {})
+                campaign.sora_prompts = creative_bible_data.get("sora_prompts", [])
+                campaign.suno_prompt = creative_bible_data.get("suno_prompt", "")
+            db.commit()
+            logger.info(f"Updated draft campaigns with storyline data")
+
     return {
         "creative_bible": {
             "brand_style": creative_bible.creative_bible.get("brand_style"),

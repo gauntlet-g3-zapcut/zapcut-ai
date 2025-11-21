@@ -6,78 +6,45 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Input } from "../components/ui/input"
 import { Textarea } from "../components/ui/textarea"
 import { api } from "../services/api"
-import { Upload } from "lucide-react"
+import { ImageGallery, ImageCaptionModal, ImageUploader } from "../components/images"
 
 export default function EditBrand() {
   const navigate = useNavigate()
   const { brandId } = useParams()
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [images, setImages] = useState([]) // Array of { file: File | null, preview: string | null, existingUrl: string | null }
+  const [brand, setBrand] = useState(null)
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
   const [error, setError] = useState("")
+  const [selectedImage, setSelectedImage] = useState(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [showUploader, setShowUploader] = useState(false)
+
+  const fetchBrand = async () => {
+    try {
+      setFetching(true)
+      const brandData = await api.getBrand(brandId)
+      setBrand(brandData)
+      setTitle(brandData.title || "")
+      setDescription(brandData.description || "")
+    } catch (err) {
+      setError(err.message || "Failed to load brand")
+    } finally {
+      setFetching(false)
+    }
+  }
 
   useEffect(() => {
-    const fetchBrand = async () => {
-      try {
-        setFetching(true)
-        const brand = await api.getBrand(brandId)
-        setTitle(brand.title || "")
-        setDescription(brand.description || "")
-        
-        // Initialize with existing images
-        const initialImages = []
-        if (brand.product_image_1_url) {
-          initialImages.push({
-            file: null,
-            preview: brand.product_image_1_url,
-            existingUrl: brand.product_image_1_url
-          })
-        }
-        if (brand.product_image_2_url) {
-          initialImages.push({
-            file: null,
-            preview: brand.product_image_2_url,
-            existingUrl: brand.product_image_2_url
-          })
-        }
-        // If no existing images, start with 2 empty slots
-        if (initialImages.length === 0) {
-          initialImages.push({ file: null, preview: null, existingUrl: null })
-          initialImages.push({ file: null, preview: null, existingUrl: null })
-        }
-        setImages(initialImages)
-      } catch (err) {
-        setError(err.message || "Failed to load brand")
-      } finally {
-        setFetching(false)
-      }
-    }
-
     if (brandId) {
       fetchBrand()
     }
   }, [brandId])
 
-  const handleImageChange = (index, e) => {
-    const file = e.target.files[0]
-    if (file) {
-      const newImages = [...images]
-      newImages[index] = {
-        ...newImages[index],
-        file: file,
-        preview: URL.createObjectURL(file)
-      }
-      setImages(newImages)
-    }
-  }
-
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError("")
-    
+
     if (!title || !description) {
       setError("Please fill in title and description")
       return
@@ -89,19 +56,11 @@ export default function EditBrand() {
       const formData = new FormData()
       formData.append("title", title)
       formData.append("description", description)
-      
-      // Append images - use product_image_1, product_image_2, etc.
-      images.forEach((image, index) => {
-        if (image.file) {
-          formData.append(`product_image_${index + 1}`, image.file)
-        }
-      })
 
       await api.updateBrand(brandId, formData)
-      // Navigate back to dashboard with state to force refresh
-      navigate("/dashboard", { state: { refetch: true } })
+      await fetchBrand() // Refresh brand data
+      setError("")
     } catch (err) {
-      // Extract error message from error object
       console.error('[EditBrand] Update failed:', err)
       let errorMessage = "Failed to update brand"
       if (err.message) {
@@ -114,13 +73,200 @@ export default function EditBrand() {
         errorMessage = err.response.data.detail
       }
       setError(errorMessage)
-
-      // If authentication error, suggest re-login
-      if (errorMessage.toLowerCase().includes('authenticated') || errorMessage.toLowerCase().includes('session')) {
-        setError(errorMessage + ' - Please try logging out and logging back in.')
-      }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDeleteImage = async (imageId) => {
+    if (!confirm("Are you sure you want to delete this image?")) {
+      return
+    }
+
+    // Optimistic update: remove from local state immediately
+    const currentImages = brand.images || []
+    const imageToDelete = currentImages.find(img => img.id === imageId)
+    const remainingImages = currentImages.filter(img => img.id !== imageId)
+
+    // If deleting primary image, make first remaining image primary
+    if (imageToDelete?.is_primary && remainingImages.length > 0) {
+      remainingImages[0].is_primary = true
+    }
+
+    // Reorder remaining images
+    remainingImages.forEach((img, index) => {
+      img.order = index
+    })
+
+    setBrand(prev => ({
+      ...prev,
+      images: remainingImages
+    }))
+
+    try {
+      await api.deleteBrandImage(brandId, imageId)
+      // Success - local state already correct
+    } catch (err) {
+      // Revert on error
+      setError(err.message || "Failed to delete image")
+      setBrand(prev => ({
+        ...prev,
+        images: currentImages
+      }))
+    }
+  }
+
+  const handleEditImage = (imageId) => {
+    const image = brand.images.find(img => img.id === imageId)
+    setSelectedImage(image)
+    setModalOpen(true)
+  }
+
+  const handleSetPrimary = async (imageId) => {
+    // Optimistic update: update local state immediately
+    const currentImages = brand.images || []
+
+    // Find the image to make primary
+    const targetImage = currentImages.find(img => img.id === imageId)
+    if (!targetImage) return
+
+    // Remove target image and unset all primary flags
+    const otherImages = currentImages
+      .filter(img => img.id !== imageId)
+      .map(img => ({ ...img, is_primary: false }))
+
+    // Put target image first with primary flag
+    const updatedImages = [
+      { ...targetImage, is_primary: true, order: 0 },
+      ...otherImages.map((img, idx) => ({ ...img, order: idx + 1 }))
+    ]
+
+    setBrand(prev => ({
+      ...prev,
+      images: updatedImages
+    }))
+
+    try {
+      await api.updateBrandImage(brandId, imageId, { is_primary: true })
+      // Success - local state already correct
+    } catch (err) {
+      // Revert on error
+      setError(err.message || "Failed to set primary image")
+      setBrand(prev => ({
+        ...prev,
+        images: currentImages
+      }))
+    }
+  }
+
+  const handleReorder = async (imageIds) => {
+    // Optimistic update: update local state immediately
+    const currentImages = brand.images || []
+    const imageMap = {}
+    currentImages.forEach(img => {
+      imageMap[img.id] = img
+    })
+
+    const reorderedImages = imageIds.map((id, index) => ({
+      ...imageMap[id],
+      order: index
+    }))
+
+    // Update local state immediately for smooth UX
+    setBrand(prev => ({
+      ...prev,
+      images: reorderedImages
+    }))
+
+    // Send to server in background
+    try {
+      await api.reorderBrandImages(brandId, imageIds)
+      // Success - local state already correct
+    } catch (err) {
+      // Revert on error
+      setError(err.message || "Failed to reorder images")
+      setBrand(prev => ({
+        ...prev,
+        images: currentImages
+      }))
+    }
+  }
+
+  const handleSaveImageMetadata = async (imageId, caption, isPrimary) => {
+    // Optimistic update: update local state immediately
+    const currentImages = brand.images || []
+    const updatedImages = currentImages.map(img => {
+      if (img.id === imageId) {
+        return {
+          ...img,
+          caption,
+          is_primary: isPrimary
+        }
+      }
+      // If setting another image as primary, unset this one
+      if (isPrimary && img.is_primary) {
+        return {
+          ...img,
+          is_primary: false
+        }
+      }
+      return img
+    })
+
+    setBrand(prev => ({
+      ...prev,
+      images: updatedImages
+    }))
+
+    try {
+      await api.updateBrandImage(brandId, imageId, {
+        caption,
+        is_primary: isPrimary
+      })
+      // Success - local state already correct
+    } catch (err) {
+      // Revert on error
+      setBrand(prev => ({
+        ...prev,
+        images: currentImages
+      }))
+      throw new Error(err.message || "Failed to update image")
+    }
+  }
+
+  const handleUploadImages = async (files) => {
+    try {
+      setError("")
+      await api.uploadBrandImages(brandId, files)
+      await fetchBrand() // Refresh brand data
+      setShowUploader(false)
+    } catch (err) {
+      setError(err.message || "Failed to upload images")
+    }
+  }
+
+  const handleDeleteAll = async () => {
+    const currentImages = brand.images || []
+
+    // Optimistic update: clear images immediately
+    setBrand(prev => ({
+      ...prev,
+      images: []
+    }))
+
+    try {
+      // Delete all images one by one
+      for (const image of currentImages) {
+        await api.deleteBrandImage(brandId, image.id)
+      }
+      // Success - local state already correct
+    } catch (err) {
+      // Revert on error
+      setError(err.message || "Failed to delete all images")
+      setBrand(prev => ({
+        ...prev,
+        images: currentImages
+      }))
     }
   }
 
@@ -134,7 +280,7 @@ export default function EditBrand() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 p-8">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <Button
           variant="ghost"
           onClick={() => navigate("/dashboard")}
@@ -143,13 +289,14 @@ export default function EditBrand() {
           ← Back to Dashboard
         </Button>
 
-        <Card>
+        {/* Brand Info Card */}
+        <Card className="mb-6">
           <CardHeader>
             <CardTitle className="text-3xl font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
               Edit Brand
             </CardTitle>
             <CardDescription className="text-base">
-              Update your brand information and product images
+              Update your brand information
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -187,43 +334,6 @@ export default function EditBrand() {
                 />
               </div>
 
-              <div className="space-y-4">
-                <label className="text-sm font-medium">Product Images</label>
-
-                <div className="grid grid-cols-2 gap-6">
-                  {images.slice(0, 2).map((image, index) => (
-                    <div key={index} className="space-y-2">
-                      <label htmlFor={`image${index}`} className="text-sm font-medium">
-                        Product Image {index + 1} {image.file ? "(New)" : image.existingUrl ? "(Current)" : ""}
-                      </label>
-                      <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                        {image.preview ? (
-                          <img
-                            src={image.preview}
-                            alt={`Preview ${index + 1}`}
-                            className="w-full h-48 object-cover rounded-md mb-4"
-                          />
-                        ) : (
-                          <div className="flex flex-col items-center justify-center py-8">
-                            <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-                            <p className="text-sm text-muted-foreground mb-2">
-                              Click to upload
-                            </p>
-                          </div>
-                        )}
-                        <Input
-                          id={`image${index}`}
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => handleImageChange(index, e)}
-                          className="cursor-pointer"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
               <div className="flex gap-4 justify-end">
                 <Button
                   type="button"
@@ -233,14 +343,67 @@ export default function EditBrand() {
                   Cancel
                 </Button>
                 <GradientButton type="submit" disabled={loading} className="!px-6 !py-2 !text-sm !min-w-0">
-                  {loading ? "Updating..." : "Update Brand"}
+                  {loading ? "Updating..." : "Update Info"}
                 </GradientButton>
               </div>
             </form>
           </CardContent>
         </Card>
+
+        {/* Image Management Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-2xl font-bold">
+              Product Images
+            </CardTitle>
+            <CardDescription className="text-base">
+              Manage your brand images (up to 10 total)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {showUploader ? (
+              <div className="space-y-4">
+                <ImageUploader
+                  entityType="brand"
+                  currentImageCount={brand?.images?.length || 0}
+                  onFilesSelected={handleUploadImages}
+                  maxImages={10}
+                />
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowUploader(false)}
+                  className="w-full"
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <ImageGallery
+                images={brand?.images || []}
+                maxImages={10}
+                entityType="brand"
+                onDelete={handleDeleteImage}
+                onImageClick={handleEditImage}
+                onSetPrimary={handleSetPrimary}
+                onReorder={handleReorder}
+                onAddMore={() => setShowUploader(true)}
+                onDeleteAll={handleDeleteAll}
+              />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Image Caption Modal */}
+        <ImageCaptionModal
+          image={selectedImage}
+          isOpen={modalOpen}
+          onClose={() => {
+            setModalOpen(false)
+            setSelectedImage(null)
+          }}
+          onSave={handleSaveImageMetadata}
+        />
       </div>
     </div>
   )
 }
-

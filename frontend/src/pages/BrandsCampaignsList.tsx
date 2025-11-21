@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button"
 import { GradientButton } from "@/components/ui/gradient-button"
 import HomeSidebar from "../components/layout/HomeSidebar"
 import { Card, CardContent } from "../components/ui/card"
-import { Plus, Trash2, ChevronDown, ChevronRight, Play, Clock, CheckCircle2, XCircle, Loader2 } from "lucide-react"
+import { Plus, Trash2, ChevronDown, ChevronRight, Play, Clock, CheckCircle2, XCircle, Loader2, FileEdit } from "lucide-react"
 import { api } from "../services/api"
 import { DEBUG_AUTH } from "../services/supabase"
 
@@ -313,6 +313,8 @@ export default function BrandsCampaignsList() {
         return <XCircle className="h-4 w-4 text-red-500" />
       case "processing":
         return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
+      case "draft":
+        return <FileEdit className="h-4 w-4 text-purple-500" />
       default:
         return <Clock className="h-4 w-4 text-gray-500" />
     }
@@ -328,13 +330,17 @@ export default function BrandsCampaignsList() {
         return "Generating"
       case "pending":
         return "Pending"
+      case "draft":
+        return "Draft - Review Storyline"
       default:
         return status
     }
   }
 
   const handleCampaignClick = (campaign: Campaign) => {
-    if (campaign.status === "completed" && campaign.final_video_url) {
+    if (campaign.status === "draft") {
+      navigate(`/campaigns/${campaign.id}/storyline`)
+    } else if (campaign.status === "completed" && campaign.final_video_url) {
       navigate(`/campaigns/${campaign.id}/video`)
     } else if (campaign.status === "processing" || campaign.status === "pending") {
       navigate(`/campaigns/${campaign.id}/progress`)
@@ -526,6 +532,18 @@ export default function BrandsCampaignsList() {
 
                               {/* Campaign Actions */}
                               <div className="flex items-center gap-2 flex-shrink-0">
+                                {campaign.status === "draft" && (
+                                  <GradientButton
+                                    className="text-xs px-3 py-1.5"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      navigate(`/campaigns/${campaign.id}/storyline`)
+                                    }}
+                                  >
+                                    <FileEdit className="mr-1 h-3 w-3" />
+                                    Review Storyline
+                                  </GradientButton>
+                                )}
                                 {campaign.status === "completed" && campaign.final_video_url && (
                                   <GradientButton
                                     className="text-xs px-3 py-1.5"

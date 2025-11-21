@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 class CreateCampaignRequest(BaseModel):
     brand_id: str
     creative_bible_id: str
+    status: str = "draft"  # Default to draft, can be "draft" or "pending"
 
 
 @router.get("/")
@@ -46,6 +47,7 @@ async def list_campaigns(
             "brand_title": campaign.brand.title,
             "status": campaign.status,
             "final_video_url": campaign.final_video_url,
+            "images": campaign.images or [],  # Reference/inspiration images
             "created_at": campaign.created_at,
             "video_urls_count": len(campaign.video_urls) if campaign.video_urls else 0,
         }
@@ -106,41 +108,46 @@ async def create_campaign(
         sora_prompts=sora_prompts,
         suno_prompt=suno_prompt,
         final_video_url="",
-        status="pending",
+        status=request.status,  # Use status from request (draft or pending)
         audio_status="pending",  # Initialize audio status
         created_at=datetime.utcnow()
     )
-    
+
     db.add(campaign)
     db.commit()
     db.refresh(campaign)
-    
+
     logger.info(f"Created campaign: {campaign.id} for brand: {request.brand_id}, status: {campaign.status}")
-    
-    # Start video generation using Celery (non-blocking)
-    try:
-        if settings.REPLICATE_API_TOKEN:
-            if settings.REDIS_URL:
-                # Use Celery if Redis is configured
-                from app.tasks.video_generation import start_video_generation_task
-                start_video_generation_task.delay(str(campaign.id))
-                logger.info(f"Enqueued video generation task for campaign: {campaign.id}")
-                message = "Campaign created. Video generation started."
+
+    # Only start video generation if status is "pending" (approved)
+    if request.status == "pending":
+        # Start video generation using Celery (non-blocking)
+        try:
+            if settings.REPLICATE_API_TOKEN:
+                if settings.REDIS_URL:
+                    # Use Celery if Redis is configured
+                    from app.tasks.video_generation import start_video_generation_task
+                    start_video_generation_task.delay(str(campaign.id))
+                    logger.info(f"Enqueued video generation task for campaign: {campaign.id}")
+                    message = "Campaign approved. Video generation started."
+                else:
+                    # Fallback to async task if Redis not configured
+                    logger.warning("REDIS_URL not set, falling back to async task")
+                    asyncio.create_task(start_video_generation(str(campaign.id), db))
+                    message = "Campaign approved. Video generation started."
             else:
-                # Fallback to async task if Redis not configured
-                logger.warning("REDIS_URL not set, falling back to async task")
-                asyncio.create_task(start_video_generation(str(campaign.id), db))
-                message = "Campaign created. Video generation started."
-        else:
-            logger.warning("REPLICATE_API_TOKEN not set, video generation will not start")
-            message = "Campaign created. Video generation will start once API token is configured."
-    except Exception as e:
-        logger.error(f"Failed to start video generation: {e}", exc_info=True)
-        message = "Campaign created. Video generation will start soon."
-    
+                logger.warning("REPLICATE_API_TOKEN not set, video generation will not start")
+                message = "Campaign created. Video generation will start once API token is configured."
+        except Exception as e:
+            logger.error(f"Failed to start video generation: {e}", exc_info=True)
+            message = "Campaign approved. Video generation will start soon."
+    else:
+        # Draft campaign - no video generation
+        message = "Campaign created as draft. Review storyline to approve and start video generation."
+
     return {
         "campaign_id": str(campaign.id),
-        "status": "pending",
+        "status": request.status,
         "message": message
     }
 
@@ -156,20 +163,27 @@ async def get_campaign(
         campaign_uuid = uuid.UUID(campaign_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid campaign ID")
-    
+
     campaign = db.query(Campaign).filter(Campaign.id == campaign_uuid).first()
-    
+
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    
+
     if campaign.brand.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
-    
+
+    # Get creative bible data if available
+    creative_bible_data = None
+    if campaign.creative_bible:
+        creative_bible_data = campaign.creative_bible.creative_bible
+
     return {
         "id": str(campaign.id),
         "brand_id": str(campaign.brand_id),
+        "creative_bible_id": str(campaign.creative_bible_id) if campaign.creative_bible_id else None,
         "status": campaign.status,
         "storyline": campaign.storyline,
+        "creative_bible": creative_bible_data,
         "final_video_url": campaign.final_video_url,
         "created_at": campaign.created_at,
     }
@@ -265,6 +279,67 @@ async def get_campaign_status(
             "failed_scenes": failed_scenes,
             "scenes": scene_statuses  # Detailed per-scene status with video_urls and sora_prompts
         }
+    }
+
+
+@router.post("/{campaign_id}/approve")
+async def approve_campaign(
+    campaign_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Approve a draft campaign and start video generation."""
+    logger.info(f"Approving campaign: {campaign_id} for user: {current_user.id}")
+
+    try:
+        campaign_uuid = uuid.UUID(campaign_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid campaign ID")
+
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_uuid).first()
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    # Verify ownership
+    if campaign.brand.user_id != current_user.id:
+        logger.warning(f"User {current_user.id} attempted to approve campaign {campaign_id} they don't own")
+        raise HTTPException(status_code=403, detail="Not authorized to approve this campaign")
+
+    # Check if campaign is in draft status
+    if campaign.status != "draft":
+        raise HTTPException(status_code=400, detail=f"Campaign is not in draft status (current status: {campaign.status})")
+
+    # Update status to pending
+    campaign.status = "pending"
+    db.commit()
+    db.refresh(campaign)
+
+    logger.info(f"Campaign {campaign_id} status updated to pending")
+
+    # Start video generation
+    try:
+        if settings.REPLICATE_API_TOKEN:
+            if settings.REDIS_URL:
+                from app.tasks.video_generation import start_video_generation_task
+                start_video_generation_task.delay(str(campaign.id))
+                logger.info(f"Enqueued video generation task for campaign: {campaign.id}")
+                message = "Campaign approved. Video generation started."
+            else:
+                logger.warning("REDIS_URL not set, falling back to async task")
+                asyncio.create_task(start_video_generation(str(campaign.id), db))
+                message = "Campaign approved. Video generation started."
+        else:
+            logger.warning("REPLICATE_API_TOKEN not set, video generation will not start")
+            message = "Campaign approved. Video generation will start once API token is configured."
+    except Exception as e:
+        logger.error(f"Failed to start video generation: {e}", exc_info=True)
+        message = "Campaign approved. Video generation will start soon."
+
+    return {
+        "campaign_id": str(campaign.id),
+        "status": "pending",
+        "message": message
     }
 
 

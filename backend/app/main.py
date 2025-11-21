@@ -4,7 +4,7 @@ import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.api import auth, brands, chat, campaigns, webhooks
+from app.api import auth, brands, chat, campaigns, webhooks, brand_images, campaign_images
 
 # Configure logging
 logging.basicConfig(
@@ -55,8 +55,10 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router)
 app.include_router(brands.router)
+app.include_router(brand_images.router)
 app.include_router(chat.router)
 app.include_router(campaigns.router)
+app.include_router(campaign_images.router)
 app.include_router(webhooks.router)
 
 logger.info("FastAPI app initialized successfully")

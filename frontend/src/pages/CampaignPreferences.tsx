@@ -7,6 +7,7 @@ import { Textarea } from "../components/ui/textarea"
 import { api } from "../services/api"
 import type { Question, QuestionId, CampaignAnswers, SubmitCampaignAnswersResponse } from "../types/campaign"
 import { Loader2 } from "lucide-react"
+import { ImageUploader } from "../components/images"
 
 const QUESTIONS: readonly Question[] = [
   {
@@ -38,13 +39,14 @@ const QUESTIONS: readonly Question[] = [
 
 const MAX_IDEAS_LENGTH = 2000
 
-export default function BrandChat() {
+export default function CampaignPreferences() {
   const { brandId } = useParams<{ brandId: string }>()
   const [searchParams] = useSearchParams()
   const creativeBibleId = searchParams.get("creativeBibleId")
   const navigate = useNavigate()
   const [answers, setAnswers] = useState<CampaignAnswers>({})
   const [ideas, setIdeas] = useState<string>("")
+  const [selectedImages, setSelectedImages] = useState<File[]>([])
   const [loading, setLoading] = useState<boolean>(false)
   const [initialLoading, setInitialLoading] = useState<boolean>(false)
 
@@ -55,14 +57,14 @@ export default function BrandChat() {
 
       setInitialLoading(true)
       try {
-        console.log("[BrandChat] Loading creative bible:", creativeBibleId)
+        console.log("[CampaignPreferences] Loading creative bible:", creativeBibleId)
         const response = await api.getStoryline(brandId, creativeBibleId)
-        console.log("[BrandChat] Response:", response)
-        console.log("[BrandChat] Campaign preferences:", response.creative_bible?.campaign_preferences)
+        console.log("[CampaignPreferences] Response:", response)
+        console.log("[CampaignPreferences] Campaign preferences:", response.creative_bible?.campaign_preferences)
 
         if (response.creative_bible?.campaign_preferences) {
           const prefs = response.creative_bible.campaign_preferences
-          console.log("[BrandChat] Found preferences:", prefs)
+          console.log("[CampaignPreferences] Found preferences:", prefs)
 
           // Pre-fill answers from existing campaign preferences
           const loadedAnswers: CampaignAnswers = {}
@@ -72,11 +74,11 @@ export default function BrandChat() {
           if (prefs.pacing) loadedAnswers.pacing = prefs.pacing
           if (prefs.colors) loadedAnswers.colors = prefs.colors
 
-          console.log("[BrandChat] Loaded answers:", loadedAnswers)
+          console.log("[CampaignPreferences] Loaded answers:", loadedAnswers)
           setAnswers(loadedAnswers)
           setIdeas(prefs.ideas || "")
         } else {
-          console.warn("[BrandChat] No campaign_preferences found in response")
+          console.warn("[CampaignPreferences] No campaign_preferences found in response")
         }
       } catch (error) {
         console.error("Failed to load creative bible:", error)
@@ -143,7 +145,36 @@ export default function BrandChat() {
         responseCreativeBibleId = response.creative_bible_id
       }
 
-      navigate(`/brands/${brandId}/storyline/${responseCreativeBibleId}`)
+      // Create draft campaign
+      console.log("[CampaignPreferences] Creating draft campaign...")
+      const campaignResponse = await api.createCampaign<{ campaign_id: string }>({
+        brand_id: brandId,
+        creative_bible_id: responseCreativeBibleId,
+        status: "draft"
+      })
+
+      if (!campaignResponse?.campaign_id) {
+        throw new Error("Invalid response: missing campaign_id")
+      }
+
+      const campaignId = campaignResponse.campaign_id
+      console.log("[CampaignPreferences] Draft campaign created:", campaignId)
+
+      // Upload images if any were selected
+      if (selectedImages.length > 0) {
+        console.log("[CampaignPreferences] Uploading images to campaign...")
+        try {
+          await api.uploadCampaignImages(campaignId, selectedImages)
+          console.log("[CampaignPreferences] Images uploaded successfully")
+        } catch (uploadError) {
+          console.error("[CampaignPreferences] Failed to upload images:", uploadError)
+          // Don't fail the whole operation, just warn
+          alert("Campaign created but some images failed to upload. You can add them later.")
+        }
+      }
+
+      // Navigate to storyline review with campaign_id
+      navigate(`/campaigns/${campaignId}/storyline`)
     } catch (error) {
       console.error("Failed to submit answers:", error)
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
@@ -194,13 +225,13 @@ export default function BrandChat() {
                 <h3 className="text-lg font-semibold text-foreground">
                   {qIndex + 1}. {question.question}
                 </h3>
-                <div className="grid grid-cols-1 gap-2">
+                <div className="flex flex-wrap gap-2">
                   {question.options.map((option) => (
                     <Button
                       key={option}
                       onClick={() => handleOptionSelect(question.id, option)}
                       variant={answers[question.id] === option ? "default" : "outline"}
-                      className={`w-full justify-start text-left h-auto py-3 transition-all ${
+                      className={`h-auto py-2 px-4 transition-all text-sm ${
                         answers[question.id] === option
                           ? "bg-purple-600 text-white hover:bg-purple-700 border-purple-600"
                           : "hover:bg-purple-50 hover:border-purple-300"
@@ -233,6 +264,28 @@ export default function BrandChat() {
               <p className="text-sm text-muted-foreground">
                 Feel free to describe any specific moments, visuals, or messages you'd like to see in your ad.
               </p>
+            </div>
+
+            {/* Optional Image Upload */}
+            <div className="space-y-3 pt-4 border-t border-purple-100">
+              <h3 className="text-lg font-semibold text-foreground">
+                7. Reference Images (Optional)
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Upload reference images, mood boards, or visual inspiration for your campaign (up to 20 images)
+              </p>
+              <ImageUploader
+                entityType="campaign"
+                currentImageCount={0}
+                onFilesSelected={setSelectedImages}
+                maxImages={20}
+                disabled={loading}
+              />
+              {selectedImages.length > 0 && (
+                <p className="text-sm text-green-600 font-medium">
+                  {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
+                </p>
+              )}
             </div>
 
             <div className="pt-6">

@@ -1,5 +1,6 @@
 import { supabase, DEBUG_AUTH } from "./supabase"
 import type { CampaignAnswers } from "../types/campaign"
+import type { ImageMetadata, ImageUploadResponse, UpdateImageMetadataRequest, ReorderImagesRequest } from "../types/image"
 
 // API Configuration - HTTPS in production, HTTP in development
 const getApiUrl = (): string => {
@@ -351,6 +352,9 @@ export const api = {
   deleteCampaign: <T = unknown>(campaignId: string) => apiRequest<T>(`/api/campaigns/${campaignId}`, {
     method: "DELETE",
   }),
+  approveCampaign: <T = unknown>(campaignId: string) => apiRequest<T>(`/api/campaigns/${campaignId}/approve`, {
+    method: "POST",
+  }),
 
   // Campaign answers
   submitCampaignAnswers: <T = unknown>(brandId: string, answers: CampaignAnswers) => apiRequest<T>(`/api/brands/${brandId}/campaign-answers`, {
@@ -385,5 +389,85 @@ export const api = {
   revertStoryline: <T = unknown>(brandId: string, creativeBibleId: string) => apiRequest<T>(`/api/brands/${brandId}/storyline/${creativeBibleId}/revert`, {
     method: "POST",
   }),
+
+  // Brand Images
+  uploadBrandImages: async (brandId: string, images: File[]): Promise<ImageUploadResponse> => {
+    const formData = new FormData();
+    images.forEach((image) => {
+      formData.append('images', image);
+    });
+
+    const token = await getAuthToken();
+    const response = await fetch(`${API_URL}/api/brands/${brandId}/images`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to upload images');
+    }
+
+    return response.json();
+  },
+
+  deleteBrandImage: <T = unknown>(brandId: string, imageId: string) => apiRequest<T>(`/api/brands/${brandId}/images/${imageId}`, {
+    method: "DELETE",
+  }),
+
+  updateBrandImage: (brandId: string, imageId: string, data: UpdateImageMetadataRequest) =>
+    apiRequest<ImageMetadata>(`/api/brands/${brandId}/images/${imageId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  reorderBrandImages: (brandId: string, imageIds: string[]) =>
+    apiRequest<{ message: string; images: ImageMetadata[] }>(`/api/brands/${brandId}/images/reorder`, {
+      method: "PUT",
+      body: JSON.stringify({ image_ids: imageIds }),
+    }),
+
+  // Campaign Images
+  uploadCampaignImages: async (campaignId: string, images: File[]): Promise<ImageUploadResponse> => {
+    const formData = new FormData();
+    images.forEach((image) => {
+      formData.append('images', image);
+    });
+
+    const token = await getAuthToken();
+    const response = await fetch(`${API_URL}/api/campaigns/${campaignId}/images`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to upload images');
+    }
+
+    return response.json();
+  },
+
+  deleteCampaignImage: <T = unknown>(campaignId: string, imageId: string) => apiRequest<T>(`/api/campaigns/${campaignId}/images/${imageId}`, {
+    method: "DELETE",
+  }),
+
+  updateCampaignImage: (campaignId: string, imageId: string, data: UpdateImageMetadataRequest) =>
+    apiRequest<ImageMetadata>(`/api/campaigns/${campaignId}/images/${imageId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  reorderCampaignImages: (campaignId: string, imageIds: string[]) =>
+    apiRequest<{ message: string; images: ImageMetadata[] }>(`/api/campaigns/${campaignId}/images/reorder`, {
+      method: "PUT",
+      body: JSON.stringify({ image_ids: imageIds }),
+    }),
 }
 
