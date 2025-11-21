@@ -161,23 +161,55 @@ async def update_campaign_answers(
         raise HTTPException(status_code=400, detail=f"All questions must be answered. Missing: {', '.join(missing_keys)}")
 
     try:
-        logger.info(f"[UPDATE-CAMPAIGN] Updating campaign preferences and clearing old storyline")
-        # Update campaign preferences
-        creative_bible.campaign_preferences = campaign_answers.answers
-        # Clear the old storyline so it will be regenerated
-        creative_bible.creative_bible = {}
-        # Save original if not already saved
-        if not creative_bible.original_creative_bible:
-            creative_bible.original_creative_bible = {}
+        # Check if preferences actually changed
+        old_prefs = creative_bible.campaign_preferences or {}
+        new_prefs = campaign_answers.answers
 
-        db.commit()
-        db.refresh(creative_bible)
+        # Compare relevant keys to detect changes
+        preference_keys = ["style", "audience", "emotion", "pacing", "colors", "ideas"]
+        preferences_changed = any(
+            old_prefs.get(key) != new_prefs.get(key)
+            for key in preference_keys
+        )
 
-        logger.info(f"[UPDATE-CAMPAIGN] Updated creative bible: {creative_bible.id}")
+        if preferences_changed:
+            logger.info(f"[UPDATE-CAMPAIGN] Preferences changed, updating and clearing old storyline")
+            # Update campaign preferences
+            creative_bible.campaign_preferences = new_prefs
+            # Clear the old storyline so it will be regenerated
+            creative_bible.creative_bible = {}
+            # Save original if not already saved
+            if not creative_bible.original_creative_bible:
+                creative_bible.original_creative_bible = {}
+
+            db.commit()
+            db.refresh(creative_bible)
+
+            # Also clear draft campaign storylines so they regenerate
+            from app.models.campaign import Campaign
+            draft_campaigns = db.query(Campaign).filter(
+                Campaign.creative_bible_id == creative_bible.id,
+                Campaign.status == "draft"
+            ).all()
+
+            if draft_campaigns:
+                logger.info(f"[UPDATE-CAMPAIGN] Clearing storyline for {len(draft_campaigns)} draft campaign(s)")
+                for campaign in draft_campaigns:
+                    campaign.storyline = {}
+                    campaign.sora_prompts = []
+                    campaign.suno_prompt = ""
+                db.commit()
+
+            logger.info(f"[UPDATE-CAMPAIGN] Updated creative bible: {creative_bible.id}")
+            message = "Campaign preferences updated. Storyline will be regenerated."
+        else:
+            logger.info(f"[UPDATE-CAMPAIGN] No preference changes detected, keeping existing storyline")
+            message = "No changes detected. Existing storyline preserved."
 
         return {
             "creative_bible_id": str(creative_bible.id),
-            "message": "Campaign preferences updated successfully"
+            "message": message,
+            "preferences_changed": preferences_changed
         }
     except Exception as e:
         logger.error(f"[UPDATE-CAMPAIGN] Error updating creative bible: {e}", exc_info=True)
@@ -1141,6 +1173,22 @@ async def update_storyline(
         db.commit()
         db.refresh(creative_bible)
 
+        # Sync to all draft campaigns linked to this creative bible
+        from app.models.campaign import Campaign
+        draft_campaigns = db.query(Campaign).filter(
+            Campaign.creative_bible_id == creative_bible.id,
+            Campaign.status == "draft"
+        ).all()
+
+        if draft_campaigns:
+            logger.info(f"Syncing storyline update to {len(draft_campaigns)} draft campaign(s)")
+            for campaign in draft_campaigns:
+                campaign.storyline = creative_bible_data.get("storyline", {})
+                campaign.sora_prompts = sora_prompts
+                campaign.suno_prompt = creative_bible_data.get("suno_prompt", "")
+            db.commit()
+            logger.info(f"Synced storyline to draft campaigns for creative_bible: {creative_bible_id}")
+
         logger.info(f"Updated scene {update_request.scene_number} in creative_bible: {creative_bible_id}")
 
         return {
@@ -1197,6 +1245,23 @@ async def revert_storyline(
         creative_bible.creative_bible = creative_bible.original_creative_bible.copy()
         db.commit()
         db.refresh(creative_bible)
+
+        # Sync reverted storyline to all draft campaigns
+        from app.models.campaign import Campaign
+        draft_campaigns = db.query(Campaign).filter(
+            Campaign.creative_bible_id == creative_bible.id,
+            Campaign.status == "draft"
+        ).all()
+
+        if draft_campaigns:
+            logger.info(f"Syncing reverted storyline to {len(draft_campaigns)} draft campaign(s)")
+            reverted_data = creative_bible.creative_bible
+            for campaign in draft_campaigns:
+                campaign.storyline = reverted_data.get("storyline", {})
+                campaign.sora_prompts = reverted_data.get("sora_prompts", [])
+                campaign.suno_prompt = reverted_data.get("suno_prompt", "")
+            db.commit()
+            logger.info(f"Synced reverted storyline to draft campaigns for creative_bible: {creative_bible_id}")
 
         logger.info(f"Reverted storyline to original for creative_bible: {creative_bible_id}")
 
