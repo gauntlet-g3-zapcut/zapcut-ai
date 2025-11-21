@@ -53,23 +53,29 @@ export default function CampaignPreferences() {
   const [loading, setLoading] = useState<boolean>(false)
   const [initialLoading, setInitialLoading] = useState<boolean>(false)
 
-  // Load existing creative bible and campaign images if editing
+  // Load existing campaign data (preferences and images) if editing
   useEffect(() => {
     const loadExistingData = async () => {
-      if (!creativeBibleId || !brandId) return
+      // In edit mode, we have a campaignId - use that to load data quickly
+      if (!existingCampaignId) return
 
       setInitialLoading(true)
       try {
-        console.log("[CampaignPreferences] Loading creative bible:", creativeBibleId)
-        const response = await api.getStoryline(brandId, creativeBibleId)
-        console.log("[CampaignPreferences] Response:", response)
-        console.log("[CampaignPreferences] Campaign preferences:", response.creative_bible?.campaign_preferences)
+        console.log("[CampaignPreferences] Loading campaign data for:", existingCampaignId)
 
-        if (response.creative_bible?.campaign_preferences) {
-          const prefs = response.creative_bible.campaign_preferences
+        // Load campaign and images in parallel for speed
+        const [campaignResponse, imagesResponse] = await Promise.all([
+          api.getCampaign<{ creative_bible?: { campaign_preferences?: Record<string, string> } }>(existingCampaignId),
+          api.getCampaignImages<ImageMetadata[]>(existingCampaignId)
+        ])
+
+        console.log("[CampaignPreferences] Campaign response:", campaignResponse)
+        console.log("[CampaignPreferences] Images response:", imagesResponse)
+
+        // Load preferences from campaign's creative_bible
+        const prefs = campaignResponse.creative_bible?.campaign_preferences
+        if (prefs) {
           console.log("[CampaignPreferences] Found preferences:", prefs)
-
-          // Pre-fill answers from existing campaign preferences
           const loadedAnswers: CampaignAnswers = {}
           if (prefs.style) loadedAnswers.style = prefs.style
           if (prefs.audience) loadedAnswers.audience = prefs.audience
@@ -77,27 +83,16 @@ export default function CampaignPreferences() {
           if (prefs.pacing) loadedAnswers.pacing = prefs.pacing
           if (prefs.colors) loadedAnswers.colors = prefs.colors
 
-          console.log("[CampaignPreferences] Loaded answers:", loadedAnswers)
           setAnswers(loadedAnswers)
           setIdeas(prefs.ideas || "")
         } else {
-          console.warn("[CampaignPreferences] No campaign_preferences found in response")
+          console.warn("[CampaignPreferences] No campaign_preferences found")
         }
 
-        // Load existing campaign images if we have a campaign ID
-        if (existingCampaignId) {
-          console.log("[CampaignPreferences] Loading campaign images for:", existingCampaignId)
-          try {
-            const imagesResponse = await api.getCampaignImages<ImageMetadata[]>(existingCampaignId)
-            console.log("[CampaignPreferences] Loaded images:", imagesResponse)
-            setExistingImages(imagesResponse || [])
-          } catch (imgError) {
-            console.error("[CampaignPreferences] Failed to load campaign images:", imgError)
-            // Don't fail the whole load, just log the error
-          }
-        }
+        // Set existing images
+        setExistingImages(imagesResponse || [])
       } catch (error) {
-        console.error("Failed to load creative bible:", error)
+        console.error("Failed to load campaign data:", error)
         alert("Failed to load existing preferences. Starting fresh.")
       } finally {
         setInitialLoading(false)
@@ -105,7 +100,7 @@ export default function CampaignPreferences() {
     }
 
     loadExistingData()
-  }, [creativeBibleId, brandId, existingCampaignId])
+  }, [existingCampaignId])
 
   const handleOptionSelect = (questionId: QuestionId, option: string): void => {
     setAnswers(prev => ({
@@ -194,8 +189,8 @@ export default function CampaignPreferences() {
         console.log("[CampaignPreferences] Draft campaign created:", campaignId)
       }
 
-      // Upload images if any were selected (only for new campaigns, existing ones already have images)
-      if (selectedImages.length > 0 && !existingCampaignId) {
+      // Upload new images if any were selected
+      if (selectedImages.length > 0) {
         console.log("[CampaignPreferences] Uploading images to campaign...")
         try {
           await api.uploadCampaignImages(campaignId, selectedImages)
@@ -203,7 +198,7 @@ export default function CampaignPreferences() {
         } catch (uploadError) {
           console.error("[CampaignPreferences] Failed to upload images:", uploadError)
           // Don't fail the whole operation, just warn
-          alert("Campaign created but some images failed to upload. You can add them later.")
+          alert("Campaign saved but some images failed to upload. You can add them later.")
         }
       }
 
@@ -332,22 +327,18 @@ export default function CampaignPreferences() {
                 </div>
               )}
 
-              {/* Only show uploader for new campaigns (without existing images) */}
-              {!existingCampaignId && (
-                <>
-                  <ImageUploader
-                    entityType="campaign"
-                    currentImageCount={existingImages.length}
-                    onFilesSelected={setSelectedImages}
-                    maxImages={20}
-                    disabled={loading}
-                  />
-                  {selectedImages.length > 0 && (
-                    <p className="text-sm text-green-600 font-medium">
-                      {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
-                    </p>
-                  )}
-                </>
+              {/* Image uploader - always show */}
+              <ImageUploader
+                entityType="campaign"
+                currentImageCount={existingImages.length}
+                onFilesSelected={setSelectedImages}
+                maxImages={20}
+                disabled={loading}
+              />
+              {selectedImages.length > 0 && (
+                <p className="text-sm text-green-600 font-medium">
+                  {selectedImages.length} new image{selectedImages.length !== 1 ? 's' : ''} to upload
+                </p>
               )}
             </div>
 
