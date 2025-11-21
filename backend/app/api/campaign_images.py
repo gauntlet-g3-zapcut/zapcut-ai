@@ -34,6 +34,36 @@ class ReorderImagesRequest(BaseModel):
     image_ids: List[str]
 
 
+@router.get("/{campaign_id}/images")
+async def get_campaign_images(
+    campaign_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all images for a campaign."""
+    logger.info(f"Getting images for campaign | campaign_id={campaign_id} | user_id={current_user.id}")
+
+    try:
+        campaign_uuid = uuid.UUID(campaign_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid campaign ID format")
+
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_uuid).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    # Check ownership through brand
+    if campaign.brand.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this campaign")
+
+    # Return images sorted by order
+    images = campaign.images or []
+    sorted_images = sorted(images, key=lambda x: x.get("order", 0))
+
+    logger.info(f"Found {len(sorted_images)} images for campaign {campaign_id}")
+    return sorted_images
+
+
 @router.post("/{campaign_id}/images")
 async def upload_campaign_images(
     campaign_id: str,

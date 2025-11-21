@@ -7,7 +7,8 @@ import { Textarea } from "../components/ui/textarea"
 import { api } from "../services/api"
 import type { Question, QuestionId, CampaignAnswers, SubmitCampaignAnswersResponse } from "../types/campaign"
 import { Loader2 } from "lucide-react"
-import { ImageUploader } from "../components/images"
+import { ImageUploader, ImageGallery } from "../components/images"
+import type { ImageMetadata } from "../types/image"
 
 const QUESTIONS: readonly Question[] = [
   {
@@ -48,12 +49,13 @@ export default function CampaignPreferences() {
   const [answers, setAnswers] = useState<CampaignAnswers>({})
   const [ideas, setIdeas] = useState<string>("")
   const [selectedImages, setSelectedImages] = useState<File[]>([])
+  const [existingImages, setExistingImages] = useState<ImageMetadata[]>([])
   const [loading, setLoading] = useState<boolean>(false)
   const [initialLoading, setInitialLoading] = useState<boolean>(false)
 
-  // Load existing creative bible if editing
+  // Load existing creative bible and campaign images if editing
   useEffect(() => {
-    const loadCreativeBible = async () => {
+    const loadExistingData = async () => {
       if (!creativeBibleId || !brandId) return
 
       setInitialLoading(true)
@@ -81,6 +83,19 @@ export default function CampaignPreferences() {
         } else {
           console.warn("[CampaignPreferences] No campaign_preferences found in response")
         }
+
+        // Load existing campaign images if we have a campaign ID
+        if (existingCampaignId) {
+          console.log("[CampaignPreferences] Loading campaign images for:", existingCampaignId)
+          try {
+            const imagesResponse = await api.getCampaignImages<ImageMetadata[]>(existingCampaignId)
+            console.log("[CampaignPreferences] Loaded images:", imagesResponse)
+            setExistingImages(imagesResponse || [])
+          } catch (imgError) {
+            console.error("[CampaignPreferences] Failed to load campaign images:", imgError)
+            // Don't fail the whole load, just log the error
+          }
+        }
       } catch (error) {
         console.error("Failed to load creative bible:", error)
         alert("Failed to load existing preferences. Starting fresh.")
@@ -89,8 +104,8 @@ export default function CampaignPreferences() {
       }
     }
 
-    loadCreativeBible()
-  }, [creativeBibleId, brandId])
+    loadExistingData()
+  }, [creativeBibleId, brandId, existingCampaignId])
 
   const handleOptionSelect = (questionId: QuestionId, option: string): void => {
     setAnswers(prev => ({
@@ -293,17 +308,46 @@ export default function CampaignPreferences() {
               <p className="text-sm text-muted-foreground">
                 Upload reference images, mood boards, or visual inspiration for your campaign (up to 20 images)
               </p>
-              <ImageUploader
-                entityType="campaign"
-                currentImageCount={0}
-                onFilesSelected={setSelectedImages}
-                maxImages={20}
-                disabled={loading}
-              />
-              {selectedImages.length > 0 && (
-                <p className="text-sm text-green-600 font-medium">
-                  {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
-                </p>
+
+              {/* Show existing images in edit mode */}
+              {existingImages.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-sm font-medium text-foreground mb-2">
+                    Current Images ({existingImages.length})
+                  </p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {existingImages.map((image) => (
+                      <div key={image.id} className="relative aspect-square rounded-md overflow-hidden border border-gray-200">
+                        <img
+                          src={image.url}
+                          alt={image.alt_text || "Campaign image"}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    You can manage these images from the storyline review page
+                  </p>
+                </div>
+              )}
+
+              {/* Only show uploader for new campaigns (without existing images) */}
+              {!existingCampaignId && (
+                <>
+                  <ImageUploader
+                    entityType="campaign"
+                    currentImageCount={existingImages.length}
+                    onFilesSelected={setSelectedImages}
+                    maxImages={20}
+                    disabled={loading}
+                  />
+                  {selectedImages.length > 0 && (
+                    <p className="text-sm text-green-600 font-medium">
+                      {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
+                    </p>
+                  )}
+                </>
               )}
             </div>
 

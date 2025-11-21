@@ -431,6 +431,8 @@ export const api = {
     }),
 
   // Campaign Images
+  getCampaignImages: <T = unknown>(campaignId: string) => apiRequest<T>(`/api/campaigns/${campaignId}/images`),
+
   uploadCampaignImages: async (campaignId: string, images: File[]): Promise<ImageUploadResponse> => {
     const formData = new FormData();
     images.forEach((image) => {
