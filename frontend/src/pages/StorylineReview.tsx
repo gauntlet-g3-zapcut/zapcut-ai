@@ -504,7 +504,12 @@ export default function StorylineReview() {
             variant="outline"
             onClick={() => {
               if (effectiveBrandId && effectiveCreativeBibleId) {
-                navigate(`/brands/${effectiveBrandId}/chat?creativeBibleId=${effectiveCreativeBibleId}`)
+                // Pass campaignId so we reuse the same draft campaign
+                const params = new URLSearchParams({
+                  creativeBibleId: effectiveCreativeBibleId,
+                  ...(campaignId && { campaignId })
+                })
+                navigate(`/brands/${effectiveBrandId}/chat?${params.toString()}`)
               } else {
                 alert("Unable to edit preferences. Please refresh the page and try again.")
               }

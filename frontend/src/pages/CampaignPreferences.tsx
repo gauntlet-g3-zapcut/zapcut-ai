@@ -43,6 +43,7 @@ export default function CampaignPreferences() {
   const { brandId } = useParams<{ brandId: string }>()
   const [searchParams] = useSearchParams()
   const creativeBibleId = searchParams.get("creativeBibleId")
+  const existingCampaignId = searchParams.get("campaignId")  // For edit mode - reuse existing campaign
   const navigate = useNavigate()
   const [answers, setAnswers] = useState<CampaignAnswers>({})
   const [ideas, setIdeas] = useState<string>("")
@@ -128,6 +129,7 @@ export default function CampaignPreferences() {
       }
 
       let responseCreativeBibleId: string
+      let campaignId: string
 
       if (isEditMode && creativeBibleId) {
         // Update existing creative bible
@@ -136,6 +138,24 @@ export default function CampaignPreferences() {
           throw new Error("Invalid response: missing creative_bible_id")
         }
         responseCreativeBibleId = response.creative_bible_id
+
+        // Reuse existing campaign if we have one
+        if (existingCampaignId) {
+          console.log("[CampaignPreferences] Reusing existing draft campaign:", existingCampaignId)
+          campaignId = existingCampaignId
+        } else {
+          // No existing campaign (shouldn't happen in normal flow, but handle it)
+          console.log("[CampaignPreferences] Creating new draft campaign for updated creative bible...")
+          const campaignResponse = await api.createCampaign<{ campaign_id: string }>({
+            brand_id: brandId,
+            creative_bible_id: responseCreativeBibleId,
+            status: "draft"
+          })
+          if (!campaignResponse?.campaign_id) {
+            throw new Error("Invalid response: missing campaign_id")
+          }
+          campaignId = campaignResponse.campaign_id
+        }
       } else {
         // Create new creative bible
         const response = await api.submitCampaignAnswers<SubmitCampaignAnswersResponse>(brandId, submissionData)
@@ -143,25 +163,24 @@ export default function CampaignPreferences() {
           throw new Error("Invalid response: missing creative_bible_id")
         }
         responseCreativeBibleId = response.creative_bible_id
+
+        // Create new draft campaign
+        console.log("[CampaignPreferences] Creating draft campaign...")
+        const campaignResponse = await api.createCampaign<{ campaign_id: string }>({
+          brand_id: brandId,
+          creative_bible_id: responseCreativeBibleId,
+          status: "draft"
+        })
+
+        if (!campaignResponse?.campaign_id) {
+          throw new Error("Invalid response: missing campaign_id")
+        }
+        campaignId = campaignResponse.campaign_id
+        console.log("[CampaignPreferences] Draft campaign created:", campaignId)
       }
 
-      // Create draft campaign
-      console.log("[CampaignPreferences] Creating draft campaign...")
-      const campaignResponse = await api.createCampaign<{ campaign_id: string }>({
-        brand_id: brandId,
-        creative_bible_id: responseCreativeBibleId,
-        status: "draft"
-      })
-
-      if (!campaignResponse?.campaign_id) {
-        throw new Error("Invalid response: missing campaign_id")
-      }
-
-      const campaignId = campaignResponse.campaign_id
-      console.log("[CampaignPreferences] Draft campaign created:", campaignId)
-
-      // Upload images if any were selected
-      if (selectedImages.length > 0) {
+      // Upload images if any were selected (only for new campaigns, existing ones already have images)
+      if (selectedImages.length > 0 && !existingCampaignId) {
         console.log("[CampaignPreferences] Uploading images to campaign...")
         try {
           await api.uploadCampaignImages(campaignId, selectedImages)
