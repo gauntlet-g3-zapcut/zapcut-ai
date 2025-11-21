@@ -174,8 +174,10 @@ async def get_campaign(
 
     # Get creative bible data if available
     creative_bible_data = None
+    campaign_preferences = None
     if campaign.creative_bible:
         creative_bible_data = campaign.creative_bible.creative_bible
+        campaign_preferences = campaign.creative_bible.campaign_preferences
 
     return {
         "id": str(campaign.id),
@@ -184,6 +186,7 @@ async def get_campaign(
         "status": campaign.status,
         "storyline": campaign.storyline,
         "creative_bible": creative_bible_data,
+        "campaign_preferences": campaign_preferences,
         "final_video_url": campaign.final_video_url,
         "created_at": campaign.created_at,
     }

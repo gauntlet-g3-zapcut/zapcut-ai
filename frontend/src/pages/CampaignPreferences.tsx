@@ -65,15 +65,15 @@ export default function CampaignPreferences() {
 
         // Load campaign and images in parallel for speed
         const [campaignResponse, imagesResponse] = await Promise.all([
-          api.getCampaign<{ creative_bible?: { campaign_preferences?: Record<string, string> } }>(existingCampaignId),
+          api.getCampaign<{ campaign_preferences?: Record<string, string> }>(existingCampaignId),
           api.getCampaignImages<ImageMetadata[]>(existingCampaignId)
         ])
 
         console.log("[CampaignPreferences] Campaign response:", campaignResponse)
         console.log("[CampaignPreferences] Images response:", imagesResponse)
 
-        // Load preferences from campaign's creative_bible
-        const prefs = campaignResponse.creative_bible?.campaign_preferences
+        // Load preferences from campaign
+        const prefs = campaignResponse.campaign_preferences
         if (prefs) {
           console.log("[CampaignPreferences] Found preferences:", prefs)
           const loadedAnswers: CampaignAnswers = {}
