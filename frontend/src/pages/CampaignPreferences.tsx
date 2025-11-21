@@ -63,14 +63,13 @@ export default function CampaignPreferences() {
       try {
         console.log("[CampaignPreferences] Loading campaign data for:", existingCampaignId)
 
-        // Load campaign and images in parallel for speed
-        const [campaignResponse, imagesResponse] = await Promise.all([
-          api.getCampaign<{ campaign_preferences?: Record<string, string> }>(existingCampaignId),
-          api.getCampaignImages<ImageMetadata[]>(existingCampaignId)
-        ])
+        // Load campaign data (now includes images in response)
+        const campaignResponse = await api.getCampaign<{
+          campaign_preferences?: Record<string, string>
+          images?: ImageMetadata[]
+        }>(existingCampaignId)
 
         console.log("[CampaignPreferences] Campaign response:", campaignResponse)
-        console.log("[CampaignPreferences] Images response:", imagesResponse)
 
         // Load preferences from campaign
         const prefs = campaignResponse.campaign_preferences
@@ -89,8 +88,9 @@ export default function CampaignPreferences() {
           console.warn("[CampaignPreferences] No campaign_preferences found")
         }
 
-        // Set existing images
-        setExistingImages(imagesResponse || [])
+        // Set existing images from campaign response
+        console.log("[CampaignPreferences] Images from response:", campaignResponse.images)
+        setExistingImages(campaignResponse.images || [])
       } catch (error) {
         console.error("Failed to load campaign data:", error)
         alert("Failed to load existing preferences. Starting fresh.")
@@ -190,11 +190,12 @@ export default function CampaignPreferences() {
       }
 
       // Upload new images if any were selected
+      console.log("[CampaignPreferences] selectedImages count:", selectedImages.length, selectedImages)
       if (selectedImages.length > 0) {
-        console.log("[CampaignPreferences] Uploading images to campaign...")
+        console.log("[CampaignPreferences] Uploading", selectedImages.length, "images to campaign:", campaignId)
         try {
-          await api.uploadCampaignImages(campaignId, selectedImages)
-          console.log("[CampaignPreferences] Images uploaded successfully")
+          const uploadResult = await api.uploadCampaignImages(campaignId, selectedImages)
+          console.log("[CampaignPreferences] Images uploaded successfully:", uploadResult)
         } catch (uploadError) {
           console.error("[CampaignPreferences] Failed to upload images:", uploadError)
           // Don't fail the whole operation, just warn

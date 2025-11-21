@@ -187,6 +187,7 @@ async def get_campaign(
         "storyline": campaign.storyline,
         "creative_bible": creative_bible_data,
         "campaign_preferences": campaign_preferences,
+        "images": campaign.images or [],  # Include campaign images
         "final_video_url": campaign.final_video_url,
         "created_at": campaign.created_at,
     }

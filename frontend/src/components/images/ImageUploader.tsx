@@ -75,8 +75,12 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
     });
 
     if (!hasErrors && validatedFiles.length > 0) {
-      setPreviews((prev) => [...prev, ...validatedFiles]);
-      onFilesSelected(validatedFiles.map((p) => p.file));
+      setPreviews((prev) => {
+        const newPreviews = [...prev, ...validatedFiles];
+        // Pass ALL accumulated files to parent, not just the new ones
+        onFilesSelected(newPreviews.map((p) => p.file));
+        return newPreviews;
+      });
     }
   };
 

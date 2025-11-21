@@ -4,6 +4,7 @@ import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel
 from app.database import get_db
 from app.models.campaign import Campaign
@@ -155,6 +156,7 @@ async def upload_campaign_images(
     # Add uploaded images to campaign
     if uploaded_metadata:
         campaign.images = current_images + uploaded_metadata
+        flag_modified(campaign, "images")  # Tell SQLAlchemy the JSON column changed
         try:
             db.commit()
             db.refresh(campaign)
@@ -236,6 +238,7 @@ async def reorder_campaign_images(
 
     # Update campaign
     campaign.images = reordered_images
+    flag_modified(campaign, "images")  # Tell SQLAlchemy the JSON column changed
 
     try:
         db.commit()
@@ -321,6 +324,7 @@ async def delete_campaign_image(
 
     # Update campaign
     campaign.images = remaining_images
+    flag_modified(campaign, "images")  # Tell SQLAlchemy the JSON column changed
 
     try:
         db.commit()
@@ -415,6 +419,7 @@ async def update_campaign_image_metadata(
 
     # Update campaign
     campaign.images = current_images
+    flag_modified(campaign, "images")  # Tell SQLAlchemy the JSON column changed
 
     try:
         db.commit()
