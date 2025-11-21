@@ -112,7 +112,7 @@ function EditableDescription({ value, sceneNumber, onSave }: EditableDescription
 }
 
 export default function StorylineReview() {
-  const { brandId, creativeBibleId } = useParams<{ brandId: string; creativeBibleId: string }>()
+  const { brandId, creativeBibleId, campaignId } = useParams<{ brandId?: string; creativeBibleId?: string; campaignId?: string }>()
   const navigate = useNavigate()
   const [storyline, setStoryline] = useState<Storyline | null>(null)
   const [creativeBible, setCreativeBible] = useState<CreativeBible | null>(null)
@@ -122,12 +122,57 @@ export default function StorylineReview() {
   const [saving, setSaving] = useState<boolean>(false)
   const [reverting, setReverting] = useState<boolean>(false)
 
+  // Determine if using new flow (campaignId) or old flow (brandId + creativeBibleId)
+  const isNewFlow = !!campaignId
+  const [effectiveBrandId, setEffectiveBrandId] = useState<string | undefined>(brandId)
+  const [effectiveCreativeBibleId, setEffectiveCreativeBibleId] = useState<string | undefined>(creativeBibleId)
+
   useEffect(() => {
     const fetchStoryline = async () => {
-      if (!brandId || !creativeBibleId) return
+      // New flow: Get campaign first, then get storyline from campaign
+      if (isNewFlow && campaignId) {
+        try {
+          const campaign = await api.getCampaign<any>(campaignId)
+
+          // Store brandId and creativeBibleId for editing functionality
+          setEffectiveBrandId(campaign.brand_id)
+          setEffectiveCreativeBibleId(campaign.creative_bible_id)
+
+          // Check if storyline exists in campaign
+          // If not, generate it using the getStoryline API
+          if (!campaign.storyline || !campaign.storyline.scenes || campaign.storyline.scenes.length === 0) {
+            console.log("Storyline not found in campaign, generating...")
+
+            // Generate storyline using the creative bible
+            if (campaign.brand_id && campaign.creative_bible_id) {
+              const storylineResponse = await api.getStoryline<StorylineResponse>(
+                campaign.brand_id,
+                campaign.creative_bible_id
+              )
+              setStoryline(storylineResponse.storyline)
+              setCreativeBible(storylineResponse.creative_bible)
+            } else {
+              throw new Error("Missing brand_id or creative_bible_id in campaign")
+            }
+          } else {
+            // Storyline exists, use it directly
+            setStoryline(campaign.storyline || null)
+            setCreativeBible(campaign.creative_bible || null)
+          }
+        } catch (error) {
+          console.error("Failed to fetch campaign:", error)
+          alert("Failed to load campaign. Please try again.")
+        } finally {
+          setLoading(false)
+        }
+        return
+      }
+
+      // Old flow: Use brandId + creativeBibleId
+      if (!effectiveBrandId || !effectiveCreativeBibleId) return
 
       try {
-        const response = await api.getStoryline<StorylineResponse>(brandId, creativeBibleId)
+        const response = await api.getStoryline<StorylineResponse>(effectiveBrandId, effectiveCreativeBibleId)
         setStoryline(response.storyline)
         setCreativeBible(response.creative_bible)
       } catch (error) {
@@ -138,37 +183,51 @@ export default function StorylineReview() {
       }
     }
     fetchStoryline()
-  }, [brandId, creativeBibleId])
+  }, [effectiveBrandId, effectiveCreativeBibleId, campaignId, isNewFlow])
 
   const handleApprove = async () => {
-    if (!brandId || !creativeBibleId) return
-
     setGenerating(true)
     try {
+      // New flow: Approve existing draft campaign
+      if (isNewFlow && campaignId) {
+        const response = await api.approveCampaign<{ campaign_id: string }>(campaignId)
+        if (!response?.campaign_id) {
+          throw new Error("No campaign_id in response")
+        }
+        navigate(`/campaigns/${campaignId}/progress`)
+        return
+      }
+
+      // Old flow: Create new campaign
+      if (!effectiveBrandId || !effectiveCreativeBibleId) {
+        throw new Error("Missing brand or creative bible ID")
+      }
+
       const response = await api.createCampaign<{ campaign_id: string }>({
-        brand_id: brandId,
-        creative_bible_id: creativeBibleId
+        brand_id: effectiveBrandId,
+        creative_bible_id: effectiveCreativeBibleId,
+        status: "pending" // Create and approve immediately in old flow
       })
 
       if (!response?.campaign_id) {
         throw new Error("No campaign_id in response")
       }
 
-      // Navigate to video generation progress page immediately
       navigate(`/campaigns/${response.campaign_id}/progress`)
-
-      // Don't set generating to false - let navigation happen
-      // The component will unmount anyway
     } catch (error) {
       console.error("Failed to start generation:", error)
-      setGenerating(false) // Only reset if there's an error
+      setGenerating(false)
       const errorMessage = error instanceof Error ? error.message : "Please try again."
       alert(`Failed to start video generation: ${errorMessage}`)
     }
   }
 
   const handleEditDescription = async (sceneNumber: number, newDescription: string) => {
-    if (!brandId || !creativeBibleId) return
+    if (!effectiveBrandId || !effectiveCreativeBibleId) {
+      console.error("Missing brandId or creativeBibleId for editing")
+      alert("Cannot edit scene. Please refresh the page and try again.")
+      return
+    }
 
     // Optimistic update - update UI immediately
     setStoryline(prevStoryline => {
@@ -186,7 +245,7 @@ export default function StorylineReview() {
     // Save to backend
     try {
       setSaving(true)
-      const response = await api.updateStoryline<{ storyline: Storyline }>(brandId, creativeBibleId, sceneNumber, newDescription)
+      const response = await api.updateStoryline<{ storyline: Storyline }>(effectiveBrandId, effectiveCreativeBibleId, sceneNumber, newDescription)
 
       // Update with server response (in case backend modified anything)
       if (response?.storyline) {
@@ -199,7 +258,7 @@ export default function StorylineReview() {
 
       // Revert optimistic update on error - refetch from server
       try {
-        const response = await api.getStoryline<StorylineResponse>(brandId, creativeBibleId)
+        const response = await api.getStoryline<StorylineResponse>(effectiveBrandId, effectiveCreativeBibleId)
         setStoryline(response.storyline)
       } catch (refetchError) {
         console.error("Failed to refetch storyline:", refetchError)
@@ -210,7 +269,11 @@ export default function StorylineReview() {
   }
 
   const handleRevertToOriginal = async () => {
-    if (!brandId || !creativeBibleId) return
+    if (!effectiveBrandId || !effectiveCreativeBibleId) {
+      console.error("Missing brandId or creativeBibleId for reverting")
+      alert("Cannot revert storyline. Please refresh the page and try again.")
+      return
+    }
 
     if (!confirm("Are you sure you want to revert to the original AI-generated storyline? All your edits will be lost.")) {
       return
@@ -218,7 +281,7 @@ export default function StorylineReview() {
 
     try {
       setReverting(true)
-      const response = await api.revertStoryline<{ storyline: Storyline }>(brandId, creativeBibleId)
+      const response = await api.revertStoryline<{ storyline: Storyline }>(effectiveBrandId, effectiveCreativeBibleId)
 
       if (response?.storyline) {
         setStoryline(response.storyline)
@@ -439,7 +502,19 @@ export default function StorylineReview() {
         <div className="mt-8 flex gap-4">
           <Button
             variant="outline"
-            onClick={() => navigate(`/brands/${brandId}/chat?creativeBibleId=${creativeBibleId}`)}
+            onClick={() => {
+              if (effectiveBrandId && effectiveCreativeBibleId) {
+                // Pass campaignId so we reuse the same draft campaign
+                const params = new URLSearchParams({
+                  creativeBibleId: effectiveCreativeBibleId,
+                  ...(campaignId && { campaignId })
+                })
+                navigate(`/brands/${effectiveBrandId}/chat?${params.toString()}`)
+              } else {
+                alert("Unable to edit preferences. Please refresh the page and try again.")
+              }
+            }}
+            disabled={!effectiveBrandId || !effectiveCreativeBibleId}
             className="flex-1 h-11 border-purple-200 hover:bg-purple-50 hover:border-purple-300 text-base font-medium"
           >
             <Pencil className="mr-2 h-4 w-4" />

@@ -34,8 +34,9 @@ async def list_brands(
                 "id": str(brand.id),
                 "title": brand.title,
                 "description": brand.description,
-                "product_image_1_url": brand.product_image_1_url,
-                "product_image_2_url": brand.product_image_2_url,
+                "product_image_1_url": brand.product_image_1_url,  # Legacy - for backward compatibility
+                "product_image_2_url": brand.product_image_2_url,  # Legacy - for backward compatibility
+                "images": brand.images or [],  # New: array of image metadata
                 "created_at": brand.created_at,
                 "campaign_count": len(brand.campaigns),
             }
@@ -176,8 +177,9 @@ async def get_brand(
         "id": str(brand.id),
         "title": brand.title,
         "description": brand.description,
-        "product_image_1_url": brand.product_image_1_url,
-        "product_image_2_url": brand.product_image_2_url,
+        "product_image_1_url": brand.product_image_1_url,  # Legacy - for backward compatibility
+        "product_image_2_url": brand.product_image_2_url,  # Legacy - for backward compatibility
+        "images": brand.images or [],  # New: array of image metadata
         "created_at": brand.created_at,
         "campaigns": [
             {

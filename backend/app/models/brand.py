@@ -14,8 +14,9 @@ class Brand(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
-    product_image_1_url = Column(String, nullable=True)
-    product_image_2_url = Column(String, nullable=True)
+    product_image_1_url = Column(String, nullable=True)  # Legacy - to be removed after migration
+    product_image_2_url = Column(String, nullable=True)  # Legacy - to be removed after migration
+    images = Column(JSON, nullable=True, default=list)  # New: Array of image metadata objects
     created_at = Column(DateTime(timezone=False), nullable=False)
     
     # Relationships

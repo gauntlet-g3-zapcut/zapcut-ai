@@ -17,6 +17,7 @@ class Campaign(Base):
     storyline = Column(JSON, nullable=True)
     sora_prompts = Column(JSON, nullable=True, default=list)
     suno_prompt = Column(String, nullable=True)
+    images = Column(JSON, nullable=True, default=list)  # Reference/inspiration images for video generation
     video_urls = Column(JSON, nullable=True)
     music_url = Column(String, nullable=True)
     final_video_url = Column(String, nullable=True)

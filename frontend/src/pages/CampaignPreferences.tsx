@@ -7,6 +7,8 @@ import { Textarea } from "../components/ui/textarea"
 import { api } from "../services/api"
 import type { Question, QuestionId, CampaignAnswers, SubmitCampaignAnswersResponse } from "../types/campaign"
 import { Loader2 } from "lucide-react"
+import { ImageUploader, ImageGallery } from "../components/images"
+import type { ImageMetadata } from "../types/image"
 
 const QUESTIONS: readonly Question[] = [
   {
@@ -38,33 +40,41 @@ const QUESTIONS: readonly Question[] = [
 
 const MAX_IDEAS_LENGTH = 2000
 
-export default function BrandChat() {
+export default function CampaignPreferences() {
   const { brandId } = useParams<{ brandId: string }>()
   const [searchParams] = useSearchParams()
   const creativeBibleId = searchParams.get("creativeBibleId")
+  const existingCampaignId = searchParams.get("campaignId")  // For edit mode - reuse existing campaign
   const navigate = useNavigate()
   const [answers, setAnswers] = useState<CampaignAnswers>({})
   const [ideas, setIdeas] = useState<string>("")
+  const [selectedImages, setSelectedImages] = useState<File[]>([])
+  const [existingImages, setExistingImages] = useState<ImageMetadata[]>([])
   const [loading, setLoading] = useState<boolean>(false)
   const [initialLoading, setInitialLoading] = useState<boolean>(false)
 
-  // Load existing creative bible if editing
+  // Load existing campaign data (preferences and images) if editing
   useEffect(() => {
-    const loadCreativeBible = async () => {
-      if (!creativeBibleId || !brandId) return
+    const loadExistingData = async () => {
+      // In edit mode, we have a campaignId - use that to load data quickly
+      if (!existingCampaignId) return
 
       setInitialLoading(true)
       try {
-        console.log("[BrandChat] Loading creative bible:", creativeBibleId)
-        const response = await api.getStoryline(brandId, creativeBibleId)
-        console.log("[BrandChat] Response:", response)
-        console.log("[BrandChat] Campaign preferences:", response.creative_bible?.campaign_preferences)
+        console.log("[CampaignPreferences] Loading campaign data for:", existingCampaignId)
 
-        if (response.creative_bible?.campaign_preferences) {
-          const prefs = response.creative_bible.campaign_preferences
-          console.log("[BrandChat] Found preferences:", prefs)
+        // Load campaign data (now includes images in response)
+        const campaignResponse = await api.getCampaign<{
+          campaign_preferences?: Record<string, string>
+          images?: ImageMetadata[]
+        }>(existingCampaignId)
 
-          // Pre-fill answers from existing campaign preferences
+        console.log("[CampaignPreferences] Campaign response:", campaignResponse)
+
+        // Load preferences from campaign
+        const prefs = campaignResponse.campaign_preferences
+        if (prefs) {
+          console.log("[CampaignPreferences] Found preferences:", prefs)
           const loadedAnswers: CampaignAnswers = {}
           if (prefs.style) loadedAnswers.style = prefs.style
           if (prefs.audience) loadedAnswers.audience = prefs.audience
@@ -72,22 +82,25 @@ export default function BrandChat() {
           if (prefs.pacing) loadedAnswers.pacing = prefs.pacing
           if (prefs.colors) loadedAnswers.colors = prefs.colors
 
-          console.log("[BrandChat] Loaded answers:", loadedAnswers)
           setAnswers(loadedAnswers)
           setIdeas(prefs.ideas || "")
         } else {
-          console.warn("[BrandChat] No campaign_preferences found in response")
+          console.warn("[CampaignPreferences] No campaign_preferences found")
         }
+
+        // Set existing images from campaign response
+        console.log("[CampaignPreferences] Images from response:", campaignResponse.images)
+        setExistingImages(campaignResponse.images || [])
       } catch (error) {
-        console.error("Failed to load creative bible:", error)
+        console.error("Failed to load campaign data:", error)
         alert("Failed to load existing preferences. Starting fresh.")
       } finally {
         setInitialLoading(false)
       }
     }
 
-    loadCreativeBible()
-  }, [creativeBibleId, brandId])
+    loadExistingData()
+  }, [existingCampaignId])
 
   const handleOptionSelect = (questionId: QuestionId, option: string): void => {
     setAnswers(prev => ({
@@ -126,6 +139,7 @@ export default function BrandChat() {
       }
 
       let responseCreativeBibleId: string
+      let campaignId: string
 
       if (isEditMode && creativeBibleId) {
         // Update existing creative bible
@@ -134,6 +148,24 @@ export default function BrandChat() {
           throw new Error("Invalid response: missing creative_bible_id")
         }
         responseCreativeBibleId = response.creative_bible_id
+
+        // Reuse existing campaign if we have one
+        if (existingCampaignId) {
+          console.log("[CampaignPreferences] Reusing existing draft campaign:", existingCampaignId)
+          campaignId = existingCampaignId
+        } else {
+          // No existing campaign (shouldn't happen in normal flow, but handle it)
+          console.log("[CampaignPreferences] Creating new draft campaign for updated creative bible...")
+          const campaignResponse = await api.createCampaign<{ campaign_id: string }>({
+            brand_id: brandId,
+            creative_bible_id: responseCreativeBibleId,
+            status: "draft"
+          })
+          if (!campaignResponse?.campaign_id) {
+            throw new Error("Invalid response: missing campaign_id")
+          }
+          campaignId = campaignResponse.campaign_id
+        }
       } else {
         // Create new creative bible
         const response = await api.submitCampaignAnswers<SubmitCampaignAnswersResponse>(brandId, submissionData)
@@ -141,9 +173,38 @@ export default function BrandChat() {
           throw new Error("Invalid response: missing creative_bible_id")
         }
         responseCreativeBibleId = response.creative_bible_id
+
+        // Create new draft campaign
+        console.log("[CampaignPreferences] Creating draft campaign...")
+        const campaignResponse = await api.createCampaign<{ campaign_id: string }>({
+          brand_id: brandId,
+          creative_bible_id: responseCreativeBibleId,
+          status: "draft"
+        })
+
+        if (!campaignResponse?.campaign_id) {
+          throw new Error("Invalid response: missing campaign_id")
+        }
+        campaignId = campaignResponse.campaign_id
+        console.log("[CampaignPreferences] Draft campaign created:", campaignId)
       }
 
-      navigate(`/brands/${brandId}/storyline/${responseCreativeBibleId}`)
+      // Upload new images if any were selected
+      console.log("[CampaignPreferences] selectedImages count:", selectedImages.length, selectedImages)
+      if (selectedImages.length > 0) {
+        console.log("[CampaignPreferences] Uploading", selectedImages.length, "images to campaign:", campaignId)
+        try {
+          const uploadResult = await api.uploadCampaignImages(campaignId, selectedImages)
+          console.log("[CampaignPreferences] Images uploaded successfully:", uploadResult)
+        } catch (uploadError) {
+          console.error("[CampaignPreferences] Failed to upload images:", uploadError)
+          // Don't fail the whole operation, just warn
+          alert("Campaign saved but some images failed to upload. You can add them later.")
+        }
+      }
+
+      // Navigate to storyline review with campaign_id
+      navigate(`/campaigns/${campaignId}/storyline`)
     } catch (error) {
       console.error("Failed to submit answers:", error)
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
@@ -194,13 +255,13 @@ export default function BrandChat() {
                 <h3 className="text-lg font-semibold text-foreground">
                   {qIndex + 1}. {question.question}
                 </h3>
-                <div className="grid grid-cols-1 gap-2">
+                <div className="flex flex-wrap gap-2">
                   {question.options.map((option) => (
                     <Button
                       key={option}
                       onClick={() => handleOptionSelect(question.id, option)}
                       variant={answers[question.id] === option ? "default" : "outline"}
-                      className={`w-full justify-start text-left h-auto py-3 transition-all ${
+                      className={`h-auto py-2 px-4 transition-all text-sm ${
                         answers[question.id] === option
                           ? "bg-purple-600 text-white hover:bg-purple-700 border-purple-600"
                           : "hover:bg-purple-50 hover:border-purple-300"
@@ -233,6 +294,53 @@ export default function BrandChat() {
               <p className="text-sm text-muted-foreground">
                 Feel free to describe any specific moments, visuals, or messages you'd like to see in your ad.
               </p>
+            </div>
+
+            {/* Optional Image Upload */}
+            <div className="space-y-3 pt-4 border-t border-purple-100">
+              <h3 className="text-lg font-semibold text-foreground">
+                7. Reference Images (Optional)
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Upload reference images, mood boards, or visual inspiration for your campaign (up to 20 images)
+              </p>
+
+              {/* Show existing images in edit mode */}
+              {existingImages.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-sm font-medium text-foreground mb-2">
+                    Current Images ({existingImages.length})
+                  </p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {existingImages.map((image) => (
+                      <div key={image.id} className="relative aspect-square rounded-md overflow-hidden border border-gray-200">
+                        <img
+                          src={image.url}
+                          alt={image.alt_text || "Campaign image"}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    You can manage these images from the storyline review page
+                  </p>
+                </div>
+              )}
+
+              {/* Image uploader - always show */}
+              <ImageUploader
+                entityType="campaign"
+                currentImageCount={existingImages.length}
+                onFilesSelected={setSelectedImages}
+                maxImages={20}
+                disabled={loading}
+              />
+              {selectedImages.length > 0 && (
+                <p className="text-sm text-green-600 font-medium">
+                  {selectedImages.length} new image{selectedImages.length !== 1 ? 's' : ''} to upload
+                </p>
+              )}
             </div>
 
             <div className="pt-6">

@@ -2,6 +2,8 @@
  * Campaign form types
  */
 
+import { ImageMetadata } from './image';
+
 export type QuestionId = "style" | "audience" | "emotion" | "pacing" | "colors"
 
 export interface Question {
@@ -31,4 +33,15 @@ export interface CampaignPreferences extends Record<string, string> {
   pacing: string
   colors: string
   ideas: string
+}
+
+export interface Campaign {
+  id: string;
+  brand_id: string;
+  brand_title: string;
+  status: string;
+  final_video_url?: string;
+  images: ImageMetadata[];  // Reference/inspiration images
+  created_at: string;
+  video_urls_count: number;
 }
