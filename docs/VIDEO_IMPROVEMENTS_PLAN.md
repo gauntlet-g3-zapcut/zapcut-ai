@@ -1202,6 +1202,355 @@ class Campaign(Base):
 
 ---
 
+---
+
+## Implementation Phases (Refined)
+
+This section defines the incremental implementation strategy. Each phase delivers working functionality and can be tested independently.
+
+### Phase Overview
+
+| Phase | Name | Timeline | Key Deliverable |
+|-------|------|----------|-----------------|
+| 1 | Core Pipeline Upgrade | 2-3 weeks | Image-first generation working end-to-end |
+| 2 | Review & Control | 1-2 weeks | Director modes, Take Control, approve/regenerate |
+| 3 | Comedy & Viral | 1-2 weeks | Comedy directors, viral prompts, escalation |
+| 4 | Screenshots (Upload) | 1-2 weeks | Upload, validation, mockups, scene mapping UI |
+| 5 | Cinematic Polish | 2-3 weeks | FFmpeg: color grading, speed ramps, screenshot compositing |
+| 6 | Polish & Optimize | 1 week | Testing, edge cases, performance, documentation |
+
+**Total estimated timeline:** 8-13 weeks
+
+---
+
+### Phase 1: Core Pipeline Upgrade
+
+**Goal:** Replace text-to-video with image-first workflow (Nano Banana → Real-ESRGAN → Veo 3.1 image-to-video) and deliver a complete assembled video
+
+**Scope:**
+- Database migrations for new fields
+- Prompt generation with GPT-4o (image_prompt, motion_prompt)
+- Nano Banana image generation task
+- Real-ESRGAN upscaling task
+- Modify video generation to use `image` parameter
+- New webhooks for image and upscale completion
+- Basic video assembly with cross-dissolve transitions
+- Basic progress UI showing multi-phase pipeline
+
+**Checklist:**
+- [ ] Add `director_mode` field to Campaign model
+- [ ] Add `image_prompts` JSON field to Campaign model
+- [ ] Add `pipeline_stage` string field to Campaign model
+- [ ] Add `color_grade_preset` string field to Campaign model
+- [ ] Add `brand_colors` JSON field to Campaign model
+- [ ] Update `video_urls` JSON structure to include per-scene tracking fields:
+  - [ ] `image_prompt`, `motion_prompt`, `prompts_approved`
+  - [ ] `base_image_url`, `image_status`, `image_prediction_id`, `image_approved`
+  - [ ] `upscaled_image_url`, `upscale_status`, `upscale_prediction_id`
+  - [ ] `processed_video_url`, `processing_status`
+- [ ] Create and run Alembic migration
+- [ ] Create `backend/app/tasks/prompt_generation.py`
+  - [ ] `generate_enhanced_prompts_task(campaign_id)`
+- [ ] Create `backend/app/tasks/image_generation.py`
+  - [ ] `start_image_generation_task(campaign_id)`
+  - [ ] `generate_single_image_task(campaign_id, scene_num)`
+  - [ ] `upscale_single_image_task(campaign_id, scene_num)`
+- [ ] Modify `backend/app/tasks/video_generation.py`
+  - [ ] Update `generate_single_scene_task` to accept `image` parameter
+  - [ ] Build image-to-video Replicate input
+- [ ] Create `/webhooks/replicate/image` endpoint
+- [ ] Create `/webhooks/replicate/upscale` endpoint
+- [ ] Update webhook URL builders for new endpoints
+- [ ] Update `GET /api/campaigns/{id}/status` for new pipeline stages
+- [ ] Modify `POST /api/campaigns/{id}/approve` to trigger new pipeline (prompt generation first)
+- [ ] Create basic video assembly task
+  - [ ] `assemble_videos_basic_task(campaign_id)` in `tasks/video_generation.py`
+  - [ ] Download all completed scene videos from S3
+  - [ ] Use FFmpeg `xfade` filter for cross-dissolve transitions (0.5s)
+  - [ ] Upload assembled video to S3
+  - [ ] Update `campaign.final_video_url` with assembled video URL
+- [ ] Trigger assembly automatically when all scenes complete (in webhook handler)
+- [ ] Update VideoProgress.jsx with multi-phase progress indicators (basic)
+
+**Exit Criteria:**
+- Can generate a complete video using image-first pipeline
+- Pipeline stages update correctly through webhooks
+- Progress UI shows image → upscale → video → assembly stages
+- Approve endpoint triggers the new pipeline flow
+- **Final assembled video is produced** (not just individual scene videos)
+- Cross-dissolve transitions between scenes are smooth
+
+---
+
+### Phase 2: Review & Control
+
+**Goal:** Implement "Surprise Me" vs "I'll Direct" modes with mid-flow switching
+
+**Scope:**
+- Director mode selection in onboarding
+- "Take Control" button to pause and review
+- Per-scene approve/regenerate functionality
+- Prompt editing UI
+- Resume from current state
+
+**Checklist:**
+- [ ] Create `POST /api/campaigns/{id}/take-control`
+- [ ] Create `POST /api/campaigns/{id}/resume-auto`
+- [ ] Add `POST /api/campaigns/{id}/approve-prompts`
+- [ ] Add `POST /api/campaigns/{id}/approve-images`
+- [ ] Add `POST /api/campaigns/{id}/approve-videos`
+- [ ] Add `POST /api/campaigns/{id}/scenes/{num}/regenerate-image`
+- [ ] Add `POST /api/campaigns/{id}/scenes/{num}/regenerate-video`
+- [ ] Add `PUT /api/campaigns/{id}/scenes/{num}/prompts`
+- [ ] Add `takeControl()` to frontend api.ts
+- [ ] Add `resumeAuto()` to frontend api.ts
+- [ ] Add `approvePrompts()` to frontend api.ts
+- [ ] Add `approveImages()` to frontend api.ts
+- [ ] Add `approveVideos()` to frontend api.ts
+- [ ] Add `regenerateImage()` to frontend api.ts
+- [ ] Add `regenerateVideo()` to frontend api.ts
+- [ ] Add `updateScenePrompts()` to frontend api.ts
+- [ ] Add director mode selection UI to onboarding/campaign creation flow
+- [ ] Update StorylineReview.tsx
+  - [ ] Add scene thumbnails with status indicators
+  - [ ] Add image preview when ready
+  - [ ] Add video preview when ready
+  - [ ] Add Approve/Regenerate buttons per scene
+- [ ] Update VideoProgress.jsx
+  - [ ] Add "Take Control" button
+  - [ ] Add Director Mode review UI
+  - [ ] Show live thumbnails during generation
+- [ ] Add scene detail modal
+  - [ ] Full-size image/video preview
+  - [ ] Edit prompts
+  - [ ] Regenerate buttons
+
+**Exit Criteria:**
+- User can choose mode at start (director mode selection in onboarding)
+- "Take Control" pauses generation and shows review UI
+- Can approve/regenerate individual scenes
+- Can edit prompts and regenerate
+- "Back to Auto" resumes from current state
+- StorylineReview shows scene previews with status
+
+---
+
+### Phase 3: Comedy & Viral
+
+**Goal:** Make videos hilarious and shareable through comedy director personas and viral mechanics
+
+**Scope:**
+- Comedy director selection UI
+- 6 comedy director personas with prompt injections
+- Hook templates for scene 1
+- Escalation engine for scenes 2-4
+- Specificity generator
+- Viral mechanics (callbacks, quotable lines, screenshot moments)
+- Comedy-enhanced visual prompts
+
+**Checklist:**
+- [ ] Add `comedy_director` field to CreativeBible model
+- [ ] Add `humor_level` field to CreativeBible model
+- [ ] Add `app_category` field to CreativeBible model
+- [ ] Add `main_pain_point` field to CreativeBible model
+- [ ] Add `comedy_director` field to Campaign model
+- [ ] Add `hook_type` field to Campaign model
+- [ ] Add `quotable_line` field to Campaign model
+- [ ] Add `screenshot_scene` field to Campaign model
+- [ ] Add `callback_setup` field to Campaign model
+- [ ] Create and run Alembic migration
+- [ ] Create comedy director selection UI in onboarding
+- [ ] Implement `COMEDY_DIRECTORS` prompt injections dictionary
+- [ ] Add hook template selection logic
+- [ ] Implement escalation engine in storyline generation
+- [ ] Add specificity generator for generic → specific conversion
+- [ ] Add viral checklist validation to storyline output
+- [ ] Enhance image prompts with comedy visual styles
+- [ ] Add motion pattern selection for video generation
+- [ ] Implement `text_overlay` field for scenes
+- [ ] Add `audio_cue` field for post-processing sync
+
+**Exit Criteria:**
+- Can select comedy director during campaign creation
+- Generated storylines follow hook → escalate → payoff structure
+- Prompts include comedy-specific visual directions
+- Scenes have quotable lines and screenshot moments marked
+
+---
+
+### Phase 4: Screenshots (Upload)
+
+**Goal:** Allow users to upload real app screenshots and map them to scenes
+
+**Scope:**
+- Screenshot upload API and validation
+- Phone mockup generation (Pillow-based)
+- Screenshot-to-scene mapping UI
+- Screen action selection (static, scroll, tap, swipe)
+- Highlight area selection
+
+**Note:** Video compositing of screenshots happens in Phase 5 (requires FFmpeg infrastructure)
+
+**Checklist:**
+- [ ] Add `screenshots` JSON field to Campaign model
+- [ ] Add `phone_model` field to Campaign model
+- [ ] Create and run Alembic migration
+- [ ] Create `POST /api/campaigns/{id}/screenshots` endpoint
+- [ ] Create `PUT /api/campaigns/{id}/screenshots/{id}` endpoint
+- [ ] Create `DELETE /api/campaigns/{id}/screenshots/{id}` endpoint
+- [ ] Implement screenshot validation (size, format, dimensions)
+- [ ] Create phone mockup generator service using Pillow
+  - [ ] iPhone 15 frame template
+  - [ ] Pixel 8 frame template
+  - [ ] Samsung S24 frame template
+  - [ ] Generic frame template
+- [ ] Create `POST /api/campaigns/{id}/screenshots/{id}/generate-mockup` endpoint
+- [ ] Add screenshot upload UI component
+- [ ] Add screenshot-to-scene mapping UI
+- [ ] Add screen action selector UI (static, scroll, tap, swipe)
+- [ ] Add highlight area selection UI (draw box)
+- [ ] Modify prompt generation to include screenshot context
+- [ ] Modify image generation to use phone mockups as reference input
+
+**Exit Criteria:**
+- Can upload screenshots with validation
+- Can generate phone mockups from screenshots
+- Can map screenshots to scenes with actions
+- Prompts reference screenshot content
+- Image generation uses mockups as visual reference
+
+---
+
+### Phase 5: Cinematic Polish
+
+**Goal:** Add FFmpeg-based post-processing for professional-quality output (upgrades Phase 1's basic assembly)
+
+**Scope:**
+- Cinematic color grading with LUTs
+- Speed ramping based on energy curve
+- Screenshot compositing into videos (from Phase 4)
+- Screen animations (scroll, tap, swipe)
+- Advanced scene transitions (energy-based selection)
+- Enhanced video assembly with audio mixing
+
+**Note:** Phase 1 provides basic cross-dissolve assembly. Phase 5 replaces it with full cinematic processing.
+
+**Checklist:**
+- [ ] Ensure FFmpeg is installed (Docker)
+- [ ] Bundle default cinematic LUT file
+- [ ] Create `backend/app/tasks/post_processing.py`
+  - [ ] `post_process_video_task(campaign_id, scene_num)`
+  - [ ] `assemble_final_video_task(campaign_id)`
+- [ ] Implement cinematic color grading
+  - [ ] Apply base cinematic LUT
+  - [ ] Shift colors toward brand palette
+  - [ ] Preserve skin tones
+- [ ] Implement speed ramping
+  - [ ] Read energy values from scene data
+  - [ ] Apply speed curves with smooth transitions
+- [ ] Implement screenshot compositing (from Phase 4)
+  - [ ] Screen detection/tracking in video
+  - [ ] Perspective transform for angled phones
+  - [ ] Composite screenshot onto video
+  - [ ] Add screen glow/lighting to match scene
+- [ ] Implement screen animations
+  - [ ] Scroll animation (up/down)
+  - [ ] Tap animation (ripple effect)
+  - [ ] Swipe animation (left/right transition)
+  - [ ] Zoom animation (into highlight area)
+- [ ] Implement advanced scene transitions (replaces Phase 1 basic cross-dissolve)
+  - [ ] Energy-based transition selection
+  - [ ] Cross-dissolve for low energy delta
+  - [ ] Wipe/slide for high energy delta
+  - [ ] Cut on action (optional)
+- [ ] Implement text_overlay rendering
+  - [ ] Burn-in text from scene `text_overlay` field
+  - [ ] Style text to match comedy director aesthetic
+- [ ] Implement audio_cue processing
+  - [ ] Sync audio cues with scene transitions
+  - [ ] Add sound effects based on `audio_cue` field
+- [ ] Implement final assembly
+  - [ ] Concatenate processed videos
+  - [ ] Apply transitions
+  - [ ] Mix with soundtrack
+  - [ ] Upload to S3
+
+**Exit Criteria:**
+- Videos have cinematic color grading
+- Speed ramping responds to scene energy
+- Screenshots composite cleanly into videos
+- Screen animations work for all action types
+- Text overlays render correctly per scene
+- Audio cues sync with video
+- Final video assembles with audio
+
+---
+
+### Phase 6: Polish & Optimize
+
+**Goal:** Production-ready quality with comprehensive testing and documentation
+
+**Scope:**
+- End-to-end testing
+- Edge case handling
+- Performance optimization
+- Error recovery improvements
+- Documentation
+
+**Checklist:**
+- [ ] Test all edge cases from "Edge Cases & Failure Handling" table
+- [ ] Test Nano Banana failure → retry → fallback
+- [ ] Test upscaling failure → fallback to base image
+- [ ] Test Veo rejection → retry with adjusted prompt → fallback to text-to-video
+- [ ] Test FFmpeg crash → retry → skip post-processing
+- [ ] Test user regenerates during processing
+- [ ] Test user deletes campaign during generation
+- [ ] Test partial scene failures
+- [ ] Test S3 upload failures
+- [ ] Test brand with no product images
+- [ ] Test "Take Control" at various pipeline stages
+- [ ] Test "Back to Auto" resumes correctly from current state
+- [ ] Performance: Optimize parallel task execution
+- [ ] Performance: Monitor webhook latency
+- [ ] Performance: Profile FFmpeg processing time
+- [ ] Add error reporting for failed generations
+- [ ] Create user documentation for director modes
+- [ ] Create troubleshooting guide
+- [ ] Update API documentation
+
+**Exit Criteria:**
+- All edge cases handled gracefully
+- Error messages are user-friendly
+- Performance meets targets (< 5 min for "Surprise Me")
+- Documentation complete
+
+---
+
+### Phase Dependencies
+
+```
+Phase 1 (Core Pipeline)
+    ↓
+Phase 2 (Review & Control)  ←─── Can start after Phase 1 API is stable
+    ↓
+Phase 3 (Comedy)  ←─── Independent of Phase 2, but benefits from prompt editing
+    ↓
+Phase 4 (Screenshots Upload)  ←─── Independent of Phase 3
+    ↓
+Phase 5 (Cinematic Polish)  ←─── REQUIRES Phase 4 for screenshot compositing
+    ↓
+Phase 6 (Polish & Optimize)  ←─── Requires all phases complete
+```
+
+**Critical Path:** Phase 1 → Phase 5 → Phase 6
+
+**Parallel Opportunities:**
+- Phase 3 (Comedy) can be developed in parallel with Phase 2
+- Phase 4 (Screenshots Upload) can be developed in parallel with Phase 3
+- However, screenshot **compositing** in Phase 5 requires Phase 4 upload complete
+
+---
+
 ## Future Enhancements (Out of Scope)
 
 - [ ] Kling/Hailuo integration for even better image-to-video

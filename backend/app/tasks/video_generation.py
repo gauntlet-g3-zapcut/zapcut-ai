@@ -14,7 +14,8 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 # Constants
-SORA_DURATION_OPTIONS = [4, 8, 12]
+VIDEO_MODEL = "google/veo-3.1"  # Google's Veo 3.1 text-to-video model
+VEO_DURATION_OPTIONS = [4, 6, 8]  # Veo 3.1 supports 4, 6, or 8 seconds
 PREDICTION_TIMEOUT_MINUTES = 15  # For reconciliation
 RECONCILIATION_CHECK_INTERVAL = 300  # seconds (5 minutes)
 WEBHOOK_VERIFICATION_ENABLED = True
@@ -39,19 +40,19 @@ def db_session():
         db.close()
 
 
-def map_duration_to_sora_seconds(duration: float) -> int:
-    """Map scene duration to nearest Sora-compatible value (4, 8, or 12)."""
+def map_duration_to_veo_seconds(duration: float) -> int:
+    """Map scene duration to nearest Veo 3.1-compatible value (4, 6, or 8)."""
     duration_int = int(duration)
     if duration_int <= 4:
         return 4
-    elif duration_int <= 8:
-        return 8
+    elif duration_int <= 6:
+        return 6
     else:
-        return 12
+        return 8  # Veo 3.1 max is 8 seconds
 
 
-def build_sora_prompt(scene_title: str, scene_description: str, visual_notes: str) -> str:
-    """Build Sora prompt from scene components."""
+def build_video_prompt(scene_title: str, scene_description: str, visual_notes: str) -> str:
+    """Build video generation prompt from scene components."""
     return f"{scene_title}. {scene_description}. {visual_notes}".strip()
 
 
@@ -103,39 +104,40 @@ def retry_scene_prediction(campaign_id: str, scene_number: int) -> bool:
                 return False
             
             # Get stored prompts
-            stored_sora_prompts = campaign.sora_prompts or []
-            prompt_lookup = {p.get("scene_number"): p.get("prompt") for p in stored_sora_prompts}
-            sora_prompt = prompt_lookup.get(scene_number)
-            
-            if not sora_prompt:
+            stored_prompts = campaign.sora_prompts or []  # Field name kept for DB compatibility
+            prompt_lookup = {p.get("scene_number"): p.get("prompt") for p in stored_prompts}
+            video_prompt = prompt_lookup.get(scene_number)
+
+            if not video_prompt:
                 # Build prompt from scene data
                 scene_title = scene_data.get("title", f"Scene {scene_number}")
                 scene_description = scene_data.get("description", "")
                 visual_notes = scene_data.get("visual_notes", "")
-                sora_prompt = build_sora_prompt(scene_title, scene_description, visual_notes)
-            
+                video_prompt = build_video_prompt(scene_title, scene_description, visual_notes)
+
             duration = scene_data.get("duration", 6.0)
-            sora_seconds = map_duration_to_sora_seconds(duration)
-            
+            veo_seconds = map_duration_to_veo_seconds(duration)
+
             # Create new prediction
             client = replicate.Client(api_token=settings.REPLICATE_API_TOKEN)
             webhook_url = build_webhook_url(campaign_id, scene_number)
-            
+
             logger.info(
                 f"Scene {scene_number}: retrying prediction | campaign={campaign_id} | "
-                f"prompt={sora_prompt[:80]}... | duration={sora_seconds}s"
+                f"prompt={video_prompt[:80]}... | duration={veo_seconds}s"
             )
-            
+
             prediction = client.predictions.create(
-                version="openai/sora-2",
+                version=VIDEO_MODEL,
                 input={
-                    "prompt": sora_prompt,
-                    "seconds": sora_seconds,
-                    "aspect_ratio": "landscape",
+                    "prompt": video_prompt,
+                    "duration": veo_seconds,
+                    "aspect_ratio": "16:9",
+                    "resolution": "1080p",
                 },
                 webhook=webhook_url
             )
-            
+
             prediction_id = prediction.id
             logger.info(
                 f"Scene {scene_number}: retry prediction created | campaign={campaign_id} | "
@@ -253,7 +255,7 @@ def generate_single_scene_task(
     campaign_id: str,
     scene_data: Dict[str, Any],
     scene_index: int,
-    sora_prompt: Optional[str] = None
+    video_prompt: Optional[str] = None
 ) -> Dict[str, Any]:
     """Create Replicate prediction with webhook callback (fire-and-forget)."""
     scene_num = scene_data.get("scene_number", scene_index + 1)
@@ -261,45 +263,46 @@ def generate_single_scene_task(
     scene_description = scene_data.get("description", "")
     visual_notes = scene_data.get("visual_notes", "")
     duration = scene_data.get("duration", 6.0)
-    
+
     # Build or use provided prompt
-    if not sora_prompt:
-        sora_prompt = build_sora_prompt(scene_title, scene_description, visual_notes)
+    if not video_prompt:
+        video_prompt = build_video_prompt(scene_title, scene_description, visual_notes)
         logger.warning(f"Scene {scene_num}: using fallback prompt")
     else:
-        logger.info(f"Scene {scene_num}: using stored prompt ({len(sora_prompt)} chars)")
-    
-    sora_seconds = map_duration_to_sora_seconds(duration)
-    
+        logger.info(f"Scene {scene_num}: using stored prompt ({len(video_prompt)} chars)")
+
+    veo_seconds = map_duration_to_veo_seconds(duration)
+
     # Update status to generating
     update_scene_status_safe(campaign_id, scene_num, "generating")
-    
+
     try:
         client = replicate.Client(api_token=settings.REPLICATE_API_TOKEN)
-        
+
         # Build webhook URL
         webhook_url = build_webhook_url(campaign_id, scene_num)
-        
-        logger.info(f"Scene {scene_num}: creating prediction with webhook | prompt={sora_prompt[:80]}... | duration={sora_seconds}s | webhook={webhook_url}")
-        
+
+        logger.info(f"Scene {scene_num}: creating Veo 3.1 prediction | prompt={video_prompt[:80]}... | duration={veo_seconds}s | webhook={webhook_url}")
+
         # Create prediction with webhook callback
         prediction = client.predictions.create(
-            version="openai/sora-2",
+            version=VIDEO_MODEL,
             input={
-                "prompt": sora_prompt,
-                "seconds": sora_seconds,
-                "aspect_ratio": "landscape",
+                "prompt": video_prompt,
+                "duration": veo_seconds,
+                "aspect_ratio": "16:9",
+                "resolution": "1080p",
             },
             webhook=webhook_url
         )
-        
+
         # Store prediction_id and return immediately (webhook will handle completion)
         prediction_id = prediction.id
         logger.info(f"Scene {scene_num}: prediction created | prediction_id={prediction_id} | webhook={webhook_url}")
-        
+
         # Update scene with prediction_id
         update_scene_status_safe(campaign_id, scene_num, "generating", prediction_id=prediction_id)
-        
+
         # Return immediately - webhook will update status when complete
         return {
             "scene_number": scene_num,
@@ -307,14 +310,14 @@ def generate_single_scene_task(
             "status": "generating",
             "prediction_id": prediction_id,
             "duration": duration,
-            "prompt": sora_prompt
+            "prompt": video_prompt
         }
-        
+
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Scene {scene_num}: error creating prediction | error={error_msg}", exc_info=True)
         update_scene_status_safe(campaign_id, scene_num, "failed", error=error_msg)
-        
+
         # Use Celery's retry mechanism with jitter to avoid synchronized retries
         if self.request.retries < self.max_retries:
             # Base delay + random jitter (0-30s) to spread out retries
@@ -323,13 +326,13 @@ def generate_single_scene_task(
             retry_delay = base_delay + jitter
             logger.info(f"Scene {scene_num}: retrying ({self.request.retries + 1}/{self.max_retries}) in {retry_delay}s")
             raise self.retry(exc=e, countdown=retry_delay)
-        
+
         return {
             "scene_number": scene_num,
             "video_url": None,
             "status": "failed",
             "error": error_msg,
-            "prompt": sora_prompt
+            "prompt": video_prompt
         }
 
 
@@ -380,14 +383,13 @@ def start_video_generation_task(campaign_id: str) -> None:
             campaign.video_urls = scene_video_urls
             db.commit()
             
-            # Get stored prompts
-            stored_sora_prompts = campaign.sora_prompts or []
-            prompt_lookup = {p.get("scene_number"): p.get("prompt") for p in stored_sora_prompts}
-            
-            logger.info(f"Enqueuing {len(scenes)} tasks | campaign={campaign_id} | prompts={len(prompt_lookup)}")
+            # Get stored prompts (field name kept as sora_prompts for DB compatibility)
+            stored_prompts = campaign.sora_prompts or []
+            prompt_lookup = {p.get("scene_number"): p.get("prompt") for p in stored_prompts}
+
+            logger.info(f"Enqueuing {len(scenes)} Veo 3.1 tasks | campaign={campaign_id} | prompts={len(prompt_lookup)}")
 
             # Stagger scene tasks to avoid Replicate rate limits
-            # Replicate's Sora-2 rate limit resets in ~10s, so 15s spacing gives buffer
             SCENE_STAGGER_DELAY = 15  # seconds between each scene submission
 
             task_signatures = []
