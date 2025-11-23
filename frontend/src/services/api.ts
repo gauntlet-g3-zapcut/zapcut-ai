@@ -355,6 +355,10 @@ export const api = {
   approveCampaign: <T = unknown>(campaignId: string) => apiRequest<T>(`/api/campaigns/${campaignId}/approve`, {
     method: "POST",
   }),
+  regenerateScene: <T = unknown>(campaignId: string, sceneNumber: number, prompt: string) => apiRequest<T>(`/api/campaigns/${campaignId}/regenerate-scene`, {
+    method: "POST",
+    body: JSON.stringify({ scene_number: sceneNumber, prompt }),
+  }),
 
   // Campaign answers
   submitCampaignAnswers: <T = unknown>(brandId: string, answers: CampaignAnswers) => apiRequest<T>(`/api/brands/${brandId}/campaign-answers`, {
