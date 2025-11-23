@@ -139,8 +139,46 @@ The dashboard has been redesigned to provide a unified view of brands and their 
 - Maintains existing session-based caching (5-minute TTL)
 - Preserves all existing functionality while improving information architecture
 
+### Scene Video Edit & Regenerate Feature (November 2025)
+
+Added the ability to edit and regenerate individual scene videos with custom prompts:
+
+**Key Features:**
+- **Edit Button:** Each video in the "All Scene Videos" section now has an "Edit" button alongside the Download button
+- **Lightbox Modal:** Clicking Edit opens a modal showing:
+  - Scene title and number
+  - Current video preview
+  - Editable prompt text area (pre-filled with original sora_prompt)
+  - Regenerate Video button with loading state
+- **Real-time Updates:** After regeneration starts, the UI:
+  - Shows loading spinner on the scene card
+  - Polls for status updates every 3 seconds
+  - Updates the video automatically when generation completes
+- **Failed Scene Retry:** Failed scenes show a "Retry" button instead of "Edit"
+
+**Technical Implementation:**
+- **Frontend:**
+  - New component: `EditVideoModal.jsx` - Reusable modal for prompt editing
+  - Updated `VideoPlayer.jsx` with edit functionality and status polling
+  - Updated `api.ts` with `regenerateScene()` endpoint
+- **Backend:**
+  - New endpoint: `POST /api/campaigns/{campaign_id}/regenerate-scene`
+  - Accepts `scene_number` and `prompt` in request body
+  - Updates campaign's `sora_prompts` array with new prompt
+  - Triggers Celery task (or async fallback) for video regeneration
+  - Reuses existing `generate_single_scene_task` with custom prompt
+
+**User Experience:**
+1. User clicks "Edit" button next to any completed video
+2. Modal opens showing current prompt and video preview
+3. User modifies the prompt to change video generation
+4. User clicks "Regenerate Video"
+5. Modal closes, scene card shows "Generating..." with spinner
+6. Page automatically updates when new video is ready (polling)
+7. New video replaces old video in both grid and main player
+
 ---
 
-**Status:** Active development - Recent UI consolidation complete
+**Status:** Active development - Scene regeneration feature complete
 **Documentation:** Complete PRD, design decisions, technical architecture, and frontend specification available
 **Next Step:** Continue development of video generation pipeline and editor integration
