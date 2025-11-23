@@ -4,8 +4,9 @@ import { Button } from "../components/ui/button"
 import { GradientButton } from "@/components/ui/gradient-button"
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card"
 import { api } from "../services/api"
-import { Download, Share2, ArrowLeft, Play, Volume2, VolumeX } from "lucide-react"
+import { Download, Share2, ArrowLeft, Play, Volume2, VolumeX, Edit } from "lucide-react"
 import { prepareEditorProject } from "@/lib/editor-bridge"
+import { EditVideoModal } from "../components/EditVideoModal"
 
 export default function VideoPlayer() {
   const { campaignId } = useParams()
@@ -19,6 +20,8 @@ export default function VideoPlayer() {
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0)
   const [audioMuted, setAudioMuted] = useState(false)
   const [isSyncingEditor, setIsSyncingEditor] = useState(false)
+  const [editingScene, setEditingScene] = useState(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const videoRef = useRef(null)
   const audioRef = useRef(null)
   const scenesRef = useRef([])
@@ -232,6 +235,65 @@ export default function VideoPlayer() {
     if (audioRef.current) {
       audioRef.current.muted = !audioMuted
       setAudioMuted(!audioMuted)
+    }
+  }
+
+  const handleEditScene = (scene) => {
+    setEditingScene(scene)
+    setIsModalOpen(true)
+  }
+
+  const handleRegenerateVideo = async (sceneNumber, prompt) => {
+    try {
+      await api.regenerateScene(campaignId, sceneNumber, prompt)
+      
+      // Update the scene status to regenerating
+      if (statusData?.progress?.scenes) {
+        const updatedScenes = statusData.progress.scenes.map(s => 
+          s.scene_number === sceneNumber 
+            ? { ...s, status: "generating", sora_prompt: prompt }
+            : s
+        )
+        setStatusData({
+          ...statusData,
+          progress: {
+            ...statusData.progress,
+            scenes: updatedScenes
+          }
+        })
+      }
+
+      // Start polling for updated status
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusResponse = await api.getCampaignStatus(campaignId)
+          setStatusData(statusResponse)
+          
+          // Check if the scene has completed or failed
+          const scene = statusResponse?.progress?.scenes?.find(s => s.scene_number === sceneNumber)
+          if (scene && (scene.status === "completed" || scene.status === "failed")) {
+            clearInterval(pollInterval)
+            
+            // Update completed scenes ref if completed
+            if (scene.status === "completed" && scene.video_url) {
+              const completedScenes = statusResponse.progress.scenes.filter(
+                s => s.status === "completed" && s.video_url
+              )
+              scenesRef.current = completedScenes
+            }
+          }
+        } catch (error) {
+          console.error("Failed to poll campaign status:", error)
+          clearInterval(pollInterval)
+        }
+      }, 3000) // Poll every 3 seconds
+
+      // Stop polling after 5 minutes
+      setTimeout(() => clearInterval(pollInterval), 300000)
+      
+    } catch (error) {
+      console.error("Failed to regenerate video:", error)
+      throw error
     }
   }
 
@@ -459,7 +521,7 @@ export default function VideoPlayer() {
                   }`}
                   onClick={() => scene.video_url && setSelectedScene(scene)}
                 >
-                  {scene.video_url ? (
+                  {scene.video_url && scene.status !== "generating" ? (
                     <div className="relative aspect-video bg-black rounded mb-3 overflow-hidden">
                       <video
                         src={scene.video_url}
@@ -477,35 +539,85 @@ export default function VideoPlayer() {
                     </div>
                   ) : (
                     <div className="aspect-video bg-gradient-to-br from-purple-100 to-pink-100 rounded mb-3 flex items-center justify-center">
-                      <p className="text-xs text-muted-foreground font-medium">
-                        {scene.status === "generating" ? "Generating..." : 
-                         scene.status === "failed" ? "Failed" : "Pending"}
-                      </p>
+                      <div className="flex flex-col items-center gap-2">
+                        {scene.status === "generating" && (
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                        )}
+                        <p className="text-xs text-muted-foreground font-medium">
+                          {scene.status === "generating" ? "Generating..." : 
+                           scene.status === "retrying" ? "Retrying..." :
+                           scene.status === "failed" ? "Failed" : "Pending"}
+                        </p>
+                      </div>
                     </div>
                   )}
                   <p className="text-sm font-semibold mb-1">Scene {scene.scene_number}</p>
                   <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
                     {scene.title || `Scene ${scene.scene_number}`}
                   </p>
-                  {scene.video_url && (
+                  {scene.status === "generating" || scene.status === "retrying" ? (
+                    <div className="text-center py-2">
+                      <p className="text-xs text-purple-600 font-medium">
+                        {scene.status === "retrying" ? "Retrying generation..." : "Generating video..."}
+                      </p>
+                    </div>
+                  ) : scene.video_url ? (
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 border-purple-200 hover:bg-purple-50 hover:border-purple-300"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDownloadMP4(scene.video_url)
+                        }}
+                      >
+                        <Download className="mr-2 h-3 w-3" />
+                        Download
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 border-purple-200 hover:bg-purple-50 hover:border-purple-300"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleEditScene(scene)
+                        }}
+                      >
+                        <Edit className="mr-2 h-3 w-3" />
+                        Edit
+                      </Button>
+                    </div>
+                  ) : scene.status === "failed" ? (
                     <Button
                       size="sm"
                       variant="outline"
-                      className="mt-auto w-full border-purple-200 hover:bg-purple-50 hover:border-purple-300"
+                      className="w-full border-red-200 hover:bg-red-50 hover:border-red-300 text-red-600"
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleDownloadMP4(scene.video_url)
+                        handleEditScene(scene)
                       }}
                     >
-                      <Download className="mr-2 h-3 w-3" />
-                      Download
+                      <Edit className="mr-2 h-3 w-3" />
+                      Retry
                     </Button>
-                  )}
+                  ) : null}
                 </Card>
               ))}
             </div>
           </div>
         )}
+
+        {/* Edit Video Modal */}
+        <EditVideoModal
+          scene={editingScene}
+          isOpen={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false)
+            setEditingScene(null)
+          }}
+          onRegenerate={handleRegenerateVideo}
+        />
       </div>
     </div>
   )

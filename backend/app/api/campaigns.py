@@ -383,6 +383,107 @@ async def delete_campaign(
     }
 
 
+class RegenerateSceneRequest(BaseModel):
+    scene_number: int
+    prompt: str
+
+
+@router.post("/{campaign_id}/regenerate-scene")
+async def regenerate_scene(
+    campaign_id: str,
+    request: RegenerateSceneRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Regenerate a single scene with a new prompt."""
+    logger.info(f"Regenerating scene {request.scene_number} for campaign {campaign_id}")
+    
+    try:
+        campaign_uuid = uuid.UUID(campaign_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid campaign ID")
+    
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_uuid).first()
+    
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    # Verify ownership
+    if campaign.brand.user_id != current_user.id:
+        logger.warning(f"User {current_user.id} attempted to regenerate scene for campaign {campaign_id} they don't own")
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Find the scene in storyline
+    storyline = campaign.storyline or {}
+    scenes = storyline.get("scenes", [])
+    scene_data = None
+    for scene in scenes:
+        if scene.get("scene_number") == request.scene_number:
+            scene_data = scene
+            break
+    
+    if not scene_data:
+        raise HTTPException(status_code=404, detail=f"Scene {request.scene_number} not found")
+    
+    # Update the sora_prompt for this scene
+    sora_prompts = campaign.sora_prompts or []
+    prompt_updated = False
+    for prompt_entry in sora_prompts:
+        if prompt_entry.get("scene_number") == request.scene_number:
+            prompt_entry["prompt"] = request.prompt
+            prompt_updated = True
+            break
+    
+    if not prompt_updated:
+        sora_prompts.append({
+            "scene_number": request.scene_number,
+            "prompt": request.prompt
+        })
+    
+    campaign.sora_prompts = sora_prompts
+    db.commit()
+    
+    # Trigger regeneration using Celery or async
+    try:
+        if settings.REPLICATE_API_TOKEN:
+            if settings.REDIS_URL:
+                # Use Celery if Redis is configured
+                from app.tasks.video_generation import generate_single_scene_task
+                generate_single_scene_task.delay(
+                    campaign_id,
+                    scene_data,
+                    request.scene_number - 1,  # scene_index
+                    request.prompt
+                )
+                logger.info(f"Enqueued scene regeneration task for scene {request.scene_number}")
+                message = "Scene regeneration started"
+            else:
+                # Fallback to async task if Redis not configured
+                logger.warning("REDIS_URL not set, falling back to async task")
+                import replicate
+                asyncio.create_task(
+                    generate_single_scene(
+                        campaign_id,
+                        scene_data,
+                        request.scene_number - 1,
+                        replicate.Client(api_token=settings.REPLICATE_API_TOKEN)
+                    )
+                )
+                message = "Scene regeneration started"
+        else:
+            logger.warning("REPLICATE_API_TOKEN not set")
+            raise HTTPException(status_code=503, detail="Video generation service not configured")
+    except Exception as e:
+        logger.error(f"Failed to start scene regeneration: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to start scene regeneration")
+    
+    return {
+        "message": message,
+        "scene_number": request.scene_number,
+        "campaign_id": campaign_id
+    }
+
+
 async def generate_single_scene(
     campaign_id: str,
     scene: dict,
