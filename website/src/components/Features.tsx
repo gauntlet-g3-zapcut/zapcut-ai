@@ -174,7 +174,7 @@ export default function Features() {
           transition={{ duration: 0.8, delay: 0.4 }}
           className="text-center mb-16 w-full"
         >
-          <h3 className="text-3xl sm:text-4xl font-bold mb-4">
+          <h3 className="text-3xl sm:text-4xl font-bold mb-4 py-10">
             <span className="gradient-text">Plus Even More Features</span>
           </h3>
         </motion.div>

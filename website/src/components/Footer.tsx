@@ -6,7 +6,7 @@ export default function Footer() {
   const footerLinks = {
     Product: [
       { label: "Pricing", href: "#" },
-      { label: "Download", href: "#download" },
+      { label: "Launch App", href: "https://app.zapcut.video" },
       { label: "Features", href: "#features" }
     ],
     Company: [
@@ -74,11 +74,18 @@ export default function Footer() {
                 <Heart className="w-4 h-4 text-purple-500 fill-purple-500 animate-pulse" />
                 <span>at Gauntlet AI</span>
               </div>
-              <img
-                src="/assets/gauntlet-ai-logo.png"
-                alt="Gauntlet AI Logo"
-                className="h-6 w-auto"
-              />
+              <a
+                href="https://gauntletai.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-opacity hover:opacity-80 cursor-pointer"
+              >
+                <img
+                  src="/assets/gauntlet-ai-logo.png"
+                  alt="Gauntlet AI Logo"
+                  className="h-6 w-auto"
+                />
+              </a>
             </div>
           </div>
         </div>

@@ -58,11 +58,13 @@ export default function Hero() {
           className="flex flex-col sm:flex-row gap-6 justify-center items-center"
         >
           <a
-            href="#download"
+            href="https://app.zapcut.video"
+            target="_blank"
+            rel="noopener noreferrer"
             className="group relative px-14 py-6 bg-gradient-to-r from-cyan-500 to-purple-600 rounded-xl font-semibold text-white text-lg transition-all hover:scale-105 hover:shadow-[0_0_40px_rgba(6,182,212,0.6)] flex items-center gap-2"
           >
             <Zap className="w-5 h-5" />
-            Get Started
+            Launch App
             <span className="absolute inset-0 rounded-xl bg-gradient-to-r from-cyan-400 to-purple-500 opacity-0 group-hover:opacity-20 transition-opacity blur-xl" />
           </a>
 
