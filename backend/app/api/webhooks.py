@@ -9,7 +9,13 @@ from typing import Optional
 from app.database import get_session_local
 from app.models.campaign import Campaign
 from app.config import settings
-from app.tasks.video_generation import update_scene_status_safe, extract_video_url
+from app.tasks.video_generation import (
+    DEFAULT_GENERATION_MODE,
+    extract_last_frame,
+    extract_video_url,
+    trigger_next_scene_after_completion,
+    update_scene_status_safe,
+)
 from app.services.storage import upload_bytes
 
 logger = logging.getLogger(__name__)
@@ -155,6 +161,10 @@ async def replicate_webhook(
             # Get storyline and scenes for reference
             storyline = campaign.storyline or {}
             scenes = storyline.get("scenes", [])
+            preferences = {}
+            if getattr(campaign, "creative_bible", None) and campaign.creative_bible.campaign_preferences:
+                preferences = campaign.creative_bible.campaign_preferences or {}
+            generation_mode = str(preferences.get("generation_mode", DEFAULT_GENERATION_MODE)).lower()
             
             # Check if this webhook is for the correct scene (idempotency check)
             scene_video_urls = campaign.video_urls or []
@@ -202,6 +212,7 @@ async def replicate_webhook(
                     None
                 )
                 duration = scene_data.get("duration", 6.0) if scene_data else 6.0
+                seed_image_url = None
                 
                 logger.info(
                     f"Scene {scene_num} succeeded | campaign={campaign_id} | "
@@ -250,6 +261,39 @@ async def replicate_webhook(
                         f"s3_url={s3_video_url}"
                     )
                     
+                    if generation_mode == "sequential":
+                        frame_bytes = extract_last_frame(video_bytes)
+                        if frame_bytes:
+                            seed_key = f"generated/{campaign_id}/scene-{scene_num}/seed-{prediction_id}.png"
+                            try:
+                                seed_image_url = upload_bytes(
+                                    bucket_name=bucket_name,
+                                    file_key=seed_key,
+                                    data=frame_bytes,
+                                    content_type="image/png",
+                                    acl="public-read",
+                                )
+                                logger.info(
+                                    "Seed image uploaded | campaign=%s | scene=%s | key=%s",
+                                    campaign_id,
+                                    scene_num,
+                                    seed_key,
+                                )
+                            except Exception as seed_error:
+                                seed_image_url = None
+                                logger.error(
+                                    "Failed to upload seed image | campaign=%s | scene=%s | error=%s",
+                                    campaign_id,
+                                    scene_num,
+                                    seed_error,
+                                )
+                        else:
+                            logger.warning(
+                                "Sequential mode: unable to extract seed frame | campaign=%s | scene=%s",
+                                campaign_id,
+                                scene_num,
+                            )
+                    
                 except httpx.HTTPError as e:
                     error_msg = f"Failed to download video from Replicate: {str(e)}"
                     logger.error(
@@ -296,7 +340,8 @@ async def replicate_webhook(
                     "completed",
                     video_url=s3_video_url,  # Use S3 URL, not Replicate URL
                     duration=duration,
-                    prediction_id=prediction_id
+                    prediction_id=prediction_id,
+                    seed_image_url=seed_image_url,
                 )
                 
                 if update_success:
@@ -352,6 +397,13 @@ async def replicate_webhook(
                     )
                 
                 db.commit()
+                
+                if generation_mode == "sequential":
+                    trigger_next_scene_after_completion(
+                        campaign_id,
+                        scene_num,
+                        seed_image_url,
+                    )
                 
             elif status == "failed":
                 error_msg = error or "Unknown error"

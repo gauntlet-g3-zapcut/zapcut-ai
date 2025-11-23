@@ -37,8 +37,39 @@ def clear_agent_cache(creative_bible_id: str = None):
         logger.debug("Cleared all agent cache")
 
 
+class CampaignAnswerValues(BaseModel):
+    style: str
+    audience: str
+    emotion: str
+    pacing: str
+    colors: str
+    generation_mode: str
+    video_resolution: str
+    video_model: str
+    ideas: Optional[str] = None
+
+    @field_validator("style", "audience", "emotion", "pacing", "colors", "generation_mode", "video_resolution", "video_model", mode="before")
+    @classmethod
+    def validate_required_fields(cls, value: str) -> str:
+        if isinstance(value, str):
+            value = value.strip()
+        if not value:
+            raise ValueError("This field is required.")
+        return value
+
+    @field_validator("ideas", mode="before")
+    @classmethod
+    def normalize_ideas(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
+        return None
+
+
 class CampaignAnswers(BaseModel):
-    answers: dict
+    answers: CampaignAnswerValues
 
 
 class ChatMessageRequest(BaseModel):
@@ -62,7 +93,8 @@ async def submit_campaign_answers(
 ):
     """Submit campaign answers."""
     logger.info(f"[CAMPAIGN-ANSWERS] Received request for brand: {brand_id}, user: {current_user.id}")
-    logger.info(f"[CAMPAIGN-ANSWERS] Answers keys: {list(campaign_answers.answers.keys())}")
+    answers_dict = campaign_answers.answers.model_dump(exclude_none=True)
+    logger.info(f"[CAMPAIGN-ANSWERS] Answers keys: {list(answers_dict.keys())}")
     
     try:
         brand_uuid = uuid.UUID(brand_id)
@@ -80,10 +112,10 @@ async def submit_campaign_answers(
         raise HTTPException(status_code=404, detail="Brand not found")
     
     # Validate answers
-    required_keys = ["style", "audience", "emotion", "pacing", "colors"]
-    missing_keys = [key for key in required_keys if key not in campaign_answers.answers]
+    required_keys = ["style", "audience", "emotion", "pacing", "colors", "generation_mode", "video_resolution", "video_model"]
+    missing_keys = [key for key in required_keys if key not in answers_dict]
     if missing_keys:
-        logger.error(f"Missing required answer keys: {missing_keys}. Received keys: {list(campaign_answers.answers.keys())}")
+        logger.error(f"Missing required answer keys: {missing_keys}. Received keys: {list(answers_dict.keys())}")
         raise HTTPException(status_code=400, detail=f"All questions must be answered. Missing: {', '.join(missing_keys)}")
     
     try:
@@ -94,7 +126,7 @@ async def submit_campaign_answers(
             name=f"campaign_{uuid.uuid4().hex[:8]}",
             creative_bible={},
             reference_image_urls={},
-            campaign_preferences=campaign_answers.answers,
+            campaign_preferences=answers_dict,
             created_at=datetime.utcnow()
         )
         logger.info(f"[CAMPAIGN-ANSWERS] CreativeBible object created, adding to session")
@@ -126,7 +158,8 @@ async def update_campaign_answers(
 ):
     """Update campaign answers for existing creative bible and regenerate storyline."""
     logger.info(f"[UPDATE-CAMPAIGN] Received update for brand: {brand_id}, creative_bible: {creative_bible_id}")
-    logger.info(f"[UPDATE-CAMPAIGN] Answers keys: {list(campaign_answers.answers.keys())}")
+    answers_dict = campaign_answers.answers.model_dump(exclude_none=True)
+    logger.info(f"[UPDATE-CAMPAIGN] Answers keys: {list(answers_dict.keys())}")
 
     try:
         brand_uuid = uuid.UUID(brand_id)
@@ -154,8 +187,8 @@ async def update_campaign_answers(
         raise HTTPException(status_code=404, detail="Creative Bible not found")
 
     # Validate answers
-    required_keys = ["style", "audience", "emotion", "pacing", "colors"]
-    missing_keys = [key for key in required_keys if key not in campaign_answers.answers]
+    required_keys = ["style", "audience", "emotion", "pacing", "colors", "generation_mode", "video_resolution", "video_model"]
+    missing_keys = [key for key in required_keys if key not in answers_dict]
     if missing_keys:
         logger.error(f"Missing required answer keys: {missing_keys}")
         raise HTTPException(status_code=400, detail=f"All questions must be answered. Missing: {', '.join(missing_keys)}")
@@ -163,7 +196,7 @@ async def update_campaign_answers(
     try:
         # Check if preferences actually changed
         old_prefs = creative_bible.campaign_preferences or {}
-        new_prefs = campaign_answers.answers
+        new_prefs = answers_dict
 
         # Compare relevant keys to detect changes
         preference_keys = ["style", "audience", "emotion", "pacing", "colors", "ideas"]

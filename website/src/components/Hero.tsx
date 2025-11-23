@@ -46,7 +46,7 @@ export default function Hero() {
           style={{ marginTop: '20px', marginBottom: '20px' }}
           className="text-lg sm:text-xl md:text-2xl text-gray-300 mb-12 sm:mb-16 max-w-3xl mx-auto leading-relaxed"
         >
-          Create stunning 4K video ads with AI. Generate professional product videos with music in minutes, not hours.
+          Create stunning HD video ads with AI. Generate professional product videos with music in minutes, not hours.
         </motion.p>
 
         {/* CTA Buttons */}

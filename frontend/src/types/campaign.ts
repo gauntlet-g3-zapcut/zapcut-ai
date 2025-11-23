@@ -18,6 +18,9 @@ export interface CampaignAnswers {
   emotion?: string
   pacing?: string
   colors?: string
+  generation_mode?: string
+  video_resolution?: string
+  video_model?: string
   ideas?: string
 }
 
@@ -26,13 +29,17 @@ export interface SubmitCampaignAnswersResponse {
   message: string
 }
 
-export interface CampaignPreferences extends Record<string, string> {
+export interface CampaignPreferences {
   style: string
   audience: string
   emotion: string
   pacing: string
   colors: string
-  ideas: string
+  generation_mode: string
+  video_resolution: string
+  video_model: string
+  ideas?: string
+  [key: string]: string | undefined
 }
 
 export interface Campaign {

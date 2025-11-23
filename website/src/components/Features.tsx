@@ -67,8 +67,8 @@ export default function Features() {
     },
     {
       icon: <Film className="w-8 h-8" />,
-      title: "4K Quality",
-      description: "Generate 4K video ads with matching soundtracks, ready for any platform. Professional-grade video output that stands out."
+      title: "HD Quality",
+      description: "Generate HD video ads with matching soundtracks, ready for any platform. Professional-grade video output that stands out."
     },
     {
       icon: <Zap className="w-8 h-8" />,

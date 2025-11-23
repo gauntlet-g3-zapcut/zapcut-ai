@@ -486,7 +486,7 @@ Output: Stored for Creative Bible
 Screen 3: Video Editor (Display Generated Ad)
 
 Input: None (just wait for generation)
-Output: 4K video with music
+Output: HD video with music
 Actions:
 
 Download MP4
@@ -534,7 +534,7 @@ Path A: New Creative Bible (First ad for product)
    ├─ Stitch 5 scenes with 0.5s crossfade
    ├─ Mix audio underneath
    ├─ Add text overlay (product name + "Learn More")
-   └─ Encode to 4K/30fps
+   └─ Encode to HD/30fps
    ↓
 11. Store Ad in database
     ├─ Ad tied to project_id + creative_bible_id
@@ -711,7 +711,7 @@ FFmpeg compose:
    - Mix Suno audio underneath
    - Add text overlay: Product name (appears at 24s)
    - Add text overlay: "Learn More" (appears at 27s)
-   - Encode to H.264, 4K (3840x2160), 30fps
+   - Encode to H.264, HD (1920x1080), 30fps
 
 Upload to S3
 Done
@@ -789,7 +789,7 @@ LayerTechFrontendNext.js + ReactBackendFastAPI (Python)Task QueueCelery + RedisD
 ✅ Generation completes in < 5 minutes
 ✅ Video and audio feel cohesive (music matches energy of scenes)
 ✅ Product looks consistent across all 5 scenes
-✅ 4K quality output
+✅ HD quality output
 ✅ Error handling (retry logic, graceful failures)
 ✅ UI shows progress (current stage + ETA)
 
@@ -848,7 +848,7 @@ Suno generates music (~1.5 min)
 Composition:
 
 Stitch scenes + add music + add text overlay
-Encode to 4K
+Encode to HD
 
 Output:
 Beautiful 30-second ad with:

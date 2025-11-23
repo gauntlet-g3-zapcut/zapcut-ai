@@ -1,18 +1,36 @@
 """Campaigns API routes."""
+import asyncio
 import logging
 import uuid
-import asyncio
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from app.database import get_db
-from app.models.user import User
-from app.models.brand import Brand
-from app.models.creative_bible import CreativeBible
-from app.models.campaign import Campaign
+from sqlalchemy.orm import Session
+
 from app.api.auth import get_current_user
 from app.config import settings
-from datetime import datetime
+from app.database import get_db
+from app.models.brand import Brand
+from app.models.campaign import Campaign
+from app.models.creative_bible import CreativeBible
+from app.models.user import User
+from app.services.storage import upload_bytes
+from app.tasks.video_generation import (
+    DEFAULT_GENERATION_MODE,
+    DEFAULT_VIDEO_MODEL,
+    DEFAULT_VIDEO_RESOLUTION,
+    get_generation_settings,
+    is_sequential_mode,
+    map_duration_to_sora_seconds,
+    resolve_model_version,
+    resolve_resolution_settings,
+    update_scene_status_safe,
+    extract_video_url,
+    extract_last_frame,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -388,174 +406,184 @@ async def generate_single_scene(
     scene: dict,
     scene_index: int,
     client,
-    max_retries: int = 2
-):
+    generation_settings: Dict[str, str],
+    max_retries: int = 2,
+    seed_image_url: Optional[str] = None,
+) -> Dict[str, Any]:
     """Generate video for a single scene with retry logic."""
-    from app.database import get_session_local
-    
     scene_num = scene.get("scene_number", scene_index + 1)
     scene_title = scene.get("title", f"Scene {scene_num}")
     scene_description = scene.get("description", "")
     visual_notes = scene.get("visual_notes", "")
     duration = scene.get("duration", 6.0)
-    
-    # Create comprehensive prompt for Sora
+
     sora_prompt = f"{scene_title}. {scene_description}. {visual_notes}".strip()
-    
-    logger.info(f"Starting generation for scene {scene_num} in campaign {campaign_id}")
-    
-    # Sora 2 only accepts seconds: 4, 8, or 12
-    # Map scene duration to nearest allowed value
-    scene_duration = int(duration)
-    if scene_duration <= 4:
-        sora_seconds = 4
-    elif scene_duration <= 8:
-        sora_seconds = 8
-    else:
-        sora_seconds = 12
-    
-    # Update scene status to generating
-    update_scene_status(campaign_id, scene_num, "generating", None, None)
-    
-    # Retry logic
-    last_error = None
+    logger.info("Fallback generation started | campaign=%s | scene=%s", campaign_id, scene_num)
+
+    video_model = generation_settings.get("video_model", DEFAULT_VIDEO_MODEL)
+    video_resolution = generation_settings.get("video_resolution", DEFAULT_VIDEO_RESOLUTION)
+    generation_mode = generation_settings.get("generation_mode", DEFAULT_GENERATION_MODE)
+    model_version = resolve_model_version(video_model)
+    resolution_settings = resolve_resolution_settings(video_resolution)
+    sora_seconds = map_duration_to_sora_seconds(duration)
+
+    # Update status to generating
+    update_scene_status_safe(
+        campaign_id,
+        scene_num,
+        "generating",
+        target_resolution=video_resolution,
+        video_model=video_model,
+        seed_image_url=seed_image_url,
+    )
+
+    loop = asyncio.get_event_loop()
+    last_error: Optional[Exception] = None
+
     for attempt in range(max_retries + 1):
         try:
             if attempt > 0:
-                logger.info(f"Retrying scene {scene_num}, attempt {attempt + 1}/{max_retries + 1}")
-                await asyncio.sleep(2 ** attempt)  # Exponential backoff
-            
-            # Run the model in a thread pool to avoid blocking (Replicate client.run is synchronous)
-            # This allows multiple scenes to generate in parallel
-            loop = asyncio.get_event_loop()
+                logger.info(
+                    "Fallback retry | campaign=%s | scene=%s | attempt=%s/%s",
+                    campaign_id,
+                    scene_num,
+                    attempt + 1,
+                    max_retries + 1,
+                )
+                await asyncio.sleep(2 ** attempt)
+
+            input_payload: Dict[str, Any] = {
+                "prompt": sora_prompt,
+                "seconds": sora_seconds,
+                "aspect_ratio": "16:9",
+                "resolution": video_resolution,
+                "output_height": resolution_settings["height"],
+                "output_width": resolution_settings["width"],
+            }
+
+            if seed_image_url:
+                input_payload["init_image"] = seed_image_url
+                input_payload["seed_image"] = seed_image_url
+
             output = await loop.run_in_executor(
                 None,
                 lambda: client.run(
-                    "openai/sora-2",
-                    input={
-                        "prompt": sora_prompt,
-                        "seconds": sora_seconds,  # Must be 4, 8, or 12
-                        "aspect_ratio": "landscape",  # 16:9 landscape
-                    }
-                )
+                    model_version,
+                    input=input_payload,
+                ),
             )
-            
-            # Wait for completion and get video URL
-            # Replicate returns a generator or direct URL
-            video_url = None
-            if isinstance(output, str):
-                video_url = output
-            elif isinstance(output, list) and len(output) > 0:
-                video_url = output[0] if isinstance(output[0], str) else str(output[0])
-            elif hasattr(output, '__iter__'):
-                # Handle generator/iterator
-                for item in output:
-                    if isinstance(item, str):
-                        video_url = item
-                        break
-                if not video_url:
-                    video_url = str(list(output)[0]) if output else None
-            else:
-                video_url = str(output)
-            
+
+            video_url = extract_video_url(output)
             if not video_url:
                 raise ValueError(f"No video URL returned from Replicate for scene {scene_num}")
-            
-            # Update scene status to completed
-            update_scene_status(campaign_id, scene_num, "completed", video_url, duration)
-            
-            logger.info(f"Scene {scene_num} video generated successfully: {video_url}")
-            
+
+            # Download the generated video to upload into our storage bucket for consistency
+            with httpx.Client(timeout=60.0) as http_client:
+                video_response = http_client.get(video_url)
+                video_response.raise_for_status()
+                video_bytes = video_response.content
+
+            bucket_name = settings.SUPABASE_S3_VIDEO_BUCKET
+            storage_key = f"generated/{campaign_id}/scene-{scene_num}/fallback-{uuid.uuid4()}.mp4"
+            s3_video_url = upload_bytes(
+                bucket_name=bucket_name,
+                file_key=storage_key,
+                data=video_bytes,
+                content_type="video/mp4",
+                acl="public-read",
+            )
+
+            logger.info(
+                "Fallback generation uploaded video | campaign=%s | scene=%s | url=%s",
+                campaign_id,
+                scene_num,
+                s3_video_url,
+            )
+
+            new_seed_image_url = None
+            if is_sequential_mode(generation_mode):
+                frame_bytes = extract_last_frame(video_bytes)
+                if frame_bytes:
+                    seed_key = f"generated/{campaign_id}/scene-{scene_num}/fallback-seed-{uuid.uuid4()}.png"
+                    try:
+                        new_seed_image_url = upload_bytes(
+                            bucket_name=bucket_name,
+                            file_key=seed_key,
+                            data=frame_bytes,
+                            content_type="image/png",
+                            acl="public-read",
+                        )
+                        logger.info(
+                            "Fallback generation uploaded seed image | campaign=%s | scene=%s | key=%s",
+                            campaign_id,
+                            scene_num,
+                            seed_key,
+                        )
+                    except Exception as seed_error:
+                        logger.error(
+                            "Fallback seed upload failed | campaign=%s | scene=%s | error=%s",
+                            campaign_id,
+                            scene_num,
+                            seed_error,
+                        )
+
+            update_scene_status_safe(
+                campaign_id,
+                scene_num,
+                "completed",
+                video_url=s3_video_url,
+                duration=duration,
+                target_resolution=video_resolution,
+                video_model=video_model,
+                seed_image_url=new_seed_image_url,
+            )
+
             return {
                 "scene_number": scene_num,
-                "video_url": video_url,
+                "video_url": s3_video_url,
                 "status": "completed",
                 "duration": duration,
-                "prompt": sora_prompt
+                "prompt": sora_prompt,
+                "seed_image_url": new_seed_image_url,
             }
-            
+
         except Exception as scene_error:
             last_error = scene_error
-            logger.error(f"Failed to generate video for scene {scene_num} (attempt {attempt + 1}): {scene_error}", exc_info=True)
-            
+            logger.error(
+                "Fallback generation error | campaign=%s | scene=%s | attempt=%s | error=%s",
+                campaign_id,
+                scene_num,
+                attempt + 1,
+                scene_error,
+                exc_info=True,
+            )
+
             if attempt < max_retries:
-                # Update status to retrying
-                update_scene_status(campaign_id, scene_num, "retrying", None, None, str(scene_error))
+                update_scene_status_safe(
+                    campaign_id,
+                    scene_num,
+                    "retrying",
+                    error=str(scene_error),
+                    target_resolution=video_resolution,
+                    video_model=video_model,
+                )
             else:
-                # Final failure
-                update_scene_status(campaign_id, scene_num, "failed", None, None, str(scene_error))
-                logger.error(f"Scene {scene_num} failed after {max_retries + 1} attempts")
-    
-    # All retries exhausted
+                update_scene_status_safe(
+                    campaign_id,
+                    scene_num,
+                    "failed",
+                    error=str(scene_error),
+                    target_resolution=video_resolution,
+                    video_model=video_model,
+                )
+
     return {
         "scene_number": scene_num,
         "video_url": None,
         "status": "failed",
-        "error": str(last_error),
-        "prompt": sora_prompt
+        "error": str(last_error) if last_error else "Unknown error",
+        "prompt": sora_prompt,
     }
-
-
-def update_scene_status(
-    campaign_id: str,
-    scene_number: int,
-    status: str,
-    video_url: str = None,
-    duration: float = None,
-    error: str = None
-):
-    """Update the status of a specific scene in the campaign."""
-    from app.database import get_session_local
-    
-    db = get_session_local()()
-    try:
-        campaign_uuid = uuid.UUID(campaign_id)
-        campaign = db.query(Campaign).filter(Campaign.id == campaign_uuid).first()
-        
-        if not campaign:
-            logger.error(f"Campaign not found when updating scene {scene_number}: {campaign_id}")
-            return
-        
-        # Get current video_urls or initialize
-        scene_video_urls = campaign.video_urls or []
-        
-        # Find and update the scene entry
-        scene_found = False
-        for scene_entry in scene_video_urls:
-            if scene_entry.get("scene_number") == scene_number:
-                scene_entry["status"] = status
-                if video_url:
-                    scene_entry["video_url"] = video_url
-                if duration:
-                    scene_entry["duration"] = duration
-                if error:
-                    scene_entry["error"] = error
-                scene_found = True
-                break
-        
-        # If scene not found, add it
-        if not scene_found:
-            scene_video_urls.append({
-                "scene_number": scene_number,
-                "video_url": video_url,
-                "status": status,
-                "duration": duration,
-                "error": error
-            })
-        
-        campaign.video_urls = scene_video_urls
-        db.commit()
-        db.refresh(campaign)  # Ensure changes are visible
-        
-        # Only log important status changes (completed/failed), not every update
-        if status in ["completed", "failed"]:
-            logger.info(f"Scene {scene_number} {status} for campaign {campaign_id}")
-        
-    except Exception as e:
-        logger.error(f"Error updating scene {scene_number} status: {e}", exc_info=True)
-        db.rollback()
-    finally:
-        db.close()
 
 
 async def start_video_generation(campaign_id: str, db: Session = None):
@@ -606,56 +634,129 @@ async def start_video_generation(campaign_id: str, db: Session = None):
                 db.commit()
                 return
             
+            generation_settings = get_generation_settings(campaign)
+            generation_mode = generation_settings["generation_mode"]
+            video_resolution = generation_settings["video_resolution"]
+            video_model = generation_settings["video_model"]
+            
             # Initialize Replicate client
             client = replicate.Client(api_token=settings.REPLICATE_API_TOKEN)
-            logger.info(f"Initialized Replicate client for campaign {campaign_id}")
+            logger.info(
+                "Initialized Replicate client for fallback generation | campaign=%s | mode=%s | model=%s | resolution=%s",
+                campaign_id,
+                generation_mode,
+                video_model,
+                video_resolution,
+            )
             
-            # Initialize all scene entries with "pending" status
-            scene_video_urls = []
-            for i, scene in enumerate(scenes):
-                scene_num = scene.get("scene_number", i + 1)
-                scene_video_urls.append({
-                    "scene_number": scene_num,
+            # Initialize scene entries
+            scene_video_urls = [
+                {
+                    "scene_number": scene.get("scene_number", i + 1),
                     "video_url": None,
-                    "status": "pending"
-                })
-            
+                    "status": "pending",
+                    "retry_count": 0,
+                    "target_resolution": video_resolution,
+                    "video_model": video_model,
+                    "seed_image_url": None,
+                }
+                for i, scene in enumerate(scenes)
+            ]
             campaign.video_urls = scene_video_urls
             db.commit()
             logger.info(f"Initialized {len(scene_video_urls)} scene entries for campaign {campaign_id}")
             
-            # Generate all videos in parallel
-            logger.info(f"Starting parallel generation of {len(scenes)} videos")
-            tasks = [
-                generate_single_scene(campaign_id, scene, i, client)
-                for i, scene in enumerate(scenes)
-            ]
-            
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Process results and collect sora prompts
             sora_prompts = []
             final_scene_video_urls = []
             
-            for result in results:
-                if isinstance(result, Exception):
-                    logger.error(f"Scene generation task failed with exception: {result}", exc_info=True)
-                    continue
-                
-                if result:
+            if is_sequential_mode(generation_mode):
+                logger.info(
+                    "Fallback sequential generation of %s scenes | campaign=%s",
+                    len(scenes),
+                    campaign_id,
+                )
+                seed_for_next: Optional[str] = None
+                for i, scene in enumerate(scenes):
+                    try:
+                        result = await generate_single_scene(
+                            campaign_id,
+                            scene,
+                            i,
+                            client,
+                            generation_settings,
+                            seed_image_url=seed_for_next,
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "Sequential fallback error | campaign=%s | scene_index=%s | error=%s",
+                            campaign_id,
+                            i,
+                            exc,
+                            exc_info=True,
+                        )
+                        break
+                    
                     final_scene_video_urls.append({
-                        "scene_number": result["scene_number"],
+                        "scene_number": result.get("scene_number", i + 1),
                         "video_url": result.get("video_url"),
-                        "status": result["status"],
+                        "status": result.get("status"),
                         "duration": result.get("duration"),
-                        "error": result.get("error")
+                        "error": result.get("error"),
+                        "target_resolution": video_resolution,
+                        "video_model": video_model,
+                        "seed_image_url": result.get("seed_image_url"),
                     })
                     
                     if result.get("prompt"):
                         sora_prompts.append({
-                            "scene_number": result["scene_number"],
-                            "prompt": result["prompt"]
+                            "scene_number": result.get("scene_number", i + 1),
+                            "prompt": result["prompt"],
                         })
+                    
+                    if result.get("status") != "completed":
+                        logger.warning(
+                            "Sequential fallback stopping after non-completed scene | campaign=%s | scene=%s | status=%s",
+                            campaign_id,
+                            result.get("scene_number"),
+                            result.get("status"),
+                        )
+                        break
+                    
+                    seed_for_next = result.get("seed_image_url")
+            else:
+                logger.info(
+                    "Fallback parallel generation of %s scenes | campaign=%s",
+                    len(scenes),
+                    campaign_id,
+                )
+                tasks = [
+                    generate_single_scene(campaign_id, scene, i, client, generation_settings)
+                    for i, scene in enumerate(scenes)
+                ]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                for result in results:
+                    if isinstance(result, Exception):
+                        logger.error(f"Scene generation task failed with exception: {result}", exc_info=True)
+                        continue
+                    
+                    if result:
+                        final_scene_video_urls.append({
+                            "scene_number": result["scene_number"],
+                            "video_url": result.get("video_url"),
+                            "status": result["status"],
+                            "duration": result.get("duration"),
+                            "error": result.get("error"),
+                            "target_resolution": video_resolution,
+                            "video_model": video_model,
+                            "seed_image_url": result.get("seed_image_url"),
+                        })
+                        
+                        if result.get("prompt"):
+                            sora_prompts.append({
+                                "scene_number": result["scene_number"],
+                                "prompt": result["prompt"]
+                            })
             
             # Sort by scene number
             final_scene_video_urls.sort(key=lambda x: x.get("scene_number", 0))

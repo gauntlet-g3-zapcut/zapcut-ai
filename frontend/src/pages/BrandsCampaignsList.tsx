@@ -1,13 +1,22 @@
 import { useState, useEffect, useRef, SyntheticEvent } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
+import { useLoading } from "../context/LoadingContext"
 import { Button } from "../components/ui/button"
 import { GradientButton } from "@/components/ui/gradient-button"
 import HomeSidebar from "../components/layout/HomeSidebar"
 import { Card, CardContent } from "../components/ui/card"
-import { Plus, Trash2, ChevronDown, ChevronRight, Play, Clock, CheckCircle2, XCircle, Loader2, FileEdit } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu"
+import { Plus, Trash2, ChevronDown, ChevronRight, Play, Clock, CheckCircle2, XCircle, Loader2, FileEdit, MoreVertical } from "lucide-react"
 import { api } from "../services/api"
 import { DEBUG_AUTH } from "../services/supabase"
+import { prepareEditorProject } from "../lib/editor-bridge"
 
 interface Campaign {
   id: string
@@ -74,6 +83,7 @@ const clearBrandsCache = (): void => {
 
 export default function BrandsCampaignsList() {
   const { user, logout, loading: authLoading } = useAuth()
+  const { showLoading, hideLoading } = useLoading()
   const navigate = useNavigate()
   const location = useLocation()
   const [brands, setBrands] = useState<Brand[]>([])
@@ -81,6 +91,7 @@ export default function BrandsCampaignsList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [addingToEditor, setAddingToEditor] = useState<string | null>(null)
   const isFetchingRef = useRef(false)
 
   useEffect(() => {
@@ -305,6 +316,71 @@ export default function BrandsCampaignsList() {
     }
   }
 
+  const handleAddAllVideosToEditor = async (brand: Brand, e: React.MouseEvent) => {
+    e.stopPropagation()
+
+    const campaigns = brand.campaigns || []
+
+    // Show global loading indicator
+    showLoading("Loading videos into editor...")
+    setAddingToEditor(brand.id)
+
+    try {
+      // Gather all completed videos from all campaigns
+      const allVideos: Array<{ url: string; name: string; order: number; campaignId: string; sceneNumber?: number }> = []
+
+      for (const campaign of campaigns) {
+        if (campaign.status === "completed") {
+          try {
+            // Fetch campaign status to get the scenes with video URLs
+            const campaignStatus: any = await api.getCampaignStatus(campaign.id)
+            const scenes = campaignStatus?.progress?.scenes || []
+
+            scenes.forEach((scene: any, index: number) => {
+              if (scene.status === "completed" && scene.video_url) {
+                allVideos.push({
+                  url: scene.video_url,
+                  name: scene.title?.trim() || `${brand.title} - Scene ${scene.scene_number ?? index + 1}`,
+                  order: allVideos.length + 1,
+                  campaignId: campaign.id,
+                  sceneNumber: scene.scene_number
+                })
+              }
+            })
+          } catch (error) {
+            console.error(`Failed to fetch campaign ${campaign.id}:`, error)
+          }
+        }
+      }
+
+      if (allVideos.length === 0) {
+        hideLoading()
+        alert("No completed videos found for this brand.")
+        return
+      }
+
+      await prepareEditorProject({
+        projectName: `${brand.title} - All Videos`,
+        videos: allVideos.map((video, index) => ({
+          url: video.url,
+          name: video.name,
+          order: index + 1,
+          sceneNumber: video.sceneNumber
+        }))
+      })
+
+      navigate("/editor")
+    } catch (error) {
+      console.error("Failed to add videos to editor:", error)
+      hideLoading()
+      alert("Failed to add videos to editor. Please try again.")
+    } finally {
+      setAddingToEditor(null)
+      // Note: We don't hide loading here because navigation will unmount this component
+      // The loading indicator will be hidden when the editor page mounts
+    }
+  }
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "completed":
@@ -457,38 +533,61 @@ export default function BrandsCampaignsList() {
 
                       {/* Action Buttons */}
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            navigate(`/brands/${brand.id}/edit`)
-                          }}
-                          className="text-xs"
-                        >
-                          Edit Brand
-                        </Button>
                         <GradientButton
                           onClick={(e) => {
                             e.stopPropagation()
                             navigate(`/brands/${brand.id}/chat`)
                           }}
-                          className="text-xs px-3 py-1.5"
+                          className="text-sm px-4 py-2"
                         >
-                          <Plus className="mr-1 h-3 w-3" />
+                          <Plus className="mr-2 h-3 w-3" />
                           New Campaign
                         </GradientButton>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteBrand(brand.id, brand.title)
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => e.stopPropagation()}
+                              className="h-8 w-8 p-0"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                navigate(`/brands/${brand.id}/edit`)
+                              }}
+                            >
+                              <FileEdit className="mr-2 h-4 w-4" />
+                              Edit Brand
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => handleAddAllVideosToEditor(brand, e)}
+                              disabled={addingToEditor === brand.id}
+                            >
+                              {addingToEditor === brand.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Play className="mr-2 h-4 w-4" />
+                              )}
+                              Add All Videos to Editor
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteBrand(brand.id, brand.title)
+                              }}
+                              className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete Brand
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
 

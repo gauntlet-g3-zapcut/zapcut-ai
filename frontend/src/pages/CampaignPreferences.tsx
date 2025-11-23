@@ -4,8 +4,9 @@ import { Button } from "../components/ui/button"
 import { GradientButton } from "../components/ui/gradient-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Textarea } from "../components/ui/textarea"
+import { SelectField } from "../components/ui/select"
 import { api } from "../services/api"
-import type { Question, QuestionId, CampaignAnswers, SubmitCampaignAnswersResponse } from "../types/campaign"
+import type { Question, QuestionId, CampaignAnswers, CampaignPreferences, SubmitCampaignAnswersResponse } from "../types/campaign"
 import { Loader2 } from "lucide-react"
 import { ImageUploader, ImageGallery } from "../components/images"
 import type { ImageMetadata } from "../types/image"
@@ -38,6 +39,64 @@ const QUESTIONS: readonly Question[] = [
   }
 ] as const
 
+type AdditionalSettingKey = "generation_mode" | "video_resolution" | "video_model"
+
+interface AdditionalSetting {
+  id: AdditionalSettingKey
+  label: string
+  helperText?: string
+  options: { value: string; label: string }[]
+}
+
+const ADDITIONAL_SETTINGS: AdditionalSetting[] = [
+  {
+    id: "generation_mode",
+    label: "Parallel or Sequential?",
+    helperText: "Choose how you want the video ads to be generated.",
+    options: [
+      { value: "parallel", label: "Parallel Generations (many mini ads, generated quickly at the same time)" },
+      { value: "sequential", label: "Sequential Generation (one long ad, generated in pieces where each output seeds the next)" }
+    ]
+  },
+  {
+    id: "video_resolution",
+    label: "Video Resolution?",
+    helperText: "Pick the target resolution for the generated videos.",
+    options: [
+      { value: "720p", label: "720p" },
+      { value: "1080p", label: "1080p" }
+    ]
+  },
+  {
+    id: "video_model",
+    label: "Video Model?",
+    helperText: "Select which Replicate video model should be used.",
+    options: [
+      { value: "google-veo-3-1", label: "Google Veo 3.1" },
+      { value: "kling-2-1", label: "Kling 2.1" },
+      { value: "kling-v2.5-turbo-pro", label: "Kling v2.5 Turbo Pro" },
+      { value: "minimax-video-01", label: "Minimax Video-01" }
+    ]
+  }
+]
+
+const DEFAULT_GENERATION_SETTINGS: Record<AdditionalSettingKey, string> = {
+  generation_mode: "parallel",
+  video_resolution: "1080p",
+  video_model: "google-veo-3-1"
+}
+
+const REQUIRED_FIELDS = [
+  "style",
+  "audience",
+  "emotion",
+  "pacing",
+  "colors",
+  "generation_mode",
+  "video_resolution",
+  "video_model"
+] as const satisfies readonly (keyof CampaignAnswers)[]
+
 const MAX_IDEAS_LENGTH = 2000
 
 export default function CampaignPreferences() {
@@ -46,7 +105,9 @@ export default function CampaignPreferences() {
   const creativeBibleId = searchParams.get("creativeBibleId")
   const existingCampaignId = searchParams.get("campaignId")  // For edit mode - reuse existing campaign
   const navigate = useNavigate()
-  const [answers, setAnswers] = useState<CampaignAnswers>({})
+  const [answers, setAnswers] = useState<CampaignAnswers>(() => ({
+    ...DEFAULT_GENERATION_SETTINGS
+  }))
   const [ideas, setIdeas] = useState<string>("")
   const [selectedImages, setSelectedImages] = useState<File[]>([])
   const [existingImages, setExistingImages] = useState<ImageMetadata[]>([])
@@ -75,15 +136,20 @@ export default function CampaignPreferences() {
         const prefs = campaignResponse.campaign_preferences
         if (prefs) {
           console.log("[CampaignPreferences] Found preferences:", prefs)
-          const loadedAnswers: CampaignAnswers = {}
+          const loadedAnswers: CampaignAnswers = {
+            ...DEFAULT_GENERATION_SETTINGS
+          }
           if (prefs.style) loadedAnswers.style = prefs.style
           if (prefs.audience) loadedAnswers.audience = prefs.audience
           if (prefs.emotion) loadedAnswers.emotion = prefs.emotion
           if (prefs.pacing) loadedAnswers.pacing = prefs.pacing
           if (prefs.colors) loadedAnswers.colors = prefs.colors
+          if (prefs.generation_mode) loadedAnswers.generation_mode = prefs.generation_mode
+          if (prefs.video_resolution) loadedAnswers.video_resolution = prefs.video_resolution
+          if (prefs.video_model) loadedAnswers.video_model = prefs.video_model
 
           setAnswers(loadedAnswers)
-          setIdeas(prefs.ideas || "")
+          setIdeas(prefs.ideas ?? "")
         } else {
           console.warn("[CampaignPreferences] No campaign_preferences found")
         }
@@ -109,6 +175,13 @@ export default function CampaignPreferences() {
     }))
   }
 
+  const handleSettingChange = (field: AdditionalSettingKey) => (value: string): void => {
+    setAnswers(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
   const handleIdeasChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     const value = e.target.value
     // Enforce max length
@@ -118,10 +191,10 @@ export default function CampaignPreferences() {
   }
 
   const handleSubmit = async (): Promise<void> => {
-    // Check if all questions are answered
-    const allAnswered = QUESTIONS.every(q => answers[q.id])
+    // Check if all required questions and settings are answered
+    const allAnswered = REQUIRED_FIELDS.every(field => Boolean(answers[field]))
     if (!allAnswered) {
-      alert("Please answer all questions before continuing.")
+      alert("Please answer all questions and generation settings before continuing.")
       return
     }
 
@@ -214,8 +287,9 @@ export default function CampaignPreferences() {
     }
   }
 
-  const isFormValid = Object.keys(answers).length >= QUESTIONS.length
   const isEditMode = !!creativeBibleId
+  const isFormValid = REQUIRED_FIELDS.every(field => Boolean(answers[field]))
+  const ideasQuestionNumber = QUESTIONS.length + ADDITIONAL_SETTINGS.length + 1
 
   // Show loading spinner while fetching existing preferences
   if (initialLoading) {
@@ -274,10 +348,24 @@ export default function CampaignPreferences() {
               </div>
             ))}
 
+            <div className="grid gap-6 md:grid-cols-2">
+              {ADDITIONAL_SETTINGS.map((setting, index) => (
+                <SelectField
+                  key={setting.id}
+                  id={setting.id}
+                  label={`${QUESTIONS.length + index + 1}. ${setting.label}`}
+                  value={answers[setting.id] ?? DEFAULT_GENERATION_SETTINGS[setting.id]}
+                  onChange={handleSettingChange(setting.id)}
+                  options={setting.options}
+                  helperText={setting.helperText}
+                />
+              ))}
+            </div>
+
             {/* Additional Ideas Field */}
             <div className="space-y-3 pt-4">
               <h3 className="text-lg font-semibold text-foreground">
-                6. Any specific ideas or concepts you want to include? (Optional)
+                {ideasQuestionNumber}. Any specific ideas or concepts you want to include? (Optional)
               </h3>
               <div className="relative">
                 <Textarea

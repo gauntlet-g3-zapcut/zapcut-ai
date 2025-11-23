@@ -1,5 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom"
 import { AuthProvider, useAuth } from "./context/AuthContext"
+import { LoadingProvider } from "./context/LoadingContext"
+import GlobalLoadingIndicator from "./components/GlobalLoadingIndicator"
 import Login from "./pages/Login"
 import Dashboard from "./pages/Dashboard"
 import BrandsCampaignsList from "./pages/BrandsCampaignsList"
@@ -134,7 +136,10 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <AppRoutes />
+        <LoadingProvider>
+          <GlobalLoadingIndicator />
+          <AppRoutes />
+        </LoadingProvider>
       </AuthProvider>
     </Router>
   )

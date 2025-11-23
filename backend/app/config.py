@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     REPLICATE_API_TOKEN: Optional[str] = None
     REPLICATE_WEBHOOK_SECRET: Optional[str] = None
+    REPLICATE_VEO_3_1_VERSION: str = "google/veo-3.1"
+    REPLICATE_KLING_2_1_VERSION: str = "kling/kling-2.1"
+    REPLICATE_MINIMAX_VIDEO_01_VERSION: str = "minimax/video-01"
+    REPLICATE_DEFAULT_VIDEO_MODEL: str = "google-veo-3-1"
     ELEVENLABS_API_KEY: Optional[str] = None
     
     # API Configuration

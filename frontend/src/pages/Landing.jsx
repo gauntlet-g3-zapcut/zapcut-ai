@@ -23,7 +23,7 @@ export default function Landing() {
             Create a winning ad in <span className="italic">minutes</span>
           </h1>
           <p className="text-base text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Create stunning 4K video ads with AI. Generate professional product videos
+            Create stunning HD video ads with AI. Generate professional product videos
             with music in minutes, not hours.
           </p>
           <GradientButton
@@ -51,14 +51,14 @@ export default function Landing() {
 
           <Card>
             <CardHeader className="space-y-0 pb-0">
-              <CardTitle className="text-center mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>4K Quality</CardTitle>
+              <CardTitle className="text-center mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>HD Quality</CardTitle>
               <CardDescription className="mt-0 mb-0">
                 Professional-grade video output
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0 px-6 pb-6">
               <p className="text-sm text-muted-foreground mt-4">
-                Generate 4K video ads with matching soundtracks, ready for
+                Generate HD video ads with matching soundtracks, ready for
                 any platform.
               </p>
             </CardContent>

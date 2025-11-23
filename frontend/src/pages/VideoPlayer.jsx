@@ -389,7 +389,7 @@ export default function VideoPlayer() {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Quality</p>
-                  <p className="font-medium">4K (3840×2160)</p>
+                  <p className="font-medium">1080p (1920×1080)</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Soundtrack</p>

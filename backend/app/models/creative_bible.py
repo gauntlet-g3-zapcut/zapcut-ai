@@ -17,7 +17,7 @@ class CreativeBible(Base):
     creative_bible = Column(JSON, nullable=False, default=dict)
     original_creative_bible = Column(JSON, nullable=True)  # For revert functionality
     reference_image_urls = Column(JSON, nullable=False, default=dict)
-    campaign_preferences = Column(JSON, nullable=True)  # Form answers: style, audience, emotion, pacing, colors, ideas
+    campaign_preferences = Column(JSON, nullable=True)  # Form answers: style, audience, emotion, pacing, colors, generation_mode, video_resolution, video_model, ideas
     created_at = Column(DateTime(timezone=False), nullable=False)
     updated_at = Column(DateTime(timezone=False), nullable=True, onupdate=func.now())  # For optimistic locking
     

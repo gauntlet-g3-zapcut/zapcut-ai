@@ -234,7 +234,7 @@ const handleBack = () => {
 **Acceptance Criteria:**
 - [ ] Existing Zapcut export functionality works
 - [ ] Can export as MP4 (H.264)
-- [ ] Can select resolution (1080p, 4K)
+- [ ] Can select resolution (720p, 1080p)
 - [ ] Can select quality settings
 - [ ] Export progress shown
 - [ ] Export saves to user-selected location

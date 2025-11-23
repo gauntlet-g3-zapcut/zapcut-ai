@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { Loader2, AlertCircle } from "lucide-react"
 import HomeSidebar from "../components/layout/HomeSidebar"
 import { useAuth } from "../context/AuthContext"
+import { useLoading } from "../context/LoadingContext"
 
 const STATIC_EDITOR_ENTRY = "/editor-app/index.html"
 
@@ -10,6 +11,7 @@ const isAbsoluteUrl = (value) => value.startsWith("http://") || value.startsWith
 
 export default function Editor() {
   const { user, logout } = useAuth()
+  const { hideLoading } = useLoading()
   const navigate = useNavigate()
   const [isFrameLoaded, setIsFrameLoaded] = useState(false)
   const [availability, setAvailability] = useState("checking")
@@ -21,6 +23,11 @@ export default function Editor() {
     }
     return STATIC_EDITOR_ENTRY
   }, [])
+
+  // Hide the global loading indicator when editor page mounts
+  useEffect(() => {
+    hideLoading()
+  }, [hideLoading])
 
   useEffect(() => {
     setIsFrameLoaded(false)
