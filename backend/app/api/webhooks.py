@@ -3,14 +3,14 @@ import logging
 import hmac
 import hashlib
 import uuid
+import httpx
 from fastapi import APIRouter, Request, HTTPException, Query, Header
 from typing import Optional
 from app.database import get_session_local
 from app.models.campaign import Campaign
 from app.config import settings
-# Import celery_app before importing tasks to ensure it's available
-from app.celery_app import celery_app  # noqa: F401
 from app.tasks.video_generation import update_scene_status_safe, extract_video_url
+from app.services.storage import upload_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -177,10 +177,10 @@ async def replicate_webhook(
             
             # Handle different prediction statuses
             if status == "succeeded":
-                # Extract video URL from output
-                video_url = extract_video_url(output)
+                # Extract Replicate video URL from output
+                replicate_video_url = extract_video_url(output)
                 
-                if not video_url:
+                if not replicate_video_url:
                     error_msg = "No video URL in prediction output"
                     logger.error(f"{error_msg} | campaign={campaign_id} | scene={scene_num} | prediction_id={prediction_id}")
                     update_scene_status_safe(
@@ -203,31 +203,111 @@ async def replicate_webhook(
                 )
                 duration = scene_data.get("duration", 6.0) if scene_data else 6.0
                 
-                # Log video URL before saving
                 logger.info(
                     f"Scene {scene_num} succeeded | campaign={campaign_id} | "
-                    f"prediction_id={prediction_id} | video_url={video_url}"
+                    f"prediction_id={prediction_id} | replicate_url={replicate_video_url}"
                 )
                 
-                # Update scene status to completed
+                # Download video from Replicate and upload to S3
+                try:
+                    # Download video bytes from Replicate
+                    logger.info(
+                        f"Downloading video from Replicate | campaign={campaign_id} | "
+                        f"scene={scene_num} | url={replicate_video_url}"
+                    )
+                    
+                    # Use httpx with timeout and retries
+                    with httpx.Client(timeout=60.0) as client:
+                        response = client.get(replicate_video_url)
+                        response.raise_for_status()
+                        video_bytes = response.content
+                    
+                    logger.info(
+                        f"Video downloaded | campaign={campaign_id} | scene={scene_num} | "
+                        f"size={len(video_bytes)} bytes"
+                    )
+                    
+                    # Upload to Supabase S3
+                    # File key format: generated/{campaign_id}/scene-{scene_num}/prediction-{prediction_id}.mp4
+                    bucket_name = settings.SUPABASE_S3_VIDEO_BUCKET
+                    file_key = f"generated/{campaign_id}/scene-{scene_num}/prediction-{prediction_id}.mp4"
+                    
+                    logger.info(
+                        f"Uploading video to S3 | campaign={campaign_id} | scene={scene_num} | "
+                        f"bucket={bucket_name} | key={file_key}"
+                    )
+                    
+                    s3_video_url = upload_bytes(
+                        bucket_name=bucket_name,
+                        file_key=file_key,
+                        data=video_bytes,
+                        content_type='video/mp4',
+                        acl='public-read'
+                    )
+                    
+                    logger.info(
+                        f"Video uploaded to S3 | campaign={campaign_id} | scene={scene_num} | "
+                        f"s3_url={s3_video_url}"
+                    )
+                    
+                except httpx.HTTPError as e:
+                    error_msg = f"Failed to download video from Replicate: {str(e)}"
+                    logger.error(
+                        f"{error_msg} | campaign={campaign_id} | scene={scene_num} | "
+                        f"prediction_id={prediction_id}",
+                        exc_info=True
+                    )
+                    update_scene_status_safe(
+                        campaign_id,
+                        scene_num,
+                        "failed",
+                        error=error_msg,
+                        prediction_id=prediction_id
+                    )
+                    # Return 500 so Replicate retries
+                    raise HTTPException(
+                        status_code=500,
+                        detail=error_msg
+                    )
+                except Exception as upload_error:
+                    error_msg = f"Failed to upload video to S3: {str(upload_error)}"
+                    logger.error(
+                        f"{error_msg} | campaign={campaign_id} | scene={scene_num} | "
+                        f"prediction_id={prediction_id}",
+                        exc_info=True
+                    )
+                    update_scene_status_safe(
+                        campaign_id,
+                        scene_num,
+                        "failed",
+                        error=error_msg,
+                        prediction_id=prediction_id
+                    )
+                    # Return 500 so Replicate retries
+                    raise HTTPException(
+                        status_code=500,
+                        detail=error_msg
+                    )
+                
+                # Update scene status to completed with S3 URL
                 update_success = update_scene_status_safe(
                     campaign_id,
                     scene_num,
                     "completed",
-                    video_url=video_url,
+                    video_url=s3_video_url,  # Use S3 URL, not Replicate URL
                     duration=duration,
                     prediction_id=prediction_id
                 )
                 
                 if update_success:
                     logger.info(
-                        f"Scene {scene_num} video URL saved | campaign={campaign_id} | "
-                        f"video_url={video_url}"
+                        f"Scene {scene_num} S3 video URL saved | campaign={campaign_id} | "
+                        f"s3_url={s3_video_url}"
                     )
                 else:
                     logger.error(
-                        f"Failed to save video URL for scene {scene_num} | campaign={campaign_id} | "
-                        f"video_url={video_url}"
+                        f"Failed to save S3 video URL for scene {scene_num} | campaign={campaign_id} | "
+                        f"s3_url={s3_video_url}"
                     )
                 
                 # Check if all scenes are complete and update campaign status

@@ -114,8 +114,33 @@ Total addressable market: 500M+ English speakers across US, UK, Canada, and Aust
 
 Zapcut AI positions between DIY video tools (too manual, time-consuming) and expensive agency services (too costly, slow turnaround). We deliver agency-quality results at DIY tool pricing with unprecedented speed.
 
+## Recent UI Improvements
+
+### Combined Brands & Campaigns View (November 2025)
+
+The dashboard has been redesigned to provide a unified view of brands and their associated campaigns:
+
+**Key Changes:**
+- **Unified List View:** Replaced separate grid-based Brands and Campaigns pages with a single list-based interface
+- **Expandable Brand Items:** Each brand can be expanded to reveal all associated campaigns
+- **Visual Hierarchy:** 
+  - Brands display with preview images (80x80px from product_image_1)
+  - Campaigns display with preview images (60x60px from product_image_2 or brand image)
+  - Clear visual distinction between parent brands and child campaigns
+- **Improved Navigation:** Consolidated "Brands" and "Campaigns" into single "Brands & Campaigns" menu item
+- **Better UX:** All brand and campaign actions accessible from one screen
+  - Create new campaigns directly from brand row
+  - View campaign status and progress inline
+  - Quick access to edit brand, view videos, or delete items
+
+**Technical Implementation:**
+- New component: `BrandsCampaignsList.tsx`
+- Combines data from `/api/brands/` and `/api/campaigns/` endpoints
+- Maintains existing session-based caching (5-minute TTL)
+- Preserves all existing functionality while improving information architecture
+
 ---
 
-**Status:** Technical architecture validated, ready for implementation
+**Status:** Active development - Recent UI consolidation complete
 **Documentation:** Complete PRD, design decisions, technical architecture, and frontend specification available
-**Next Step:** Begin Phase 1 development (Foundation & Authentication)
+**Next Step:** Continue development of video generation pipeline and editor integration

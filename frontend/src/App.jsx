@@ -1,32 +1,56 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom"
 import { AuthProvider, useAuth } from "./context/AuthContext"
-import Landing from "./pages/Landing"
 import Login from "./pages/Login"
 import Dashboard from "./pages/Dashboard"
+import BrandsCampaignsList from "./pages/BrandsCampaignsList"
 import CreateBrand from "./pages/CreateBrand"
-import BrandChat from "./pages/BrandChat"
+import EditBrand from "./pages/EditBrand"
+import CampaignPreferences from "./pages/CampaignPreferences"
 import StorylineReview from "./pages/StorylineReview"
 import VideoProgress from "./pages/VideoProgress"
 import VideoPlayer from "./pages/VideoPlayer"
-import Editor from "./pages/Editor"
 import CampaignsList from "./pages/CampaignsList"
+import Editor from "./pages/Editor"
 
 function PrivateRoute({ children }) {
-  // Skip authentication check - always allow access
-  return children
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    )
+  }
+
+  return user ? children : <Navigate to="/login" />
 }
 
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/landing" replace />} />
-      <Route path="/landing" element={<Landing />} />
+      <Route
+        path="/"
+        element={
+          <PrivateRoute>
+            <BrandsCampaignsList />
+          </PrivateRoute>
+        }
+      />
       <Route path="/login" element={<Login />} />
       <Route
         path="/dashboard"
         element={
           <PrivateRoute>
-            <Dashboard />
+            <BrandsCampaignsList />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/brands"
+        element={
+          <PrivateRoute>
+            <BrandsCampaignsList />
           </PrivateRoute>
         }
       />
@@ -34,7 +58,15 @@ function AppRoutes() {
         path="/campaigns"
         element={
           <PrivateRoute>
-            <CampaignsList />
+            <BrandsCampaignsList />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/editor"
+        element={
+          <PrivateRoute>
+            <Editor />
           </PrivateRoute>
         }
       />
@@ -47,15 +79,31 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/brands/:brandId/edit"
+        element={
+          <PrivateRoute>
+            <EditBrand />
+          </PrivateRoute>
+        }
+      />
+      <Route
         path="/brands/:brandId/chat"
         element={
           <PrivateRoute>
-            <BrandChat />
+            <CampaignPreferences />
           </PrivateRoute>
         }
       />
       <Route
         path="/brands/:brandId/storyline/:creativeBibleId"
+        element={
+          <PrivateRoute>
+            <StorylineReview />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/campaigns/:campaignId/storyline"
         element={
           <PrivateRoute>
             <StorylineReview />
@@ -75,14 +123,6 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <VideoPlayer />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/editor"
-        element={
-          <PrivateRoute>
-            <Editor />
           </PrivateRoute>
         }
       />

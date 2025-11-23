@@ -1,420 +1,255 @@
-"""
-Supabase Storage service for file uploads
-Uses Supabase Storage S3-compatible API via boto3
-"""
-from app.config import settings
-import uuid
+"""Reusable Supabase S3 storage helper."""
+import io
+import logging
+import time
 from typing import Optional
-from fastapi import UploadFile
-from urllib.parse import quote
+import boto3
+from botocore.exceptions import ClientError
+from app.config import settings
 
-# Initialize S3 client for Supabase Storage (S3-compatible)
-# Lazy import boto3 to avoid conflict with local queue module
-s3_client = None
-supabase_client = None
+logger = logging.getLogger(__name__)
 
-try:
-    # Use S3-compatible API if endpoint is configured
-    if settings.SUPABASE_S3_ENDPOINT:
-        # Lazy import boto3 to avoid conflict with local queue module
-        # Handle the queue module conflict by loading stdlib queue directly
-        try:
-            import sys
-            import os
-            import importlib.util
-            
-            # Save reference to local queue module if it exists
-            local_queue_backup = None
-            if 'queue' in sys.modules:
-                local_queue_backup = sys.modules['queue']
-                # Remove local queue from sys.modules temporarily
-                del sys.modules['queue']
-            
-            # Find Python's standard library queue.py file
-            stdlib_queue_file = None
-            for path in sys.path:
-                if os.path.isdir(path) and 'site-packages' not in path:
-                    test_file = os.path.join(path, 'queue.py')
-                    if os.path.exists(test_file):
-                        stdlib_queue_file = test_file
-                        break
-            
-            # Load standard library queue module directly from file
-            # This bypasses Python's normal import mechanism
-            if stdlib_queue_file:
-                spec = importlib.util.spec_from_file_location('queue', stdlib_queue_file)
-                if spec and spec.loader:
-                    stdlib_queue = importlib.util.module_from_spec(spec)
-                    # Load the module - this puts it in sys.modules
-                    spec.loader.exec_module(stdlib_queue)
-                    # Verify it's the stdlib version
-                    if not hasattr(stdlib_queue, 'LifoQueue'):
-                        raise ImportError("Failed to load standard library queue module")
-                    # Ensure it's in sys.modules as 'queue'
-                    sys.modules['queue'] = stdlib_queue
-            
-            # Now import boto3 - it will use the stdlib queue already in sys.modules
-            import boto3
-            from botocore.exceptions import ClientError
-            
-            # Note: stdlib queue remains in sys.modules for boto3's use
-            # The local queue directory can coexist, but boto3 uses stdlib version
-            
-            # Extract project ref from endpoint or use access key if provided
-            # Endpoint format: https://{project_ref}.storage.supabase.co/storage/v1/s3
-            access_key = settings.SUPABASE_S3_ACCESS_KEY
-            secret_key = settings.SUPABASE_S3_SECRET_KEY
-            
-            # If access key/secret not explicitly set, try to derive from service role key
-            if not access_key and settings.SUPABASE_URL:
-                # Extract project ref from SUPABASE_URL
-                project_ref = settings.SUPABASE_URL.replace('https://', '').replace('http://', '').split('.')[0]
-                access_key = project_ref
-            
-            if not secret_key:
-                secret_key = settings.SUPABASE_SERVICE_ROLE_KEY
-            
-            if access_key and secret_key:
-                s3_client = boto3.client(
-                    's3',
-                    endpoint_url=settings.SUPABASE_S3_ENDPOINT,
-                    aws_access_key_id=access_key,
-                    aws_secret_access_key=secret_key,
-                    region_name='us-east-1'  # Supabase Storage doesn't require specific region
-                )
-                print("✅ Supabase Storage S3 client initialized")
-            else:
-                print("⚠️  Supabase Storage S3 not configured (missing credentials)")
-        except ImportError as e:
-            print(f"⚠️  boto3 not installed - S3 API unavailable: {e}")
-        except Exception as e:
-            print(f"⚠️  Failed to initialize S3 client: {e}")
+# Retry configuration
+MAX_RETRIES = 3
+RETRY_DELAYS = [1, 2, 4]  # Exponential backoff: 1s, 2s, 4s
+
+# Memoized S3 client instance
+_s3_client: Optional[boto3.client] = None
+
+
+def get_s3_client():
+    """Get or create memoized Supabase S3 client."""
+    global _s3_client
     
-    # Also initialize Python client as fallback (or if S3 endpoint not set)
-    if not s3_client:
-        try:
-            from supabase import create_client, Client
-            
-            if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY:
-                supabase_client = create_client(
-                    settings.SUPABASE_URL,
-                    settings.SUPABASE_SERVICE_ROLE_KEY
-                )
-                if not settings.SUPABASE_S3_ENDPOINT:
-                    print("✅ Supabase Storage client initialized (Python client)")
-        except ImportError:
-            pass  # Supabase package not installed, that's okay if using S3 API
-        except Exception as e:
-            print(f"⚠️  Failed to initialize Supabase Python client: {e}")
-            
-except Exception as e:
-    print(f"⚠️  Supabase Storage initialization failed: {e}")
+    if _s3_client is None:
+        if not all([
+            settings.SUPABASE_S3_ENDPOINT,
+            settings.SUPABASE_S3_ACCESS_KEY,
+            settings.SUPABASE_S3_SECRET_KEY
+        ]):
+            raise ValueError("Supabase S3 credentials not configured")
+        
+        _s3_client = boto3.client(
+            's3',
+            endpoint_url=settings.SUPABASE_S3_ENDPOINT,
+            aws_access_key_id=settings.SUPABASE_S3_ACCESS_KEY,
+            aws_secret_access_key=settings.SUPABASE_S3_SECRET_KEY,
+            region_name='us-east-1'
+        )
+    
+    return _s3_client
 
 
-async def upload_file_to_storage(
-    file: UploadFile,
-    bucket: str = "uploads",
-    path: Optional[str] = None,
-    content_type: Optional[str] = None
-) -> str:
-    """
-    Upload file to Supabase Storage and return public URL
+def build_public_url(bucket_name: str, file_key: str) -> str:
+    """Build public URL for a Supabase S3 object.
     
     Args:
-        file: FastAPI UploadFile object
-        bucket: Storage bucket name (default: "uploads")
-        path: Optional file path in bucket (if None, generates unique path)
-        content_type: Optional content type (defaults to file.content_type)
-    
+        bucket_name: S3 bucket name
+        file_key: S3 object key
+        
     Returns:
-        Public URL of uploaded file
-    
-    Raises:
-        Exception: If storage is not configured or upload fails
+        Public URL string
     """
-    if not s3_client and not supabase_client:
-        raise Exception(
-            "Storage not configured. Set SUPABASE_S3_ENDPOINT or SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY"
-        )
+    endpoint = settings.SUPABASE_S3_ENDPOINT.rstrip('/')
     
-    try:
-        # Generate unique path if not provided
-        if not path:
-            file_ext = file.filename.split('.')[-1] if '.' in file.filename else ''
-            path = f"{uuid.uuid4()}{'.' + file_ext if file_ext else ''}"
-        
-        # Read file content
-        file_content = await file.read()
-        
-        # Use provided content_type or file's content_type
-        content_type_to_use = content_type or file.content_type or 'application/octet-stream'
-        
-        # Use S3-compatible API if available
-        if s3_client:
-            try:
-                from botocore.exceptions import ClientError
-                s3_client.put_object(
-                    Bucket=bucket,
-                    Key=path,
-                    Body=file_content,
-                    ContentType=content_type_to_use
-                )
-                
-                # Generate public URL
-                # Format: https://{project_ref}.supabase.co/storage/v1/object/public/{bucket}/{path}
-                encoded_path = quote(path, safe='/')
-                public_url = (
-                    f"{settings.SUPABASE_URL}/storage/v1/object/public/{bucket}/{encoded_path}"
-                )
-                
-                return public_url
-            except Exception as e:
-                # Handle both ClientError and other exceptions
-                error_type = type(e).__name__
-                raise Exception(f"Failed to upload file to Supabase Storage ({error_type}): {str(e)}")
-        
-        # Fallback to Supabase Python client
-        if not supabase_client:
-            raise Exception("Storage client not initialized")
-        
-        upload_options = {'content-type': content_type_to_use}
-        
-        response = supabase_client.storage.from_(bucket).upload(
-            path=path,
-            file=file_content,
-            file_options=upload_options if upload_options else None
-        )
-        
-        # Check for errors in response
-        if isinstance(response, dict):
-            if 'error' in response and response['error']:
-                error_msg = response['error'] if isinstance(response['error'], str) else str(response['error'])
-                raise Exception(f"Supabase Storage upload error: {error_msg}")
-        elif hasattr(response, 'error') and response.error:
-            error_msg = response.error if isinstance(response.error, str) else str(response.error)
-            raise Exception(f"Supabase Storage upload error: {error_msg}")
-        
-        if isinstance(response, dict) and 'data' in response and response['data'] is None:
-            if 'error' in response:
-                error_msg = response['error'] if isinstance(response['error'], str) else str(response['error'])
-                raise Exception(f"Supabase Storage upload error: {error_msg}")
-        
-        # Generate public URL
-        encoded_path = quote(path, safe='/')
-        public_url = (
-            f"{settings.SUPABASE_URL}/storage/v1/object/public/{bucket}/{encoded_path}"
-        )
-        
-        return public_url
-        
-    except Exception as e:
-        raise Exception(f"Failed to upload file to storage: {str(e)}")
+    # If endpoint contains /storage/v1, extract the base URL
+    if '/storage/v1' in endpoint:
+        base_url = endpoint.split('/storage/v1')[0]
+    else:
+        # If endpoint is just the base URL, use it directly
+        base_url = endpoint
+    
+    # Construct public URL
+    # Format: https://{project_ref}.supabase.co/storage/v1/object/public/{bucket}/{key}
+    return f"{base_url}/storage/v1/object/public/{bucket_name}/{file_key}"
 
 
-def generate_signed_url(
-    bucket: str,
-    path: str,
-    expiration: int = 3600
-) -> str:
-    """
-    Generate a signed URL for private bucket access
-    
-    Args:
-        bucket: Storage bucket name
-        path: File path in bucket
-        expiration: URL expiration time in seconds (default: 3600)
-    
-    Returns:
-        Signed URL valid for expiration seconds
-    """
-    if not s3_client and not supabase_client:
-        raise Exception(
-            "Storage not configured. Set SUPABASE_S3_ENDPOINT or SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY"
-        )
-    
-    try:
-        # Use S3-compatible API if available
-        if s3_client:
-            try:
-                from botocore.exceptions import ClientError
-                signed_url = s3_client.generate_presigned_url(
-                    'get_object',
-                    Params={'Bucket': bucket, 'Key': path},
-                    ExpiresIn=expiration
-                )
-                return signed_url
-            except Exception as e:
-                error_type = type(e).__name__
-                raise Exception(f"Failed to generate signed URL ({error_type}): {str(e)}")
-        
-        # Fallback to Supabase Python client
-        if not supabase_client:
-            raise Exception("Storage client not initialized")
-        
-        response = supabase_client.storage.from_(bucket).create_signed_url(
-            path=path,
-            expires_in=expiration
-        )
-        
-        if hasattr(response, 'error') and response.error:
-            error_msg = response.error if isinstance(response.error, str) else str(response.error)
-            raise Exception(f"Failed to generate signed URL: {error_msg}")
-        
-        # Response format varies - could be dict with 'signedURL' or response object
-        if isinstance(response, dict):
-            if 'signedURL' in response:
-                return response['signedURL']
-            elif 'signed_url' in response:
-                return response['signed_url']
-        elif hasattr(response, 'signedURL'):
-            return response.signedURL
-        elif hasattr(response, 'signed_url'):
-            return response.signed_url
-        elif isinstance(response, str):
-            # Sometimes the response might be the URL directly
-            return response
-        else:
-            raise Exception(f"Unexpected response format from create_signed_url: {type(response)}")
-            
-    except Exception as e:
-        if "Unexpected response format" in str(e) or "Failed to generate signed URL" in str(e):
-            raise
-        raise Exception(f"Failed to generate signed URL: {str(e)}")
-
-
-async def upload_bytes_to_storage(
+def upload_bytes(
+    bucket_name: str,
+    file_key: str,
     data: bytes,
-    bucket: str,
-    path: str,
-    content_type: Optional[str] = None
+    content_type: str,
+    acl: str = 'public-read'
 ) -> str:
-    """
-    Upload bytes data to Supabase Storage and return public URL
+    """Upload bytes to Supabase S3 storage with retry logic.
     
     Args:
-        data: Bytes data to upload
-        bucket: Storage bucket name
-        path: File path in bucket
-        content_type: Optional content type (e.g., "video/mp4", "audio/mpeg")
-    
+        bucket_name: S3 bucket name
+        file_key: S3 object key (file path)
+        data: The file bytes to upload
+        content_type: MIME type (e.g., 'video/mp4', 'audio/mpeg')
+        acl: Access control level (default: 'public-read')
+        
     Returns:
-        Public URL of uploaded file
-    
+        Public URL of the uploaded file
+        
     Raises:
-        Exception: If storage is not configured or upload fails
+        ValueError: If S3 credentials not configured
+        Exception: If upload fails after all retries
     """
-    if not s3_client and not supabase_client:
-        raise Exception(
-            "Storage not configured. Set SUPABASE_S3_ENDPOINT or SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY"
-        )
+    if not all([
+        settings.SUPABASE_S3_ENDPOINT,
+        settings.SUPABASE_S3_ACCESS_KEY,
+        settings.SUPABASE_S3_SECRET_KEY
+    ]):
+        raise ValueError("Supabase S3 credentials not configured")
     
-    try:
-        content_type_to_use = content_type or 'application/octet-stream'
-        
-        # Use S3-compatible API if available
-        if s3_client:
-            try:
-                from botocore.exceptions import ClientError
-                s3_client.put_object(
-                    Bucket=bucket,
-                    Key=path,
-                    Body=data,
-                    ContentType=content_type_to_use
-                )
-                
-                # Generate public URL
-                encoded_path = quote(path, safe='/')
-                public_url = (
-                    f"{settings.SUPABASE_URL}/storage/v1/object/public/{bucket}/{encoded_path}"
-                )
-                
-                return public_url
-            except Exception as e:
-                error_type = type(e).__name__
-                raise Exception(f"Failed to upload bytes to Supabase Storage ({error_type}): {str(e)}")
-        
-        # Fallback to Supabase Python client
-        if not supabase_client:
-            raise Exception("Storage client not initialized")
-        
-        upload_options = {'content-type': content_type_to_use}
-        
-        response = supabase_client.storage.from_(bucket).upload(
-            path=path,
-            file=data,
-            file_options=upload_options if upload_options else None
-        )
-        
-        # Check for errors in response
-        if isinstance(response, dict):
-            if 'error' in response and response['error']:
-                error_msg = response['error'] if isinstance(response['error'], str) else str(response['error'])
-                raise Exception(f"Supabase Storage upload error: {error_msg}")
-        elif hasattr(response, 'error') and response.error:
-            error_msg = response.error if isinstance(response.error, str) else str(response.error)
-            raise Exception(f"Supabase Storage upload error: {error_msg}")
-        
-        if isinstance(response, dict) and 'data' in response and response['data'] is None:
-            if 'error' in response:
-                error_msg = response['error'] if isinstance(response['error'], str) else str(response['error'])
-                raise Exception(f"Supabase Storage upload error: {error_msg}")
-        
-        # Generate public URL
-        encoded_path = quote(path, safe='/')
-        public_url = (
-            f"{settings.SUPABASE_URL}/storage/v1/object/public/{bucket}/{encoded_path}"
-        )
-        
-        return public_url
-        
-    except Exception as e:
-        raise Exception(f"Failed to upload bytes to storage: {str(e)}")
+    # Retry loop
+    last_error = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            s3_client = get_s3_client()
+            
+            logger.info(
+                f"Uploading to S3 | bucket={bucket_name} | "
+                f"key={file_key} | size={len(data)} bytes | "
+                f"content_type={content_type} | attempt={attempt + 1}/{MAX_RETRIES}"
+            )
+            
+            # Upload bytes
+            data_file = io.BytesIO(data)
+            s3_client.upload_fileobj(
+                data_file,
+                Bucket=bucket_name,
+                Key=file_key,
+                ExtraArgs={
+                    'ContentType': content_type,
+                    'ACL': acl
+                }
+            )
+            
+            # Build public URL
+            public_url = build_public_url(bucket_name, file_key)
+            
+            logger.info(
+                f"Upload successful | bucket={bucket_name} | "
+                f"key={file_key} | url={public_url}"
+            )
+            
+            return public_url
+            
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_msg = e.response.get('Error', {}).get('Message', str(e))
+            last_error = e
+            
+            logger.error(
+                f"S3 upload error | bucket={bucket_name} | key={file_key} | "
+                f"attempt={attempt + 1}/{MAX_RETRIES} | code={error_code} | error={error_msg}"
+            )
+            
+            # Retry if not the last attempt
+            if attempt < MAX_RETRIES - 1:
+                delay = RETRY_DELAYS[attempt]
+                logger.info(f"Retrying upload in {delay}s...")
+                time.sleep(delay)
+            
+        except Exception as e:
+            last_error = e
+            logger.error(
+                f"Unexpected error uploading to S3 | bucket={bucket_name} | "
+                f"key={file_key} | attempt={attempt + 1}/{MAX_RETRIES} | "
+                f"error={str(e)}"
+            )
+            
+            # Retry if not the last attempt
+            if attempt < MAX_RETRIES - 1:
+                delay = RETRY_DELAYS[attempt]
+                logger.info(f"Retrying upload in {delay}s...")
+                time.sleep(delay)
+    
+    # All retries failed
+    error_msg = f"Failed to upload to S3 after {MAX_RETRIES} attempts: {str(last_error)}"
+    logger.error(f"Upload failed permanently | bucket={bucket_name} | key={file_key}")
+    raise Exception(error_msg)
 
 
-async def delete_file_from_storage(
-    bucket: str,
-    path: str
-) -> bool:
-    """
-    Delete a file from Supabase Storage
+def delete_object(bucket_name: str, file_key: str) -> bool:
+    """Delete object from Supabase S3 storage.
     
     Args:
-        bucket: Storage bucket name
-        path: File path in bucket
-    
+        bucket_name: S3 bucket name
+        file_key: S3 object key
+        
     Returns:
-        True if successful
-    
-    Raises:
-        Exception: If deletion fails
+        True if deletion succeeded, False otherwise
     """
-    if not s3_client and not supabase_client:
-        raise Exception(
-            "Storage not configured. Set SUPABASE_S3_ENDPOINT or SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY"
-        )
+    if not file_key:
+        logger.warning("No file key provided for deletion")
+        return False
+    
+    # Skip placeholder URLs
+    if 'placehold.co' in file_key:
+        logger.info(f"Skipping deletion of placeholder: {file_key}")
+        return True
     
     try:
-        # Use S3-compatible API if available
-        if s3_client:
-            try:
-                from botocore.exceptions import ClientError
-                s3_client.delete_object(Bucket=bucket, Key=path)
-                return True
-            except Exception as e:
-                error_type = type(e).__name__
-                raise Exception(f"Failed to delete file ({error_type}): {str(e)}")
+        s3_client = get_s3_client()
         
-        # Fallback to Supabase Python client
-        if not supabase_client:
-            raise Exception("Storage client not initialized")
+        logger.info(f"Deleting from S3 | bucket={bucket_name} | key={file_key}")
+        s3_client.delete_object(Bucket=bucket_name, Key=file_key)
         
-        response = supabase_client.storage.from_(bucket).remove([path])
-        
-        if hasattr(response, 'error') and response.error:
-            raise Exception(f"Failed to delete file: {response.error}")
-        
+        logger.info(f"Deletion successful | bucket={bucket_name} | key={file_key}")
         return True
         
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+        error_msg = e.response.get('Error', {}).get('Message', str(e))
+        logger.error(
+            f"S3 deletion error | bucket={bucket_name} | key={file_key} | "
+            f"code={error_code} | error={error_msg}"
+        )
+        return False
+        
     except Exception as e:
-        raise Exception(f"Failed to delete file from storage: {str(e)}")
+        logger.error(
+            f"Unexpected error deleting from S3 | bucket={bucket_name} | "
+            f"key={file_key} | error={str(e)}"
+        )
+        return False
+
+
+def delete_object_by_url(url: str) -> bool:
+    """Delete object from Supabase S3 storage by public URL.
+    
+    Args:
+        url: Full public URL of the object to delete
+        
+    Returns:
+        True if deletion succeeded, False otherwise
+    """
+    if not url:
+        logger.warning("No URL provided for deletion")
+        return False
+    
+    # Skip placeholder URLs
+    if 'placehold.co' in url:
+        logger.info(f"Skipping deletion of placeholder URL: {url}")
+        return True
+    
+    try:
+        # Extract bucket and key from URL
+        # URL format: https://{project}.supabase.co/storage/v1/object/public/{bucket}/{key}
+        if '/storage/v1/object/public/' not in url:
+            logger.warning(f"Invalid Supabase S3 URL format: {url}")
+            return False
+        
+        parts = url.split('/storage/v1/object/public/')
+        if len(parts) != 2:
+            logger.warning(f"Could not parse S3 URL: {url}")
+            return False
+        
+        path_parts = parts[1].split('/', 1)
+        if len(path_parts) != 2:
+            logger.warning(f"Could not extract bucket and key from URL: {url}")
+            return False
+        
+        bucket_name = path_parts[0]
+        file_key = path_parts[1]
+        
+        return delete_object(bucket_name, file_key)
+        
+    except Exception as e:
+        logger.error(f"Error parsing URL for deletion | url={url} | error={str(e)}")
+        return False
 

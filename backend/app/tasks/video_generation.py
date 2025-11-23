@@ -1,5 +1,6 @@
 """Celery tasks for video generation."""
 import logging
+import random
 import uuid
 from contextlib import contextmanager
 from typing import Optional, Dict, Any
@@ -314,10 +315,14 @@ def generate_single_scene_task(
         logger.error(f"Scene {scene_num}: error creating prediction | error={error_msg}", exc_info=True)
         update_scene_status_safe(campaign_id, scene_num, "failed", error=error_msg)
         
-        # Use Celery's retry mechanism
+        # Use Celery's retry mechanism with jitter to avoid synchronized retries
         if self.request.retries < self.max_retries:
-            logger.info(f"Scene {scene_num}: retrying ({self.request.retries + 1}/{self.max_retries})")
-            raise self.retry(exc=e, countdown=60 * (self.request.retries + 1))
+            # Base delay + random jitter (0-30s) to spread out retries
+            base_delay = 60 * (self.request.retries + 1)
+            jitter = random.randint(0, 30)
+            retry_delay = base_delay + jitter
+            logger.info(f"Scene {scene_num}: retrying ({self.request.retries + 1}/{self.max_retries}) in {retry_delay}s")
+            raise self.retry(exc=e, countdown=retry_delay)
         
         return {
             "scene_number": scene_num,
@@ -380,17 +385,24 @@ def start_video_generation_task(campaign_id: str) -> None:
             prompt_lookup = {p.get("scene_number"): p.get("prompt") for p in stored_sora_prompts}
             
             logger.info(f"Enqueuing {len(scenes)} tasks | campaign={campaign_id} | prompts={len(prompt_lookup)}")
-            
-            # Enqueue all scene tasks in parallel
-            job = group(
-                generate_single_scene_task.s(
+
+            # Stagger scene tasks to avoid Replicate rate limits
+            # Replicate's Sora-2 rate limit resets in ~10s, so 15s spacing gives buffer
+            SCENE_STAGGER_DELAY = 15  # seconds between each scene submission
+
+            task_signatures = []
+            for i, scene in enumerate(scenes):
+                sig = generate_single_scene_task.s(
                     campaign_id,
                     scene,
                     i,
                     prompt_lookup.get(scene.get("scene_number", i + 1))
                 )
-                for i, scene in enumerate(scenes)
-            )
+                # Apply countdown to stagger: scene 0 = 0s, scene 1 = 15s, scene 2 = 30s, etc.
+                sig = sig.set(countdown=i * SCENE_STAGGER_DELAY)
+                task_signatures.append(sig)
+
+            job = group(task_signatures)
             result = job.apply_async()
             
             # Store task group ID for reference (fire-and-forget - don't wait for results)

@@ -4,9 +4,7 @@ import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-# Import celery_app early to ensure it's available when tasks are imported
-from app.celery_app import celery_app  # noqa: F401
-from app.api import auth, brands, chat, campaigns, webhooks
+from app.api import auth, brands, chat, campaigns, webhooks, brand_images, campaign_images
 
 # Configure logging
 logging.basicConfig(
@@ -18,17 +16,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Create FastAPI app
-app = FastAPI(title="AdCraft API", version="1.0.0")
-
-logger.info("FastAPI app created successfully")
+app = FastAPI(title="AdCut API", version="1.0.0")
 
 # CORS configuration
 PRODUCTION_FRONTEND = "https://app.zapcut.video"
 default_origins = [
     PRODUCTION_FRONTEND,
-    "https://frontend-adcraft-production.up.railway.app",  # Production frontend (backup)
-    "https://*.zapcut-app.pages.dev",  # Cloudflare Pages deployment
-    "https://zapcut-app.pages.dev", 
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:5175",
@@ -42,15 +35,16 @@ if PRODUCTION_FRONTEND not in cors_origins:
     cors_origins.append(PRODUCTION_FRONTEND)
     logger.warning(f"Production frontend was missing from CORS origins, added: {PRODUCTION_FRONTEND}")
 
-logger.info(f"CORS allowed origins: {cors_origins}")
+# Regex pattern to allow all subdomains of zapcut-app.pages.dev
+PAGES_DEV_SUBDOMAIN_REGEX = r"https://.*\.zapcut-app\.pages\.dev"
 
-# Allow Cloudflare Pages deployments (any subdomain of zapcut-app.pages.dev)
-cloudflare_pages_regex = r"https://.*\.zapcut-app\.pages\.dev"
+logger.info(f"CORS allowed origins: {cors_origins}")
+logger.info(f"CORS allowed origin regex: {PAGES_DEV_SUBDOMAIN_REGEX}")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_origin_regex=cloudflare_pages_regex,
+    allow_origin_regex=PAGES_DEV_SUBDOMAIN_REGEX,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
@@ -58,48 +52,28 @@ app.add_middleware(
     max_age=3600,
 )
 
-# Include routers with error handling
-try:
-    app.include_router(auth.router)
-    app.include_router(brands.router)
-    app.include_router(chat.router)
-    app.include_router(campaigns.router)
-    app.include_router(webhooks.router)
-    logger.info("All routers included successfully")
-except Exception as e:
-    logger.error(f"Error including routers: {e}", exc_info=True)
-    # Don't fail startup - routers will fail at request time if there's an issue
-    pass
+# Include routers
+app.include_router(auth.router)
+app.include_router(brands.router)
+app.include_router(brand_images.router)
+app.include_router(chat.router)
+app.include_router(campaigns.router)
+app.include_router(campaign_images.router)
+app.include_router(webhooks.router)
 
 logger.info("FastAPI app initialized successfully")
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Startup event handler - test database connection."""
-    try:
-        from app.database import get_engine
-        from sqlalchemy import text
-        # Test database connection
-        engine = get_engine()
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        logger.info("Database connection verified on startup")
-    except Exception as e:
-        logger.warning(f"Database connection test failed on startup (non-fatal): {e}")
-        # Don't fail startup - database will be tested when actually used
 
 
 @app.get("/")
 async def root():
     """Root endpoint."""
-    return {"message": "AdCraft API", "status": "running"}
+    return {"message": "AdCut API", "status": "running"}
 
 
 @app.get("/health")
 async def health():
     """Health check endpoint for Fly.io load balancer.
-
+    
     This endpoint MUST respond quickly (< 3s) and return 200 OK
     for Fly.io to route traffic to this machine.
     """
@@ -123,12 +97,12 @@ async def init_database():
     try:
         from app.database import get_engine, Base
         from app.models import User, Brand, CreativeBible, Campaign
-
+        
         engine = get_engine()
         Base.metadata.create_all(bind=engine)
-
+        
         logger.info("Database tables created successfully")
-
+        
         return {
             "status": "success",
             "message": "Database tables created",
@@ -190,6 +164,264 @@ async def migrate_audio_columns():
             "status": "success",
             "message": "Audio columns added to campaigns table",
             "columns_added": ["audio_url", "audio_status", "audio_generation_error"]
+        }
+    except Exception as e:
+        logger.error(f"Migration error: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/migrate-original-creative-bible")
+async def migrate_original_creative_bible():
+    """Add original_creative_bible column to creative_bibles table (migration)."""
+    try:
+        from app.database import get_engine
+        from sqlalchemy import text
+
+        engine = get_engine()
+
+        with engine.begin() as conn:
+            migration_sql = """
+            DO $$
+            BEGIN
+                -- Add original_creative_bible column if it doesn't exist
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'original_creative_bible'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN original_creative_bible JSONB;
+                    RAISE NOTICE 'Added original_creative_bible column';
+                ELSE
+                    RAISE NOTICE 'original_creative_bible column already exists';
+                END IF;
+            END $$;
+            """
+
+            conn.execute(text(migration_sql))
+
+        logger.info("Original creative bible column migration completed successfully")
+
+        return {
+            "status": "success",
+            "message": "original_creative_bible column added to creative_bibles table",
+            "columns_added": ["original_creative_bible"]
+        }
+    except Exception as e:
+        logger.error(f"Migration error: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/migrate-chat-columns")
+async def migrate_chat_columns():
+    """Add chat-related columns to creative_bibles table and create chat_messages table (migration)."""
+    try:
+        from app.database import get_engine
+        from sqlalchemy import text
+
+        engine = get_engine()
+
+        with engine.begin() as conn:
+            migration_sql = """
+            DO $$
+            BEGIN
+                -- Add preference description columns to creative_bibles if they don't exist
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'audience_description'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN audience_description VARCHAR;
+                    RAISE NOTICE 'Added audience_description column';
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'audience_keywords'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN audience_keywords JSONB;
+                    RAISE NOTICE 'Added audience_keywords column';
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'style_description'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN style_description VARCHAR;
+                    RAISE NOTICE 'Added style_description column';
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'style_keywords'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN style_keywords JSONB;
+                    RAISE NOTICE 'Added style_keywords column';
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'emotion_description'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN emotion_description VARCHAR;
+                    RAISE NOTICE 'Added emotion_description column';
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'emotion_keywords'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN emotion_keywords JSONB;
+                    RAISE NOTICE 'Added emotion_keywords column';
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'pacing_description'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN pacing_description VARCHAR;
+                    RAISE NOTICE 'Added pacing_description column';
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'pacing_keywords'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN pacing_keywords JSONB;
+                    RAISE NOTICE 'Added pacing_keywords column';
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'colors_description'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN colors_description VARCHAR;
+                    RAISE NOTICE 'Added colors_description column';
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'colors_keywords'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN colors_keywords JSONB;
+                    RAISE NOTICE 'Added colors_keywords column';
+                END IF;
+            END $$;
+            """
+
+            conn.execute(text(migration_sql))
+
+            # Create chat_messages table if it doesn't exist
+            create_chat_messages_table = """
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                creative_bible_id UUID NOT NULL REFERENCES creative_bibles(id) ON DELETE CASCADE,
+                role VARCHAR(20) NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_creative_bible_id
+            ON chat_messages(creative_bible_id);
+
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at
+            ON chat_messages(created_at);
+            """
+
+            conn.execute(text(create_chat_messages_table))
+
+        logger.info("Chat columns migration completed successfully")
+
+        return {
+            "status": "success",
+            "message": "Chat columns added to creative_bibles table and chat_messages table created",
+            "columns_added": [
+                "audience_description", "audience_keywords",
+                "style_description", "style_keywords",
+                "emotion_description", "emotion_keywords",
+                "pacing_description", "pacing_keywords",
+                "colors_description", "colors_keywords"
+            ],
+            "tables_created": ["chat_messages"]
+        }
+    except Exception as e:
+        logger.error(f"Migration error: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/migrate-rename-conversation-history")
+async def migrate_rename_conversation_history():
+    """Rename conversation_history column to campaign_preferences (migration)."""
+    try:
+        from app.database import get_engine
+        from sqlalchemy import text
+
+        engine = get_engine()
+
+        with engine.begin() as conn:
+            migration_sql = """
+            DO $$
+            BEGIN
+                -- Rename conversation_history to campaign_preferences if it exists
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'conversation_history'
+                ) THEN
+                    ALTER TABLE creative_bibles RENAME COLUMN conversation_history TO campaign_preferences;
+                    RAISE NOTICE 'Renamed conversation_history to campaign_preferences';
+                ELSE
+                    RAISE NOTICE 'conversation_history column does not exist or already renamed';
+                END IF;
+            END $$;
+            """
+
+            conn.execute(text(migration_sql))
+
+        logger.info("Conversation history rename migration completed successfully")
+
+        return {
+            "status": "success",
+            "message": "conversation_history column renamed to campaign_preferences",
+            "renamed_columns": ["conversation_history -> campaign_preferences"]
+        }
+    except Exception as e:
+        logger.error(f"Migration error: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/migrate-add-updated-at")
+async def migrate_add_updated_at():
+    """Add updated_at column to creative_bibles table for optimistic locking (migration)."""
+    try:
+        from app.database import get_engine
+        from sqlalchemy import text
+
+        engine = get_engine()
+
+        with engine.begin() as conn:
+            migration_sql = """
+            DO $$
+            BEGIN
+                -- Add updated_at column if it doesn't exist
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'creative_bibles' AND column_name = 'updated_at'
+                ) THEN
+                    ALTER TABLE creative_bibles ADD COLUMN updated_at TIMESTAMP;
+                    -- Set initial values to created_at for existing records
+                    UPDATE creative_bibles SET updated_at = created_at WHERE updated_at IS NULL;
+                    RAISE NOTICE 'Added updated_at column';
+                ELSE
+                    RAISE NOTICE 'updated_at column already exists';
+                END IF;
+            END $$;
+            """
+
+            conn.execute(text(migration_sql))
+
+        logger.info("Updated_at column migration completed successfully")
+
+        return {
+            "status": "success",
+            "message": "updated_at column added to creative_bibles table",
+            "columns_added": ["updated_at"]
         }
     except Exception as e:
         logger.error(f"Migration error: {e}", exc_info=True)

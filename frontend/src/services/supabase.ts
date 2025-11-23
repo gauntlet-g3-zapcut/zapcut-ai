@@ -7,56 +7,155 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables')
 }
 
-// Storage migration - MUST run BEFORE creating client to clear stale tokens
-if (typeof window !== 'undefined') {
-  const STORAGE_VERSION = 'v2' // bump this when changing storage logic
-  const key = 'supabase.storage.version'
+export const SUPABASE_STORAGE_KEY = 'supabase.auth.token'
+const STORAGE_VERSION_KEY = 'supabase.storage.version'
+const STORAGE_VERSION = 'v2'
+const EXPECTED_JWT_ALG =
+  typeof import.meta.env.VITE_SUPABASE_JWT_ALG === 'string'
+    ? (import.meta.env.VITE_SUPABASE_JWT_ALG as string)
+    : undefined
+
+// Debug flag - controls GoTrueClient and custom auth logging
+//
+// To enable debug mode:
+// 1. In browser console: localStorage.setItem('DEBUG_AUTH', 'true')
+// 2. Refresh the page
+// 3. Auth logs will now appear in console
+//
+// To disable:
+// localStorage.removeItem('DEBUG_AUTH') and refresh
+//
+// Or set VITE_DEBUG_AUTH=true in .env file
+export const DEBUG_AUTH =
+  (typeof window !== 'undefined' && localStorage.getItem('DEBUG_AUTH') === 'true') ||
+  import.meta.env.VITE_DEBUG_AUTH === 'true'
+
+const safeJsonParse = <T>(value: string | null): T | null => {
+  if (!value) return null
+  try {
+    return JSON.parse(value) as T
+  } catch (error) {
+    if (DEBUG_AUTH) {
+      console.warn('[Auth] Failed to parse JSON from storage', error)
+    }
+    return null
+  }
+}
+
+const decodeJwtHeader = (token: string): Record<string, unknown> | null => {
+  if (typeof window === 'undefined') return null
 
   try {
-    const current = localStorage.getItem(key)
-    let needsMigration = current !== STORAGE_VERSION
-    
-    // Also check for HS256 tokens even if version matches (defensive)
+    const [encodedHeader] = token.split('.')
+    if (!encodedHeader) return null
+    const normalized = encodedHeader.replace(/-/g, '+').replace(/_/g, '/')
+    const headerJson = window.atob(normalized)
+    return JSON.parse(headerJson)
+  } catch (error) {
+    if (DEBUG_AUTH) {
+      console.warn('[Auth] Failed to decode JWT header', error)
+    }
+    return null
+  }
+}
+
+export interface StoredSupabaseSession {
+  access_token: string
+  refresh_token?: string
+  expires_at?: number
+  user?: Record<string, unknown>
+}
+
+export const readSupabaseSessionFromStorage = (): StoredSupabaseSession | null => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const raw = window.localStorage.getItem(SUPABASE_STORAGE_KEY)
+  const parsed = safeJsonParse<{ currentSession?: unknown; session?: unknown; access_token?: string }>(raw)
+
+  const sessionData = (parsed?.currentSession ?? parsed?.session ?? parsed) as Record<string, unknown> | null
+
+  if (!sessionData) {
+    return null
+  }
+
+  const maybeUser = sessionData.user as Record<string, unknown> | undefined
+  const access_token = sessionData.access_token as string | undefined
+  const refresh_token = sessionData.refresh_token as string | undefined
+  const expires_at = sessionData.expires_at as number | undefined
+
+  if (!access_token) {
+    return null
+  }
+
+  return {
+    access_token,
+    refresh_token,
+    expires_at,
+    user: maybeUser,
+  }
+}
+
+export const clearSupabaseAuthStorage = () => {
+  if (typeof window === 'undefined') return
+  const keysToClear: string[] = []
+
+  Object.keys(window.localStorage).forEach((storageKey) => {
+    if (storageKey.startsWith('supabase') || storageKey.includes('auth')) {
+      keysToClear.push(storageKey)
+    }
+  })
+
+  keysToClear.forEach((key) => window.localStorage.removeItem(key))
+}
+
+// Log debug status on load
+if (typeof window !== 'undefined' && DEBUG_AUTH) {
+  console.log('[Auth] Debug mode enabled. Auth logs will be visible.')
+}
+
+// Storage migration - MUST run BEFORE creating client to clear stale tokens
+if (typeof window !== 'undefined') {
+  try {
+    const storage = window.localStorage
+    const currentVersion = storage.getItem(STORAGE_VERSION_KEY)
+    let needsMigration = currentVersion !== STORAGE_VERSION
+    const reasons: string[] = []
+
     if (!needsMigration) {
-      const sessionKey = 'supabase.auth.token'
-      const stored = localStorage.getItem(sessionKey)
-      if (stored) {
-        try {
-          const sessionData = JSON.parse(stored)
-          const accessToken = sessionData?.access_token
-          if (accessToken) {
-            // Check token algorithm
-            try {
-              const header = JSON.parse(atob(accessToken.split('.')[0].replace(/-/g, '+').replace(/_/g, '/')))
-              if (header.alg && header.alg !== 'RS256') {
-                console.warn('Found HS256 token in storage, forcing migration')
-                needsMigration = true
-              }
-            } catch {
-              // If we can't parse, clear it anyway
-              needsMigration = true
-            }
-          }
-        } catch {
-          // Corrupted session data
+      const storedSession = readSupabaseSessionFromStorage()
+      if (storedSession?.access_token) {
+        const header = decodeJwtHeader(storedSession.access_token)
+        const detectedAlg = typeof header?.alg === 'string' ? (header.alg as string) : undefined
+
+        if (EXPECTED_JWT_ALG && detectedAlg && detectedAlg !== EXPECTED_JWT_ALG) {
           needsMigration = true
+          reasons.push(`token algorithm ${detectedAlg} differs from expected ${EXPECTED_JWT_ALG}`)
+        } else if (!detectedAlg && DEBUG_AUTH) {
+          console.warn('[Auth] Unable to determine stored token algorithm; leaving session untouched')
         }
       }
     }
-    
+
     if (needsMigration) {
-      // remove only supabase/auth related keys BEFORE client loads them
-      Object.keys(localStorage).forEach(k => {
-        if (k.startsWith('supabase') || k.includes('auth')) {
-          localStorage.removeItem(k)
+      if (DEBUG_AUTH) {
+        console.warn('[Auth] Clearing Supabase auth storage', { reasons, currentVersion, targetVersion: STORAGE_VERSION })
+      }
+
+      Object.keys(storage).forEach((storageKey) => {
+        if (storageKey.startsWith('supabase') || storageKey.includes('auth')) {
+          storage.removeItem(storageKey)
         }
       })
-      localStorage.setItem(key, STORAGE_VERSION)
-      // Storage migration completed
+
+      storage.setItem(STORAGE_VERSION_KEY, STORAGE_VERSION)
+    } else if (!currentVersion) {
+      // Ensure we mark the version once even if no migration occurred
+      storage.setItem(STORAGE_VERSION_KEY, STORAGE_VERSION)
     }
-  } catch (e) {
-    // ignore storage errors (private mode etc.)
-    console.warn('Storage migration skipped', e)
+  } catch (error) {
+    console.warn('[Auth] Storage migration skipped', error)
   }
 }
 
@@ -68,8 +167,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
     flowType: 'pkce',
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-    storageKey: 'supabase.auth.token',
-    debug: import.meta.env.DEV
-  }
+    storageKey: SUPABASE_STORAGE_KEY,
+    debug: DEBUG_AUTH, // Only log GoTrueClient messages when DEBUG_AUTH is enabled
+  },
 })
 

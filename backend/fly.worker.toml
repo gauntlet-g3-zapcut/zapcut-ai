@@ -1,0 +1,16 @@
+# Fly.io configuration for Celery worker service
+app = "zapcut-worker"
+primary_region = "iad"
+
+[build]
+
+[env]
+  # Worker doesn't need PORT, but we set it for consistency
+  PORT = "8000"
+
+[processes]
+  worker = "./start-worker.sh"
+
+# No http_service for worker - it's a background process
+# Health checks are handled via process monitoring
+

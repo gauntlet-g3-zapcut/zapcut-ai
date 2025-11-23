@@ -1,6 +1,6 @@
-# AdCraft Backend API
+# AdCut Backend API
 
-FastAPI backend for AdCraft video generation platform.
+FastAPI backend for AdCut video generation platform.
 
 ## Setup
 
@@ -104,12 +104,63 @@ curl https://zapcut-api.fly.dev/init-db
 - `SUPABASE_URL` - Supabase project URL
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key
 - `SUPABASE_JWT_SECRET` - Supabase JWT secret (optional, for HS256)
+- `SUPABASE_S3_ENDPOINT` - Supabase S3 storage endpoint URL
+- `SUPABASE_S3_ACCESS_KEY` - Supabase S3 access key
+- `SUPABASE_S3_SECRET_KEY` - Supabase S3 secret key
+- `SUPABASE_S3_VIDEO_BUCKET` - S3 bucket name for videos (default: "videos")
 - `OPENAI_API_KEY` - OpenAI API key
 - `REPLICATE_API_TOKEN` - Replicate API token
+- `REPLICATE_WEBHOOK_SECRET` - Replicate webhook secret for signature verification
 - `REDIS_URL` - Redis connection string (optional, for Celery)
 - `CORS_ORIGINS` - Comma-separated CORS origins
+
+### S3 Storage Setup
+
+The application requires Supabase S3 storage buckets with public-read ACL:
+- `videos` - Stores generated scene videos (must be public-read)
+- `soundtracks` - Stores generated audio files (must be public-read)
+- `brand-images` - Stores brand images (must be public-read)
 
 ## Health Checks
 
 Fly.io will automatically check `/health` endpoint every 30 seconds.
+
+## Testing
+
+### Unit Tests
+
+Run unit tests with pytest:
+```bash
+pytest tests/
+```
+
+### Manual Verification of S3 Video Storage
+
+To verify that videos are being uploaded to S3 before saving URLs to the database:
+
+1. **Check Webhook Logs**: When a Replicate webhook is received for a completed scene, you should see logs indicating:
+   - Download from Replicate: `Downloading video from Replicate | campaign={id} | scene={num}`
+   - Upload to S3: `Uploading video to S3 | campaign={id} | scene={num} | bucket=videos`
+   - S3 URL saved: `Scene {num} S3 video URL saved | campaign={id} | s3_url={url}`
+
+2. **Verify Database URLs**: Query the `campaigns` table and check `video_urls` JSON field. All `video_url` values should be Supabase S3 URLs (format: `https://{project}.supabase.co/storage/v1/object/public/videos/generated/{campaign_id}/scene-{num}/prediction-{id}.mp4`), not Replicate URLs.
+
+3. **Test Webhook Endpoint**: You can simulate a webhook call using curl:
+```bash
+curl -X POST "http://localhost:8000/webhooks/replicate?campaign_id={campaign_id}&scene_num=1" \
+  -H "Content-Type: application/json" \
+  -H "X-Replicate-Content-SHA256: {signature}" \
+  -d '{
+    "id": "test-prediction-id",
+    "status": "succeeded",
+    "output": "https://replicate.delivery/pbxt/test-video.mp4"
+  }'
+```
+
+4. **Verify S3 Bucket**: Check the Supabase Storage dashboard to confirm files are uploaded to the `videos` bucket with the expected structure: `generated/{campaign_id}/scene-{scene_num}/prediction-{prediction_id}.mp4`
+
+5. **Test Retry Path**: If a scene fails and retries, verify that:
+   - A new prediction is created with a new prediction_id
+   - The new video is uploaded with the new prediction_id in the key
+   - The scene's video_url is updated to the new S3 URL
 

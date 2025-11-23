@@ -1,6 +1,6 @@
 import Hero from './components/Hero'
 import Features from './components/Features'
-import DownloadCTA from './components/DownloadCTA'
+import WebAppCTA from './components/WebAppCTA'
 import Footer from './components/Footer'
 
 function App() {
@@ -8,7 +8,7 @@ function App() {
     <div className="min-h-screen bg-black w-full">
       <Hero />
       <Features />
-      <DownloadCTA />
+      <WebAppCTA />
       <Footer />
     </div>
   )

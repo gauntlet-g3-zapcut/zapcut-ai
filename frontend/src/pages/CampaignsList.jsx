@@ -2,8 +2,10 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
 import { Button } from "../components/ui/button"
+import { GradientButton } from "@/components/ui/gradient-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { api } from "../services/api"
+import HomeSidebar from "../components/layout/HomeSidebar"
 import { Play, Clock, CheckCircle2, XCircle, Loader2, Trash2 } from "lucide-react"
 
 export default function CampaignsList() {
@@ -49,17 +51,8 @@ export default function CampaignsList() {
   }
 
   const handleLogout = async () => {
-    try {
-      await logout()
-      // Wait a moment for auth state to update
-      setTimeout(() => {
-        navigate("/landing")
-      }, 100)
-    } catch (error) {
-      console.error("Logout failed:", error)
-      // Still navigate even if logout had an error
-      navigate("/landing")
-    }
+    await logout()
+    navigate("/")
   }
 
   const getStatusIcon = (status) => {
@@ -99,47 +92,17 @@ export default function CampaignsList() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
       <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-64 bg-card border-r min-h-screen p-6 flex flex-col">
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              AdCraft AI
-            </h2>
-          </div>
-
-          <nav className="space-y-2">
-            <Button 
-              variant="ghost" 
-              className="w-full justify-start"
-              onClick={() => navigate("/dashboard")}
-            >
-              Brands
-            </Button>
-            <Button 
-              variant="default" 
-              className="w-full justify-start"
-            >
-              Campaigns
-            </Button>
-          </nav>
-
-          <div className="mt-auto pt-8">
-            <div className="text-sm text-muted-foreground mb-2">
-              {user?.email}
-            </div>
-            <Button variant="outline" size="sm" onClick={handleLogout} className="w-full">
-              Logout
-            </Button>
-          </div>
-        </aside>
+        <HomeSidebar active="campaigns" userEmail={user?.email} onLogout={handleLogout} />
 
         {/* Main Content */}
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-8 ml-64">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Campaigns</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-3xl font-bold mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>
+              Campaigns
+            </h1>
+            <p className="text-base text-muted-foreground">
               View all your video ad campaigns across all brands
             </p>
           </div>
@@ -151,15 +114,17 @@ export default function CampaignsList() {
           ) : campaigns.length === 0 ? (
             <Card className="p-12 text-center">
               <CardHeader>
-                <CardTitle className="text-2xl mb-2">No campaigns yet</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-2xl mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>
+                  No campaigns yet
+                </CardTitle>
+                <CardDescription className="text-base">
                   Create your first campaign to start generating video ads
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Button onClick={() => navigate("/dashboard")}>
+                <GradientButton onClick={() => navigate("/dashboard")}>
                   Go to Brands
-                </Button>
+                </GradientButton>
               </CardContent>
             </Card>
           ) : (
@@ -192,8 +157,10 @@ export default function CampaignsList() {
                         )}
                       </Button>
                     </div>
-                    <CardTitle className="text-lg">{campaign.brand_title}</CardTitle>
-                    <CardDescription>
+                    <CardTitle className="text-lg" style={{ fontFamily: "'Playfair Display', serif" }}>
+                      {campaign.brand_title}
+                    </CardTitle>
+                    <CardDescription className="text-base">
                       {campaign.video_urls_count} scenes generated
                     </CardDescription>
                   </CardHeader>
@@ -204,9 +171,8 @@ export default function CampaignsList() {
                       </div>
                       <div className="flex gap-2 mt-4">
                         {campaign.status === "completed" && campaign.final_video_url && (
-                          <Button
-                            className="flex-1"
-                            size="sm"
+                          <GradientButton
+                            className="flex-1 !px-8 !py-2.5 !text-base !min-w-0"
                             onClick={(e) => {
                               e.stopPropagation()
                               navigate(`/campaigns/${campaign.id}/video`)
@@ -214,7 +180,7 @@ export default function CampaignsList() {
                           >
                             <Play className="mr-2 h-4 w-4" />
                             View Video
-                          </Button>
+                          </GradientButton>
                         )}
                         {(campaign.status === "processing" || campaign.status === "pending") && (
                           <Button
