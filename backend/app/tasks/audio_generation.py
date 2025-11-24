@@ -655,7 +655,16 @@ def generate_audio_task(self, campaign_id: str) -> Dict[str, Any]:
                     raise upload_error
                 
                 update_audio_status_safe(campaign_id, "completed", audio_url=audio_url)
-                
+
+                # Check if voiceover is also ready, trigger audio mixing if so (V2 pipeline)
+                from app.tasks.voiceover_generation import check_audio_ready_and_mix
+                check_audio_ready_and_mix(campaign_id)
+
+                # For V0/V0.5/V1 pipelines, also check if videos are ready for assembly
+                # (V2 will use final_audio_url from mixing, so this won't trigger assembly for V2)
+                from app.tasks.video_generation import check_ready_and_assemble
+                check_ready_and_assemble(campaign_id)
+
                 return {
                     "status": "completed",
                     "audio_url": audio_url,

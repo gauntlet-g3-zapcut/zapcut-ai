@@ -132,8 +132,9 @@ async def create_campaign(
                     message = "Campaign approved. Video generation started."
                 else:
                     # Fallback to async task if Redis not configured
+                    # Don't pass db session - async task will create its own
                     logger.warning("REDIS_URL not set, falling back to async task")
-                    asyncio.create_task(start_video_generation(str(campaign.id), db))
+                    asyncio.create_task(start_video_generation(str(campaign.id)))
                     message = "Campaign approved. Video generation started."
             else:
                 logger.warning("REPLICATE_API_TOKEN not set, video generation will not start")
@@ -184,6 +185,8 @@ async def get_campaign(
         "brand_id": str(campaign.brand_id),
         "creative_bible_id": str(campaign.creative_bible_id) if campaign.creative_bible_id else None,
         "status": campaign.status,
+        "pipeline_version": campaign.pipeline_version or "v0",
+        "pipeline_stage": campaign.pipeline_stage,
         "storyline": campaign.storyline,
         "creative_bible": creative_bible_data,
         "campaign_preferences": campaign_preferences,
@@ -199,77 +202,115 @@ async def get_campaign_status(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get campaign generation status."""
+    """Get campaign generation status with Phase 1 pipeline tracking.
+
+    Returns detailed status including:
+    - pipeline_stage: Current stage in the image-first pipeline
+    - Per-scene status for images, upscaling, and videos
+    - Progress counts for each stage
+    """
     try:
         campaign_uuid = uuid.UUID(campaign_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid campaign ID")
-    
+
     campaign = db.query(Campaign).filter(Campaign.id == campaign_uuid).first()
-    
+
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    
+
     if campaign.brand.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
-    
+
     # Refresh campaign to get latest data from database (important for webhook updates)
     db.refresh(campaign)
-    
+
     # Calculate scene progress
     video_urls = campaign.video_urls or []
     storyline = campaign.storyline or {}
     scenes_data = storyline.get("scenes", [])
     total_scenes = len(scenes_data)
-    
-    # Get sora_prompts from campaign
+
+    # Get sora_prompts from campaign (legacy) and image_prompts (new)
     sora_prompts = campaign.sora_prompts or []
-    # Create a lookup dict by scene_number
+    image_prompts = campaign.image_prompts or []
     prompt_lookup = {p.get("scene_number"): p.get("prompt") for p in sora_prompts}
-    
-    # Build detailed scene status array
+    image_prompt_lookup = {p.get("scene_number"): p for p in image_prompts}
+
+    # Build detailed scene status array with Phase 1 fields
     scene_statuses = []
     for i, scene_data in enumerate(scenes_data):
         scene_num = scene_data.get("scene_number", i + 1)
         scene_title = scene_data.get("title", f"Scene {scene_num}")
-        
-        # Find matching video_url entry
+
+        # Find matching video_url entry (enhanced structure)
         video_entry = next((v for v in video_urls if v.get("scene_number") == scene_num), None)
-        
+        image_prompt_entry = image_prompt_lookup.get(scene_num, {})
+
         scene_status = {
             "scene_number": scene_num,
             "title": scene_title,
+            # Overall status (backward compatible)
             "status": video_entry.get("status", "pending") if video_entry else "pending",
             "video_url": video_entry.get("video_url") if video_entry else None,
             "error": video_entry.get("error") if video_entry else None,
-            "sora_prompt": prompt_lookup.get(scene_num)
+            "sora_prompt": prompt_lookup.get(scene_num),
+
+            # Phase 1: Enhanced prompts
+            "image_prompt": video_entry.get("image_prompt") if video_entry else image_prompt_entry.get("image_prompt"),
+            "motion_prompt": video_entry.get("motion_prompt") if video_entry else image_prompt_entry.get("motion_prompt"),
+
+            # Phase 1: Image generation status
+            "base_image_url": video_entry.get("base_image_url") if video_entry else None,
+            "image_status": video_entry.get("image_status", "pending") if video_entry else "pending",
+
+            # Phase 1: Upscaling status
+            "upscaled_image_url": video_entry.get("upscaled_image_url") if video_entry else None,
+            "upscale_status": video_entry.get("upscale_status", "pending") if video_entry else "pending",
+
+            # Phase 1: Video generation status
+            "video_status": video_entry.get("video_status", "pending") if video_entry else "pending",
+
+            # Phase 1: Post-processing status (for future phases)
+            "processed_video_url": video_entry.get("processed_video_url") if video_entry else None,
+            "processing_status": video_entry.get("processing_status", "pending") if video_entry else "pending",
         }
         scene_statuses.append(scene_status)
-    
-    # Calculate summary stats
+
+    # Calculate summary stats for each stage
+    images_completed = len([s for s in scene_statuses if s.get("image_status") == "completed"])
+    images_generating = len([s for s in scene_statuses if s.get("image_status") == "generating"])
+    upscales_completed = len([s for s in scene_statuses if s.get("upscale_status") == "completed"])
+    upscales_generating = len([s for s in scene_statuses if s.get("upscale_status") == "generating"])
+    videos_completed = len([s for s in scene_statuses if s.get("video_status") == "completed" or (s.get("status") == "completed" and s.get("video_url"))])
+    videos_generating = len([s for s in scene_statuses if s.get("video_status") == "generating" or s.get("status") == "generating"])
+
+    # Legacy counts (backward compatible)
     completed_scenes = len([s for s in scene_statuses if s.get("status") == "completed" and s.get("video_url")])
     generating_scenes = len([s for s in scene_statuses if s.get("status") in ["generating", "retrying"]])
     failed_scenes = len([s for s in scene_statuses if s.get("status") == "failed"])
-    
-    # Find current scene being generated (first scene that's generating)
+
+    # Find current scene being processed
     current_scene = None
     if campaign.status == "processing":
         for scene_status in scene_statuses:
             if scene_status.get("status") in ["generating", "retrying"]:
                 current_scene = scene_status.get("scene_number")
                 break
-        # Fallback: if no generating scenes, use first pending scene
         if not current_scene:
             for scene_status in scene_statuses:
                 if scene_status.get("status") == "pending":
                     current_scene = scene_status.get("scene_number")
                     break
-    
+
     return {
         "campaign_id": str(campaign.id),
         "status": campaign.status,
+        "pipeline_stage": campaign.pipeline_stage or "pending",  # Phase 1: New field
+        "director_mode": campaign.director_mode or "surprise_me",  # Phase 1: New field
         "final_video_url": campaign.final_video_url if campaign.status == "completed" else None,
-        "sora_prompts": sora_prompts,  # Include all sora_prompts
+        "sora_prompts": sora_prompts,
+        "image_prompts": image_prompts,  # Phase 1: New field
         "audio": {
             "status": campaign.audio_status or "pending",
             "audio_url": campaign.audio_url,
@@ -281,8 +322,80 @@ async def get_campaign_status(
             "total_scenes": total_scenes,
             "generating_scenes": generating_scenes,
             "failed_scenes": failed_scenes,
-            "scenes": scene_statuses  # Detailed per-scene status with video_urls and sora_prompts
+            "scenes": scene_statuses,
+            # Phase 1: Stage-specific progress
+            "images": {
+                "completed": images_completed,
+                "generating": images_generating,
+                "total": total_scenes
+            },
+            "upscales": {
+                "completed": upscales_completed,
+                "generating": upscales_generating,
+                "total": total_scenes
+            },
+            "videos": {
+                "completed": videos_completed,
+                "generating": videos_generating,
+                "total": total_scenes
+            }
         }
+    }
+
+
+class SetPipelineVersionRequest(BaseModel):
+    pipeline_version: str  # "v0", "v0.5", "v1", "v2", or "v2p"
+
+
+@router.patch("/{campaign_id}/pipeline-version")
+async def set_pipeline_version(
+    campaign_id: str,
+    request: SetPipelineVersionRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Set the pipeline version for a draft campaign.
+
+    Must be called before /approve to select which pipeline to use:
+    - v0: Original Sora 2 text-to-video (durations 4/8/12s)
+    - v0.5: Veo 3.1 text-to-video (durations 4/6/8s)
+    - v1: Image-first parallel (Nano Banana → Real-ESRGAN → Veo 3.1)
+    - v2: Story-first sequential (GPT-4o story → voiceover → frame seeding)
+    """
+    if request.pipeline_version not in ["v0", "v0.5", "v1", "v2", "v2p"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid pipeline_version: {request.pipeline_version}. Must be 'v0', 'v0.5', 'v1', 'v2', or 'v2p'"
+        )
+
+    try:
+        campaign_uuid = uuid.UUID(campaign_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid campaign ID")
+
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_uuid).first()
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if campaign.brand.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    if campaign.status != "draft":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can only set pipeline_version on draft campaigns (current status: {campaign.status})"
+        )
+
+    campaign.pipeline_version = request.pipeline_version
+    db.commit()
+
+    logger.info(f"Campaign {campaign_id} pipeline_version set to {request.pipeline_version}")
+
+    return {
+        "campaign_id": str(campaign.id),
+        "pipeline_version": campaign.pipeline_version,
+        "message": f"Pipeline version set to {request.pipeline_version}"
     }
 
 
@@ -292,7 +405,17 @@ async def approve_campaign(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Approve a draft campaign and start video generation."""
+    """Approve a draft campaign and start video generation based on pipeline_version.
+
+    Routes to the appropriate pipeline based on campaign.pipeline_version:
+    - v0: Original Sora 2 text-to-video (durations 4/8/12s)
+    - v0.5: Veo 3.1 text-to-video (durations 4/6/8s) [DEFAULT]
+    - v1: Image-first parallel (Nano Banana → Real-ESRGAN → Veo 3.1)
+    - v2: Story-first sequential (GPT-4o story → voiceover → frame seeding)
+
+    Set pipeline_version on the campaign before calling this endpoint,
+    or it will default to v0.5.
+    """
     logger.info(f"Approving campaign: {campaign_id} for user: {current_user.id}")
 
     try:
@@ -314,35 +437,231 @@ async def approve_campaign(
     if campaign.status != "draft":
         raise HTTPException(status_code=400, detail=f"Campaign is not in draft status (current status: {campaign.status})")
 
-    # Update status to pending
+    # Get pipeline version (default to v0.5 for current Veo 3.1 text-to-video)
+    pipeline_version = campaign.pipeline_version or "v0.5"
+    logger.info(f"Campaign {campaign_id} using pipeline_version={pipeline_version}")
+
+    # Route to appropriate pipeline
+    if pipeline_version in ["v0", "v0.5"]:
+        # Both v0 and v0.5 use text-to-video, model selected in task
+        return await _start_v0_pipeline(campaign, db)
+    elif pipeline_version == "v1":
+        return await _start_v1_pipeline(campaign, db)
+    elif pipeline_version == "v2":
+        return await _start_v2_pipeline(campaign, db)
+    elif pipeline_version == "v2p":
+        return await _start_v2p_pipeline(campaign, db)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown pipeline_version: {pipeline_version}")
+
+
+async def _start_v0_pipeline(campaign: Campaign, db: Session) -> dict:
+    """Start V0/V0.5 text-to-video pipeline.
+
+    V0 Pipeline: Sora 2 text-to-video (durations 4/8/12s)
+    V0.5 Pipeline: Veo 3.1 text-to-video (durations 4/6/8s)
+
+    Both pipelines:
+    1. Generate videos via text-to-video (model selected by pipeline_version)
+    2. Generate background music (ElevenLabs Music)
+    3. Assemble final video with cross-dissolve transitions
+    """
+    # Preserve the pipeline_version (v0 or v0.5) - don't overwrite
+    pipeline_version = campaign.pipeline_version or "v0.5"
     campaign.status = "pending"
+    campaign.pipeline_stage = "videos_generating"
+    # Don't overwrite pipeline_version if already set
+    if not campaign.pipeline_version:
+        campaign.pipeline_version = "v0.5"
     db.commit()
     db.refresh(campaign)
 
-    logger.info(f"Campaign {campaign_id} status updated to pending")
+    logger.info(f"Campaign {campaign.id} starting {pipeline_version} pipeline")
 
-    # Start video generation
     try:
         if settings.REPLICATE_API_TOKEN:
             if settings.REDIS_URL:
                 from app.tasks.video_generation import start_video_generation_task
                 start_video_generation_task.delay(str(campaign.id))
-                logger.info(f"Enqueued video generation task for campaign: {campaign.id}")
-                message = "Campaign approved. Video generation started."
+                logger.info(f"Enqueued video generation task ({pipeline_version}) for campaign: {campaign.id}")
+                message = f"Campaign approved. {pipeline_version} text-to-video pipeline started."
             else:
-                logger.warning("REDIS_URL not set, falling back to async task")
-                asyncio.create_task(start_video_generation(str(campaign.id), db))
-                message = "Campaign approved. Video generation started."
+                message = "Campaign approved. Pipeline will start once Redis is configured."
         else:
-            logger.warning("REPLICATE_API_TOKEN not set, video generation will not start")
             message = "Campaign approved. Video generation will start once API token is configured."
     except Exception as e:
-        logger.error(f"Failed to start video generation: {e}", exc_info=True)
-        message = "Campaign approved. Video generation will start soon."
+        logger.error(f"Failed to start {pipeline_version} pipeline: {e}", exc_info=True)
+        message = "Campaign approved. Pipeline will start soon."
 
     return {
         "campaign_id": str(campaign.id),
         "status": "pending",
+        "pipeline_version": pipeline_version,
+        "pipeline_stage": campaign.pipeline_stage,
+        "message": message
+    }
+
+
+async def _start_v1_pipeline(campaign: Campaign, db: Session) -> dict:
+    """Start V1 image-first parallel pipeline.
+
+    V1 Pipeline (image-first, parallel):
+    1. Generate enhanced prompts (image_prompt + motion_prompt) via GPT-4o
+    2. Generate images via Nano Banana (parallel)
+    3. Upscale images via Real-ESRGAN (parallel)
+    4. Generate videos via Veo 3.1 (image-to-video mode, parallel)
+    5. Assemble final video with FFmpeg cross-dissolve transitions
+    """
+    campaign.status = "pending"
+    campaign.pipeline_stage = "pending"
+    campaign.pipeline_version = "v1"
+    campaign.director_mode = campaign.director_mode or "surprise_me"
+    db.commit()
+    db.refresh(campaign)
+
+    logger.info(f"Campaign {campaign.id} starting V1 pipeline, director_mode={campaign.director_mode}")
+
+    try:
+        if settings.OPENAI_API_KEY and settings.REPLICATE_API_TOKEN:
+            if settings.REDIS_URL:
+                from app.tasks.prompt_generation import generate_enhanced_prompts_task
+                generate_enhanced_prompts_task.delay(str(campaign.id))
+                logger.info(f"Enqueued prompt generation task for campaign: {campaign.id}")
+
+                if settings.ELEVENLABS_API_KEY:
+                    from app.tasks.audio_generation import generate_audio_task
+                    generate_audio_task.delay(str(campaign.id))
+                    logger.info(f"Enqueued audio generation task for campaign: {campaign.id}")
+
+                message = "Campaign approved. V1 image-first pipeline started."
+            else:
+                message = "Campaign approved. Pipeline will start once Redis is configured."
+        elif not settings.OPENAI_API_KEY:
+            # Fallback to V0 if OpenAI not configured
+            logger.warning("OPENAI_API_KEY not set, falling back to V0 pipeline")
+            if settings.REPLICATE_API_TOKEN and settings.REDIS_URL:
+                from app.tasks.video_generation import start_video_generation_task
+                start_video_generation_task.delay(str(campaign.id))
+                message = "Campaign approved. Fell back to V0 pipeline (OpenAI not configured)."
+            else:
+                message = "Campaign approved. Please configure API keys."
+        else:
+            message = "Campaign approved. Video generation will start once API token is configured."
+    except Exception as e:
+        logger.error(f"Failed to start V1 pipeline: {e}", exc_info=True)
+        message = "Campaign approved. Pipeline will start soon."
+
+    return {
+        "campaign_id": str(campaign.id),
+        "status": "pending",
+        "pipeline_version": "v1",
+        "pipeline_stage": campaign.pipeline_stage,
+        "director_mode": campaign.director_mode,
+        "message": message
+    }
+
+
+async def _start_v2_pipeline(campaign: Campaign, db: Session) -> dict:
+    """Start V2 story-first sequential pipeline.
+
+    V2 Pipeline (story-first with visual continuity):
+    1. Generate story document (GPT-4o Vision) - Full narrative + 5 segments
+    2. Generate voiceover (ElevenLabs TTS) - Full 40-second narration
+    3. Generate background music (ElevenLabs Music) - Runs parallel with voiceover
+    4. Mix final audio (FFmpeg) - Voiceover + music at 30% volume
+    5. Sequential video generation (Veo 3.1):
+       - Segment 1: Generate scene image, then video
+       - Segments 2-5: Extract last frame, seed next video
+    6. Assemble final video with cross-dissolve transitions
+    """
+    campaign.status = "pending"
+    campaign.pipeline_stage = "story_generating"
+    campaign.pipeline_version = "v2"
+    campaign.director_mode = "surprise_me"
+    campaign.voiceover_status = "pending"
+    campaign.current_segment = 0
+    db.commit()
+    db.refresh(campaign)
+
+    logger.info(f"Campaign {campaign.id} starting V2 pipeline")
+
+    try:
+        if settings.OPENAI_API_KEY and settings.REPLICATE_API_TOKEN:
+            if settings.REDIS_URL:
+                from app.tasks.story_generation import generate_story_task
+                generate_story_task.delay(str(campaign.id))
+                logger.info(f"Enqueued story generation task (V2) for campaign: {campaign.id}")
+                message = "Campaign approved. V2 story-first pipeline started."
+            else:
+                message = "Campaign approved. Pipeline will start once Redis is configured."
+        elif not settings.OPENAI_API_KEY:
+            message = "Campaign approved. V2 pipeline requires OPENAI_API_KEY."
+        else:
+            logger.warning("REPLICATE_API_TOKEN not set, video generation will not start")
+            message = "Campaign approved. Video generation will start once API token is configured."
+    except Exception as e:
+        logger.error(f"Failed to start V2 pipeline: {e}", exc_info=True)
+        message = "Campaign approved. Pipeline will start soon."
+
+    return {
+        "campaign_id": str(campaign.id),
+        "status": "pending",
+        "pipeline_version": "v2",
+        "pipeline_stage": campaign.pipeline_stage,
+        "message": message
+    }
+
+
+async def _start_v2p_pipeline(campaign: Campaign, db: Session) -> dict:
+    """Start V2P story-first PARALLEL pipeline.
+
+    V2P Pipeline (story-first with parallel generation):
+    1. Generate story document (GPT-4o Vision) - Viral ad narrative + 5 segments
+    2. Generate voiceover (ElevenLabs TTS) - Full 40-second narration (parallel)
+    3. Generate background music (ElevenLabs Music) - Runs parallel
+    4. Mix final audio (FFmpeg) - Voiceover + music
+    5. PARALLEL video generation:
+       - Generate character reference image first
+       - Generate all 5 scene images in parallel
+       - Generate all 5 videos in parallel (with character ref for consistency)
+    6. Assemble final video with cross-dissolve transitions
+
+    Much faster than V2 sequential (~3 min vs ~15 min).
+    """
+    campaign.status = "pending"
+    campaign.pipeline_stage = "story_generating"
+    campaign.pipeline_version = "v2p"
+    campaign.director_mode = "surprise_me"
+    campaign.voiceover_status = "pending"
+    campaign.current_segment = 0
+    db.commit()
+    db.refresh(campaign)
+
+    logger.info(f"Campaign {campaign.id} starting V2P (parallel) pipeline")
+
+    try:
+        if settings.OPENAI_API_KEY and settings.REPLICATE_API_TOKEN:
+            if settings.REDIS_URL:
+                from app.tasks.story_generation import generate_story_task
+                generate_story_task.delay(str(campaign.id))
+                logger.info(f"Enqueued story generation task (V2P) for campaign: {campaign.id}")
+                message = "Campaign approved. V2P parallel pipeline started."
+            else:
+                message = "Campaign approved. Pipeline will start once Redis is configured."
+        elif not settings.OPENAI_API_KEY:
+            message = "Campaign approved. V2P pipeline requires OPENAI_API_KEY."
+        else:
+            logger.warning("REPLICATE_API_TOKEN not set, video generation will not start")
+            message = "Campaign approved. Video generation will start once API token is configured."
+    except Exception as e:
+        logger.error(f"Failed to start V2P pipeline: {e}", exc_info=True)
+        message = "Campaign approved. Pipeline will start soon."
+
+    return {
+        "campaign_id": str(campaign.id),
+        "status": "pending",
+        "pipeline_version": "v2p",
+        "pipeline_stage": campaign.pipeline_stage,
         "message": message
     }
 

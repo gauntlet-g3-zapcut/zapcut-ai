@@ -28,7 +28,20 @@ celery_app = Celery(
     'zapcut',
     broker=broker_url,
     backend=backend_url,
-    include=['app.tasks.video_generation', 'app.tasks.audio_generation']
+    include=[
+        # V1 Pipeline Tasks
+        'app.tasks.video_generation',
+        'app.tasks.audio_generation',
+        'app.tasks.prompt_generation',
+        'app.tasks.image_generation',
+        # V2 Pipeline Tasks
+        'app.tasks.story_generation',
+        'app.tasks.voiceover_generation',
+        'app.tasks.sequential_video',
+        'app.tasks.audio_mixing',
+        # V2P (Parallel) Pipeline Tasks
+        'app.tasks.parallel_video',
+    ]
 )
 
 # Celery configuration
